@@ -1,18 +1,18 @@
-"""
+"""PLOT SONG AND PLAY VIDEO IN SYNC
 
-click on song trace, keys:
+`python plot_song_video.py datename root`
+
+datename: experiment name (e.g. localhost-20181120_144618)
+root: defaults to the current directory - this will work if you're in #Common/chainingmic
+
+Keys (may need to "activate" plot by clicking on song trace first to make this work):
 W - move left 
 A - move right
 S - zoom in 
 D - zoom out
-C - crop video around position of fly 0
-F - crop around next fly
+C - crop video around position fly
+F - next fly for cropping
 SPACE - play/stop video/song trace in
-
-TODO
-[x] index everything by time (reverted - is too slow)
-[x] crop video based on tracks
-[x] add ability to stop play
 """
 import os
 import sys
@@ -162,10 +162,13 @@ def play(rate=100):
 pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way   
 
 logging.basicConfig(level=logging.INFO)
-if len(sys.argv)==1:
-    datename = 'localhost-20181120_144618'
-else:
+
+datename = 'localhost-20181120_144618'
+root =''
+if len(sys.argv)>=2:
     datename = sys.argv[1]
+if len(sys.argv)>=3:
+    root = sys.argv[2]
 
 if os.path.exists(datename + '.zarr'):
     logging.info(f'Loading dataset from {datename}.zarr.')
