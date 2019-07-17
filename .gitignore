@@ -107,4 +107,4 @@ venv.bak/
 *.zarr
 dat
 res
-.vscode/settings.json
+.vscode
