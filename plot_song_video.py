@@ -62,8 +62,7 @@ def keyPressed(evt):
             STOP = True
             
     span = int(max(500, span))
-    t0 = int(max(0, t0))
-    t0 = int(min(t0, tmax))
+    t0 = int(np.clip(t0, 0, tmax))
     update(t0, span, crop, fly)
     app.processEvents()
 
@@ -105,7 +104,6 @@ def update(index, span, crop=False, fly=0):
 
 class VideoReaderNP(VideoReader):
     """VideoReader posing as numpy array."""
-
     def __getitem__(self, index):
         return self.read(index)[1]
 
@@ -178,12 +176,12 @@ else:
     dataset = dst.assemble(datename)
     logging.info(f'Saving dataset to {datename}.zarr.')
     dst.save(datename + '.zarr', dataset)
-print(dataset)
+logging.info(dataset)
 filepath = dataset.attrs['video_filename']
 vr = VideoReaderNP(filepath[:-3] + 'avi')
 
 # indices
-t0 = 900_000
+t0 = 1_100_000
 span = 100_000
 tmax = len(dataset.song)
 crop = False
@@ -194,7 +192,7 @@ STOP = True
 app = pg.QtGui.QApplication([])
 win = pg.QtGui.QMainWindow()
 win.resize(800, 800)
-win.setWindowTitle("PgSlicePlot: {}".format('title'))
+win.setWindowTitle("psv")
 
 image_view = ImageViewVR(name="img_view")
 image_view.setImage(vr)

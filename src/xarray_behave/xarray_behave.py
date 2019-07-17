@@ -3,6 +3,9 @@ import h5py
 # import deepdish as dd
 import scipy.interpolate
 from scipy.io import loadmat
+import scipy.signal
+from scipy.ndimage import maximum_filter1d
+   
 from samplestamps import *
 import xarray as xr
 import zarr
@@ -11,8 +14,18 @@ import logging
 from pathlib import Path
 
 
-def rotate_points(x, y, degrees, origin=(0, 0)):
-    """Rotate (x,y) a point around a given point given by origin."""
+def rotate_point(pos, degrees, origin=(0, 0)):
+    """Rotate point.
+    
+    Args:
+        pos (tuple): (x.y) position 
+        degrees ([type]): degree by which to rotate
+        origin (tuple, optional): point (x,y) around which to rotate point. Defaults to (0, 0).
+    
+    Returns:
+        tuple: (x, y) rotated
+    """
+    x, y = pos
     radians = degrees / 180 * np.pi
     offset_x, offset_y = origin
     adjusted_x = (x - offset_x)
@@ -22,6 +35,33 @@ def rotate_points(x, y, degrees, origin=(0, 0)):
     qx = offset_x + cos_rad * adjusted_x + sin_rad * adjusted_y
     qy = offset_y + -sin_rad * adjusted_x + cos_rad * adjusted_y
     return qx, qy
+
+
+def merge_channels(data, sampling_rate):
+    """Merge channels based on a running maximum. 
+    
+    Args:
+        data (ndarray): [samples, channels]
+        sampling_rate (num): in Hz
+    
+    Returns:
+        ndarray: merged across
+    """
+    
+    # remove all nan/inf data
+    mask = ~np.isfinite(data)
+    data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
+    # band-pass filter out noise on each channel
+    b, a = scipy.signal.butter(6, (25, 1500), btype='bandpass', fs=sampling_rate)
+    data = scipy.signal.filtfilt(b, a, data, axis=0, method='pad')
+    # find loudest channel in 101-sample windows
+    sng_max = maximum_filter1d(np.abs(data), size=101, axis=0)
+    loudest_channel = np.argmax(sng_max, axis=-1)
+    # get linear index and merge channels
+    idx = np.ravel_multi_index((np.arange(sng_max.shape[0]),loudest_channel), data.shape)
+    data_merged_max = data.ravel()[idx]
+    data_merged_max = data_merged_max[:, np.newaxis]  # shape needs to be [nb_samples, 1]
+    return data_merged_max
 
 
 def load_segmentation(filepath):
@@ -96,7 +136,7 @@ def load_poses(filepath):
     origin = [b / 2 for b in box_size]
     poses_allo = np.zeros_like(poses)
     for cnt, ((x, y), a, p_ego) in enumerate(zip(box_offset, box_angle, poses)):
-        tmp = [rotate_points(*pt, a, origin) for pt in p_ego]  # rotate
+        tmp = [rotate_point(pt, a, origin) for pt in p_ego]  # rotate
         p_allo = np.stack(tmp) + np.array((x, y)) - origin  # translate
         poses_allo[cnt, ...] = p_allo
     
@@ -111,7 +151,7 @@ def load_poses(filepath):
     head_pos = poses[:,  head_idx,:]
     head_thorax_angle = 90 + np.arctan2(head_pos[:, 0], head_pos[:, 1]) * 180 / np.pi
     for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle, poses)):
-        poses[cnt, ...] = [rotate_points(*pt, -a, origin) for pt in p_ego]
+        poses[cnt, ...] = [rotate_point(pt, -a, origin) for pt in p_ego]
     
     box_offset = box_offset.reshape((-1, nb_flies, *box_offset.shape[1:]))  # "unfold" fly dimension
     box_angle = box_angle.reshape((-1, nb_flies, *box_angle.shape[1:]))  # "unfold" fly dimension
@@ -122,6 +162,19 @@ def load_poses(filepath):
     last_pose_frame = int(last_pose_index / nb_flies)
 
     return poses, poses_allo, body_parts, first_pose_frame, last_pose_frame
+
+
+def load_raw_song(filepath_daq, song_channels=None, sampling_rate=10_000):
+    """Load daq and merge channels"""
+    from scipy.ndimage import maximum_filter1d
+    if song_channels is None:
+        song_channels = list(range(16))
+    
+    with h5py.File(filepath_daq, 'r') as f:
+        song = f['samples'][:, song_channels]
+    
+    song_merged_max = merge_channels(song, sampling_rate)
+    return song_merged_max
 
 
 def load_times(filepath_timestamps, filepath_daq):
@@ -135,9 +188,9 @@ def load_times(filepath_timestamps, filepath_daq):
         daq_sampleinterval = f['samplenumber'][:]
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:, np.newaxis]
 
-    interval = np.median(np.diff(daq_stamps[:np.argmax(daq_stamps<=0),0]))  # seconds
-    nb_samples = np.median(np.diff(daq_samplenumber[:np.argmax(daq_stamps<=0),0]))
-    sampling_rate_Hz = interval* nb_samples
+    interval = np.mean(np.diff(daq_stamps[:np.argmax(daq_stamps<=0),0]))  # seconds
+    nb_samples = np.mean(np.diff(daq_samplenumber[:np.argmax(daq_stamps<=0),0]))
+    sampling_rate_Hz = np.round(interval * nb_samples)    
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
     return ss, daq_samplenumber[-1, 0], sampling_rate_Hz
 
@@ -174,17 +227,26 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
         with_poses = True
     except Exception as e:
         logging.warning(f'could not load pose from {filepath_poses}')
-        logging.error(e)
+        logging.debug(e)
 
     # load AUTOMATIC SEGMENTATION - currently produced by matlab
     with_segmentation = False
+    with_song = False
     filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.mat')
     try:
         res = load_segmentation(filepath_segmentation)
         with_segmentation = True
+        with_song = True
     except Exception as e:
         logging.warning(f'could not load segmentation from {filepath_segmentation}')
-        logging.error(e)
+        logging.debug(e)
+
+    # load RAW song traces
+    if not with_segmentation:        
+        logging.warning(f'will read and merge recording from {filepath_daq}')
+        song = load_raw_song(filepath_daq)
+        res = {'song': song}
+        with_song = True
 
     # load MANUAL SONG ANNOTATIONS
     with_segmentation_manual = False
@@ -194,9 +256,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
         with_segmentation_manual = True
     except Exception as e:
         logging.warning(f'could not load manual segmentation from {filepath_segmentation_manual}')
-        logging.error(e)
+        logging.debug(e)
 
-    sampling_rate = 10000
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
     first_sample = 0
     last_sample = int(last_sample_with_frame)
@@ -214,7 +275,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
 
     dataset_data = dict()
     # RAW SONG RECORDING
-    if with_segmentation:
+    if with_song:
         merged_song_recording = res['song'][first_sample:last_sample, 0]  # cut recording to match new grid
         song = xr.DataArray(data=merged_song_recording,
                             dims=['sampletime'],
@@ -223,6 +284,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
                                    'sampling_rate_Hz': sampling_rate,
                                    'time_units': 'seconds',
                                    'amplitude_units': 'volts'})
+        dataset_data['song'] = song
+        
+    if with_segmentation:
         # SONG LABELS
         song_labels = xr.DataArray(data=res['song_mask'][first_sample:last_sample:step, 0].astype(np.uint8),
                                    dims=['time'],
@@ -231,7 +295,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
                                    attrs={'description': 'Song label for each sample - 0: silence, 1: pulse, 2: sine.',
                                           'sampling_rate_Hz': sampling_rate / step,
                                           'time_units': 'seconds', })
-        dataset_data['song'] = song
         dataset_data['song_labels'] = song_labels
 
 
