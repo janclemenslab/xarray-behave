@@ -5,7 +5,7 @@
 conda install numpy scipy pandas xarray zarr h5py opencv pyqtgraph
 pip install git+http://github.com/postpop/videoreader
 pip install git+http://github.com/janclemenslab/samplestamps
-pip install git+http://github.com/janclemenslab/xarray_behave
+pip install git+http://github.com/janclemenslab/xarray-behave
 ```
 
 ## Usage
