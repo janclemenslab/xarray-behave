@@ -100,6 +100,7 @@ def load_tracks(filepath):
         heads = f['lines'][:, 0, :, 0, :]   # nframe, fly id, coordinates
         tails = f['lines'][:, 0, :, 1, :]   # nframe, fly id, coordinates
         box_centers = f['centers'][:, 0, :, :]   # nframe, fly id, coordinates
+        background = f['background'][:]
         first_tracked_frame = f.attrs['start_frame']
         last_tracked_frame = f.attrs['frame_count']
     # everything to frame coords
@@ -112,7 +113,7 @@ def load_tracks(filepath):
     # first_tracked_frame, last_tracked_frame = data['start_frame'], data['frame_count']
     x = np.stack((heads, box_centers, tails), axis=2)
     x = x[first_tracked_frame:last_tracked_frame, ...]
-    return x, body_parts, first_tracked_frame, last_tracked_frame
+    return x, body_parts, first_tracked_frame, last_tracked_frame, background
 
 
 def load_poses(filepath):
@@ -217,7 +218,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
 
     # LOAD TRACKS
     filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
-    body_pos, body_parts, first_tracked_frame, last_tracked_frame = load_tracks(filepath_tracks)
+    body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = load_tracks(filepath_tracks)
 
     # LOAD POSES
     with_poses = False
@@ -242,11 +243,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
         logging.debug(e)
 
     # load RAW song traces
-    if not with_segmentation:        
-        logging.warning(f'will read and merge recording from {filepath_daq}')
-        song = load_raw_song(filepath_daq)
-        res = {'song': song}
-        with_song = True
+    if not with_segmentation:
+        try:
+            logging.warning(f'trying to read and merge recording from {filepath_daq}')
+            song = load_raw_song(filepath_daq)
+            res = {'song': song}
+            with_song = True
+        except Exception as e:
+            logging.warning(f'could not load song from {filepath_daq}')
+            logging.debug(e)
+    
 
     # load MANUAL SONG ANNOTATIONS
     with_segmentation_manual = False
@@ -344,7 +350,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
                              attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
-                                    'spatial_units': 'pixels'})
+                                    'spatial_units': 'pixels',
+                                    'background': background})
     dataset_data['body_positions'] = positions
 
     # POSES
