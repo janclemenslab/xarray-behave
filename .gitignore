@@ -107,4 +107,5 @@ venv.bak/
 *.zarr
 dat
 res
+test
 .vscode
