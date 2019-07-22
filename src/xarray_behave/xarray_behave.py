@@ -272,7 +272,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
     target_samples = np.arange(first_sample, last_sample, step, dtype=np.uintp)  # construct desired sample grid for resampled data
     time = target_samples / sampling_rate  # time in seconds for each sample in the song annotation data
     sampletime = np.arange(first_sample, last_sample) / sampling_rate  # time in seconds for each sample in the song recording
-        
+
     # get nearest frame for each sample in the resampled grid
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
@@ -359,9 +359,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
         # resample to common grid at 1000Hz.
         frame_numbers = np.arange(first_pose_frame, last_pose_frame)
         frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        interpolator = scipy.interpolate.interp1d(frame_samples, pose_pos, axis=0, bounds_error=False, fill_value=np.nan)
+        interpolator = scipy.interpolate.interp1d(frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
         pose_pos_re = interpolator(target_samples)
-        interpolator = scipy.interpolate.interp1d(frame_samples, pose_pos_allo, axis=0, bounds_error=False, fill_value=np.nan)
+        interpolator = scipy.interpolate.interp1d(frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
         pose_pos_allo_re = interpolator(target_samples)
 
         # make DataArray
