@@ -29,7 +29,29 @@ def velocity(pos1, pos2):
         returns:
             vels: velocity of flies. [time, flies, forward/lateral]
     """
-    pass
+    x = 1
+    y = 0
+
+    dir_vector_y = pos2[...,y] - pos1[...,y]
+    dir_vector_x = pos2[...,x] - pos1[...,x]
+    angle = np.squeeze(np.arctan2(dir_vector_y, dir_vector_x) * 180 / np.pi)
+
+    mov_vector_x = np.gradient(pos1[...,x],axis=0) # gradient substracts past from present
+    mov_vector_y = np.gradient(pos1[...,y],axis=0)
+    mov_angle = np.arctan2(mov_vector_y, mov_vector_x) * 180 / np.pi
+
+    theta = mov_angle-angle
+
+    distance_of_movement = np.empty((pos1.shape[:2]))
+    for iagent in range(pos1.shape[1]):
+        present_min_past = np.gradient(pos1[:,iagent,:])[0]
+        distance_of_movement[:,iagent] = np.sqrt(np.einsum('ij,ij->i', present_min_past, present_min_past))
+
+    forward_vel=distance_of_movement*np.cos(theta*np.pi/180)
+    lateral_vel=distance_of_movement*np.sin(theta*np.pi/180)
+    vels = np.concatenate((forward_vel[...,np.newaxis],lateral_vel[...,np.newaxis]),axis=2)
+
+    return vels
 
 
 def acceleration(pos1, pos2):
