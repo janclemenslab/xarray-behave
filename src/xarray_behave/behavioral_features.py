@@ -11,10 +11,13 @@ def distance(positions):
     nagents = positions.shape[1]
 
     dis = np.empty((positions.shape[0], nagents, nagents))
-    for i,j in itertools.product(range(nagents),range(nagents)):
+    dis.fill(np.nan)
+
+    for i,j in itertools.combinations(range(nagents), r=2):
         diff_ij = np.squeeze(np.diff(positions[:,[i,j],:],axis=1))
         distance = np.sqrt(np.einsum('ij,ij->i', diff_ij, diff_ij))
         dis[:,i,j] = distance
+        dis[:,j,i] = distance
 
     return dis
 
