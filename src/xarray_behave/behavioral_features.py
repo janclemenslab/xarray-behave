@@ -1,5 +1,6 @@
 import numpy as np
 import itertools
+import xarray as xr
 
 
 def distance(positions):
@@ -171,7 +172,7 @@ def assemble_metrics(dataset):
         return:
             feature_dataset: xarray.Dataset with collection of calculated features.
 
-        notes: wing angle left and right and sum; relative velocities [time,flies,flies,y/x]; relative orientation
+        notes: wing angle left and right and sum; relative velocities [time,flies,flies,y/x]angle; relative orientation
     """
     time = dataset.time
     nearest_frame_time = dataset.nearest_frame
@@ -205,17 +206,17 @@ def assemble_metrics(dataset):
     # ABSOLUTE FEATURES #
     angles = angle(thoraces,heads)
     vels = velocity(thoraces,heads)
-    chamber_velocity = chamber_velocity(thoraces)
+    chamber_vels = chamber_velocity(thoraces)
     rotational_speed = rot_speed(thoraces,heads)
     accelerations = acceleration(thoraces,heads)
-    chamber_acceleration = chamber_acceleration(thoraces)
-    rotational_acceleration = rot_acceleration(thoraces,heads)
-    wing_angle_left = angles - angle(thoraces, wing_left)
+    chamber_acc = chamber_acceleration(thoraces)
+    rotational_acc = rot_acceleration(thoraces,heads)
+    wing_angle_left = angles - angle(thoraces, wing_left) # what if body angle and wing are at border of 0 or 180 degrees?
     wing_angle_right = angles - angle(thoraces, wing_right)
     wing_angle_sum = np.abs(wing_angle_left) + np.abs(wing_angle_right)
 
-    absolute = np.concatenate((angles[...,np.newaxis], vels), axis=2) # , chamber_velocity[...,np.newaxis], rotational_speed[...,np.newaxis],
-                               # accelerations, chamber_acceleration[...,np.newaxis], rotational_acceleration[...,np.newaxis],
+    absolute = np.concatenate((angles[...,np.newaxis], vels), axis=2) # , chamber_vels[...,np.newaxis], rotational_speed[...,np.newaxis],
+                               # accelerations, chamber_acc[...,np.newaxis], rotational_acc[...,np.newaxis],
                                # wing_angle_left[...,np.newaxis], wing_angle_right[...,np.newaxis], wing_angle_sum[...,np.newaxis]), axis=2)
 
 
