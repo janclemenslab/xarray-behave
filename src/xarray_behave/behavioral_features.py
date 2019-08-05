@@ -23,37 +23,28 @@ def distance(positions):
     return dis
 
 
-def velocity(pos1, pos2):
-    """ arg:
-            pos1: positions of the body reference (thorax). Will be considered as the center. [time, flies, y/x]
-            pos2: positions of the other body reference for orientation (head). [time, flies, y/x]
-
-        note: vector from pos1 to pos2.
-
-        returns:
-            vels: velocity of flies. [time, flies, forward/lateral]
+def velocity(pos1,pos2: np.array=None,timestep: float=1,ref: str='self'):
     """
-    x = 1
-    y = 0
+    arg:
+        pos1: position of vector's base, center of agent. [time, agent, y/x]
+        pos2: position of vector's head, head of agent. [time, agent, y/x]
+        timestep: time difference between data points (default = 1)
+        ref: type of output velocity. 'self' for forward/lateral velocity components, 'chamber' for y/x components.
+    returns:
+        vels: change of variable with respect to time. [time,agent,y/x]
+    """
 
-    dir_vector_y = pos2[...,y] - pos1[...,y]
-    dir_vector_x = pos2[...,x] - pos1[...,x]
-    angle = np.squeeze(np.arctan2(dir_vector_y, dir_vector_x) * 180 / np.pi)
+    # velocity in reference to chamber
+    vels_yx = np.gradient(pos1, timestep, axis=0)
 
-    mov_vector_x = np.gradient(pos1[...,x],axis=0) # gradient substracts past from present
-    mov_vector_y = np.gradient(pos1[...,y],axis=0)
-    mov_angle = np.arctan2(mov_vector_y, mov_vector_x) * 180 / np.pi
-
-    theta = mov_angle-angle
-
-    distance_of_movement = np.empty((pos1.shape[:2]))
-    for iagent in range(pos1.shape[1]):
-        present_min_past = np.gradient(pos1[:,iagent,:])[0]
-        distance_of_movement[:,iagent] = np.sqrt(np.einsum('ij,ij->i', present_min_past, present_min_past))
-
-    forward_vel=distance_of_movement*np.cos(theta*np.pi/180)
-    lateral_vel=distance_of_movement*np.sin(theta*np.pi/180)
-    vels = np.concatenate((forward_vel[...,np.newaxis],lateral_vel[...,np.newaxis]),axis=2)
+    if ref == 'self':
+        vels_mags = np.linalg.norm(vels_yx, axis=2)    # velocity magnitude
+        angle_diff = np.arctan2(vels_yx[...,0], vels_yx[...,1]) - np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])    # angle difference between velocity vector and orientation vector
+        vels = np.empty_like(vels_yx)    # velocity components with reference to self orientation
+        vels[:,:,0] = vels_mags*np.cos(angle_diff)    # forward
+        vels[:,:,1] = -vels_mags*np.sin(angle_diff)    # lateral
+    elif ref == 'chamber':
+        vels = vels_yx
 
     return vels
 
