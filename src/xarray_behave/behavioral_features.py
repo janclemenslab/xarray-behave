@@ -83,23 +83,14 @@ def chamber_velocity(pos):
 
 
 def angle(pos1, pos2):
-    """ arg:
-            pos1: positions of the body reference (thorax). Will be considered as the center. [time, flies, y/x]
-            pos2: positions of the other body reference for orientation (head). [time, flies, y/x]
-
-        note: vector from pos1 to pos2.
-
-        returns:
-            angles: orientation of flies with respect to chamber. [time, flies]
     """
-    x = 1
-    y = 0
-
-    dir_vector_y = pos2[...,y] - pos1[...,y]
-    dir_vector_x = pos2[...,x] - pos1[...,x]
-    angles = np.squeeze(np.arctan2(dir_vector_y, dir_vector_x) * 180 / np.pi)
-
-    return angles
+    arg:
+        pos1: position of vector's base, center of agent. [time, agent, y/x]
+        pos2: position of vector's head, head of agent. [time, agent, y/x]
+    returns:
+        angles: orientation of flies with respect to chamber. [time, flies]
+    """
+    return np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1]) * 180 / np.pi
 
 
 def relative_angle(pos1, pos2):
