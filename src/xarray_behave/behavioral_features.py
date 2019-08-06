@@ -226,12 +226,11 @@ def assemble_metrics(dataset):
                                # accelerations, chamber_acc[...,np.newaxis], rotational_acc[...,np.newaxis],
                                # wing_angle_left[...,np.newaxis], wing_angle_right[...,np.newaxis], wing_angle_sum[...,np.newaxis]), axis=2)
 
-
     # RELATIVE FEATURES #
     dis = distance(thoraces)
     rel_angles = relative_angle(thoraces, heads)
+    rel_orientation = np.repeat(np.swapaxes(angles[:,:,np.newaxis],1,2),angles.shape[1],axis=1)-np.repeat(angles[:,:,np.newaxis],angles.shape[1],axis=2)
     # rel_velocities =
-    # rel_orientation =
 
     relative = np.concatenate((dis[...,np.newaxis], rel_angles[...,np.newaxis]), axis=3)
                                 # , rel_velocities, rel_orientation), axis=3)
