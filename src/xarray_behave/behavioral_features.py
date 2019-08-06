@@ -81,7 +81,7 @@ def angle(pos1, pos2):
         pos1: position of vector's base, center of agent. [time, agent, y/x]
         pos2: position of vector's head, head of agent. [time, agent, y/x]
     returns:
-        angles: orientation of flies with respect to chamber. [time, flies]
+        angles: orientation of flies with respect to chamber. 0 degrees when flies look towards positive x axis, 90 degrees when vertical and looking upwards. [time, flies]
     """
     return np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1]) * 180 / np.pi
 
@@ -115,17 +115,22 @@ def relative_angle(pos1, pos2):
     return rel_angles
 
 
-def rot_speed(pos1, pos2):
-    """ arg:
-            pos1: positions of the body reference (thorax). Will be considered as the center. [time, flies, y/x]
-            pos2: positions of the other body reference for orientation (head). [time, flies, y/x]
-
-        note: vector from pos1 to pos2.
-
-        returns:
-            rot_speed: rotational speed of flies. [time, flies]
+def rot_speed(pos1, pos2, timestep: float=1):
     """
-    pass
+    arg:
+        pos1: position of vector's base, center of agent. [time, flies, y/x]
+        pos2: position of vector's head, head of agent. [time, flies, y/x]
+    returns:
+        rot_speed: rotational speed. [time, flies]
+    """
+
+    # orientations
+    angles = np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1]) * 180 / np.pi
+
+    # rotational speed
+    rot_speed = np.gradient(angles, timestep, axis=0)
+
+    return rot_speed
 
 
 def rot_acceleration(pos1, pos2):
