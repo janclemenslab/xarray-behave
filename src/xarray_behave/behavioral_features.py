@@ -125,25 +125,36 @@ def rot_speed(pos1, pos2, timestep: float=1):
     """
 
     # orientations
-    angles = np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1]) * 180 / np.pi
+    angles = np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])
+
+    # unwrap orientations
+    unwrapped_angles = np.unwrap(angles,axis=0)*180/np.pi
 
     # rotational speed
-    rot_speed = np.gradient(angles, timestep, axis=0)
+    rot_speed = np.gradient(unwrapped_angles, timestep, axis=0)
 
     return rot_speed
 
 
-def rot_acceleration(pos1, pos2):
-    """ arg:
-            pos1: positions of the body reference (thorax). Will be considered as the center. [time, flies, y/x]
-            pos2: positions of the other body reference for orientation (head). [time, flies, y/x]
-
-        note: vector from pos1 to pos2.
-
-        returns:
-            rot_accs: rotational acceleration of flies. [time, flies]
+def rot_acceleration(pos1, pos2, timestep: float=1):
     """
-    pass
+    arg:
+        pos1: position of vector's base, center of agent. [time, flies, y/x]
+        pos2: position of vector's head, head of agent. [time, flies, y/x]
+    returns:
+        rot_accs: rotational acceleration. [time, flies]
+    """
+
+    # orientations
+    angles = np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])
+
+    # unwrap orientations
+    unwrapped_angles = np.unwrap(angles,axis=0)*180/np.pi
+
+    # rotational speed
+    rot_accs = np.gradient(np.gradient(unwrapped_angles, timestep, axis=0),timestep, axis=0)
+
+    return rot_accs
 
 
 def assemble_metrics(dataset):
