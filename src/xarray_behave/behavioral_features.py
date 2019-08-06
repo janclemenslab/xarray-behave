@@ -49,37 +49,30 @@ def velocity(pos1,pos2: np.array=None,timestep: float=1,ref: str='self'):
     return vels
 
 
-def acceleration(pos1, pos2):
-    """ arg:
-            pos1: positions of the body reference (thorax). Will be considered as the center. [time, flies, y/x]
-            pos2: positions of the other body reference for orientation (head). [time, flies, y/x]
-
-        note: vector from pos1 to pos2.
-
-        returns:
-            accs: acceleration of flies. [time, flies, forward/lateral]
+def acceleration(pos1,pos2: np.array=None,timestep: float=1,ref: str='self'):
     """
-    pass
-
-
-def chamber_acceleration(pos):
-    """ arg:
-            pos: positions of the body reference (thorax). Will be considered as the center. [time, flies, y/x]
-
-        returns:
-            accs: acceleration of flies relative to chamber axis. [time, flies, y/x]
+    arg:
+        pos1: position of vector's base, center of agent. [time, flies, y/x]
+        pos2: position of vector's head, head of agent. [time, flies, y/x]
+        timestep: time difference between data points (default = 1)
+        ref: type of output components. 'self' for forward/lateral components, 'chamber' for y/x components.
+    returns:
+        accs: second order change of variable with respect to time. [time,agent,y/x]
     """
-    pass
 
+    # acceleration in reference to chamber
+    accs_yx = np.gradient(np.gradient(pos1, timestep, axis=0), timestep, axis=0)
 
-def chamber_velocity(pos):
-    """ arg:
-            pos: positions of the body reference (thorax). Will be considered as the center. [time, flies, y/x]
+    if ref == 'self':
+        accs_mags = np.linalg.norm(accs_yx, axis=2)    # acceleration magnitude
+        angle_diff = np.arctan2(accs_yx[...,0], accs_yx[...,1]) - np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])    # angle difference between acceleration vector and orientation vector
+        accs = np.empty_like(accs_yx)    # acceleration components with reference to self orientation
+        accs[:,:,0] = accs_mags*np.cos(angle_diff)    # forward
+        accs[:,:,1] = -accs_mags*np.sin(angle_diff)    # lateral
+    elif ref == 'chamber':
+        accs = accs_yx
 
-        returns:
-            vels: velocity of flies relative to chamber axis. [time, flies, y/x]
-    """
-    pass
+    return accs
 
 
 def angle(pos1, pos2):
@@ -188,10 +181,10 @@ def assemble_metrics(dataset):
     # ABSOLUTE FEATURES #
     angles = angle(thoraces,heads)
     vels = velocity(thoraces,heads)
-    chamber_vels = chamber_velocity(thoraces)
+    chamber_vels = velocity(thoraces,ref='chamber')
     rotational_speed = rot_speed(thoraces,heads)
     accelerations = acceleration(thoraces,heads)
-    chamber_acc = chamber_acceleration(thoraces)
+    chamber_acc = acceleration(thoraces,ref='chamber')
     rotational_acc = rot_acceleration(thoraces,heads)
     wing_angle_left = angles - angle(thoraces, wing_left) # what if body angle and wing are at border of 0 or 180 degrees?
     wing_angle_right = angles - angle(thoraces, wing_right)
