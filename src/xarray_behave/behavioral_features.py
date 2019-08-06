@@ -166,8 +166,20 @@ def assemble_metrics(dataset):
             dataset: xarray.Dataset from datastructure module, which takes experiment name as input.
         return:
             feature_dataset: xarray.Dataset with collection of calculated features.
-
-        notes: wing angle left and right and sum; relative velocities [time,flies,flies,y/x]angle; relative orientation
+                features:
+                    angles [time,flies,y/x]
+                    vels [time,flies,forward/lateral]
+                    chamber_vels [time,flies,y/x]
+                    rotational_speed [time,flies]
+                    accelerations [time,flies,forward/lateral]
+                    chamber_acc [time,flies,y/x]
+                    rotational_acc [time,flies]
+                    wing_angle_left [time,flies]
+                    wing_angle_right [time,flies]
+                    wing_angle_sum [time,flies]
+                    relative angle [time,flies,flies]
+                    (relative orientation) [time,flies,flies]
+                    (relative velocities) [time,flies,flies,y/x]
     """
     time = dataset.time
     nearest_frame_time = dataset.nearest_frame
@@ -206,9 +218,9 @@ def assemble_metrics(dataset):
     accelerations = acceleration(thoraces,heads)
     chamber_acc = acceleration(thoraces,ref='chamber')
     rotational_acc = rot_acceleration(thoraces,heads)
-    wing_angle_left = angles - angle(thoraces, wing_left) # what if body angle and wing are at border of 0 or 180 degrees?
-    wing_angle_right = angles - angle(thoraces, wing_right)
-    wing_angle_sum = np.abs(wing_angle_left) + np.abs(wing_angle_right)
+    wing_angle_left = angle(heads,thoraces) - angle(thoraces, wing_left)
+    wing_angle_right = -(angle(heads,thoraces) - angle(thoraces, wing_right))
+    wing_angle_sum = wing_angle_left + wing_angle_right
 
     absolute = np.concatenate((angles[...,np.newaxis], vels), axis=2) # , chamber_vels[...,np.newaxis], rotational_speed[...,np.newaxis],
                                # accelerations, chamber_acc[...,np.newaxis], rotational_acc[...,np.newaxis],
