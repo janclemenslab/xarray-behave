@@ -87,32 +87,36 @@ def angle(pos1, pos2):
 
 
 def relative_angle(pos1, pos2):
-    """ arg:
-            pos1: positions of the thoraxes for all flies. [time, flies, y/x]
-            pos2: positions of the heads for all flies. [time, flies, y/x]
-
-        note: vector from pos1 to pos2.
-
-        returns:
-            rel_angles: orientation of flies with respect to chamber. [time, flies]
+    """ Angle between agents. An element (k,i,j) from the output is the angle at kth sample between ith (reference head) and jth (target base).
+    arg:
+        pos1: positions of the thoraxes for all flies. [time, flies, y/x]
+        pos2: positions of the heads for all flies. [time, flies, y/x]
+    returns:
+        rel_angles: orientation of flies with respect to chamber. [time, flies, flies]
     """
-    x = 1
-    y = 0
+
     nagents = pos1.shape[1]
+    rel_angles = np.empty((pos1.shape[0], nagents, nagents), dtype=np.float32)
+    rel_angles.fill(np.nan)
 
-    dir_vector_y = pos2[...,y] - pos1[...,y]
-    dir_vector_x = pos2[...,x] - pos1[...,x]
-    angle = np.squeeze(np.arctan2(dir_vector_y, dir_vector_x) * 180 / np.pi)
+    for i,j in itertools.combinations(range(nagents), r=2):
+        x1 = pos2[:, i, 1]-pos1[:, i, 1]
+        y1 = pos2[:, i, 0]-pos1[:, i, 0]
+        x2 = pos1[:, j, 1]-pos2[:, i, 1]
+        y2 = pos1[:, j, 0]-pos2[:, i, 0]
+        dot = x1*x2 + y1*y2
+        det = x1*y2 - y1*x2
+        rel_angles[:, i, j] = np.arctan2(det, dot)
 
-    rel_angles = np.empty((pos1.shape[0], nagents, nagents))
-    for i,j in itertools.product(range(nagents),range(nagents)):
-        if i != j:
-            axis_x_between=np.diff(pos1[:,[i,j],x])
-            axis_y_between=np.diff(pos1[:,[i,j],y])
-            angle_between = np.squeeze(np.arctan2(axis_y_between, axis_x_between) * 180 / np.pi)
-            uncontinuous_angle = angle_between - angle[:,i]
-            rel_angles[:,i,j] = uncontinuous_angle - ((uncontinuous_angle + 180) // 360) * 360 # make angles continious between -180 and 180
-    return rel_angles
+        x1 = pos2[:, j, 1]-pos1[:, j, 1]
+        y1 = pos2[:, j, 0]-pos1[:, j, 0]
+        x2 = pos1[:, i, 1]-pos2[:, j, 1]
+        y2 = pos1[:, i, 0]-pos2[:, j, 0]
+        dot = x1*x2 + y1*y2
+        det = x1*y2 - y1*x2
+        rel_angles[:, j, i] = np.arctan2(det, dot)
+
+    return rel_angles*180/np.pi
 
 
 def rot_speed(pos1, pos2, timestep: float=1):
