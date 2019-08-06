@@ -230,7 +230,9 @@ def assemble_metrics(dataset):
     dis = distance(thoraces)
     rel_angles = relative_angle(thoraces, heads)
     rel_orientation = np.repeat(np.swapaxes(angles[:,:,np.newaxis],1,2),angles.shape[1],axis=1)-np.repeat(angles[:,:,np.newaxis],angles.shape[1],axis=2)
-    # rel_velocities =
+    rel_velocities = np.empty((chamber_vels.shape[0],chamber_vels.shape[1],chamber_vels.shape[1],2))
+    rel_velocities[...,0] = np.repeat(np.swapaxes(chamber_vels[...,0][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,0][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
+    rel_velocities[...,1] = np.repeat(np.swapaxes(chamber_vels[...,1][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,1][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
 
     relative = np.concatenate((dis[...,np.newaxis], rel_angles[...,np.newaxis]), axis=3)
                                 # , rel_velocities, rel_orientation), axis=3)
