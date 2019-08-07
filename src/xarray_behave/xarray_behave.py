@@ -1,3 +1,4 @@
+"""Create self-documenting xarray dataset from behavioral recordings and annotations."""
 import numpy as np
 import h5py
 # import deepdish as dd
@@ -6,7 +7,7 @@ from scipy.io import loadmat
 import scipy.signal
 from scipy.ndimage import maximum_filter1d
    
-from samplestamps import *
+from samplestamps import SampStamp
 import xarray as xr
 import zarr
 import math
@@ -86,7 +87,7 @@ def load_segmentation(filepath):
 def load_manual_annotation(filepath):
     """Load output produced by ManualSegmenter."""
     try:
-    mat_data = loadmat(filepath)
+        mat_data = loadmat(filepath)
     except NotImplementedError:
         with h5py.File(filepath, 'r') as f:
             mat_data = dict()
@@ -123,8 +124,16 @@ def load_tracks(filepath):
     return x, body_parts, first_tracked_frame, last_tracked_frame, background
 
 
-def load_poses(filepath):
-    """Load pose tracks"""
+def load_poses_leap(filepath):
+    """Load pose tracks estimated using LEAP.
+    
+    Args:
+        filepath ([type]): [description]
+    
+    Returns:
+        poses, poses_allo, body_parts, first_pose_frame, last_pose_frame
+    """
+    
     with h5py.File(filepath, 'r') as f:
         box_offset = f['box_centers'][:]
         box_angle = f['fixed_angles'][:].astype(np.float64)
@@ -173,7 +182,7 @@ def load_poses(filepath):
 
 def load_poses_deepposekit(filepath):
     """Load pose tracks estimated using DeepPoseKit.
-
+    
     Args:
         filepath (str): name of the file produced by DeepPoseKit
     
@@ -234,7 +243,7 @@ def load_times(filepath_timestamps, filepath_daq):
     last_sample = daq_samplenumber[-1, 0]    
     interval = np.mean(np.diff(daq_stamps[:np.argmax(daq_stamps<=0),0]))  # seconds
     nb_samples = np.mean(np.diff(daq_samplenumber[:np.argmax(daq_stamps<=0),0]))
-    sampling_rate_Hz = np.round(interval * nb_samples)    
+    sampling_rate_Hz = np.round(interval * nb_samples)
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
     return ss, last_sample, sampling_rate_Hz
 
@@ -266,7 +275,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     with_fixed_tracks = False
     filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
     try:
-    body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = load_tracks(filepath_tracks)
+        body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = load_tracks(filepath_tracks)
         with_tracks = True
         with_fixed_tracks = True
     except Exception as e:
@@ -291,14 +300,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     
     # LOAD POSES from LEAP
     if not with_poses:
-    filepath_poses = Path(root, res_path, datename, f'{datename}_poses.h5')
-    try:
+        filepath_poses = Path(root, res_path, datename, f'{datename}_poses.h5')
+        try:
             pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = load_poses_leap(filepath_poses)
-        with_poses = True
+            with_poses = True
             poses_from = 'LEAP'
-    except Exception as e:
-        logging.warning(f'could not load pose from {filepath_poses}')
-        logging.debug(e)
+        except Exception as e:
+            logging.warning(f'could not load pose from {filepath_poses}')
+            logging.debug(e)
 
     # load AUTOMATIC SEGMENTATION - currently produced by matlab
     with_segmentation = False
@@ -361,7 +370,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                    'time_units': 'seconds',
                                    'amplitude_units': 'volts'})
         dataset_data['song'] = song
-        
+
     if with_segmentation:
         # SONG LABELS
         song_labels = xr.DataArray(data=res['song_mask'][first_sample:last_sample:step, 0].astype(np.uint8),
@@ -408,23 +417,23 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # BODY POSITION
     if with_tracks:
-    frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
-    frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-    interpolator = scipy.interpolate.interp1d(frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
-    body_pos_re = interpolator(target_samples)
-    positions = xr.DataArray(data=body_pos_re,
-                             dims=['time', 'flies', 'bodyparts', 'coords'],
-                             coords={'time': time,
-                                     'bodyparts': body_parts,
-                                     'nearest_frame': (('time'), nearest_frame_time),
+        frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
+        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
+        interpolator = scipy.interpolate.interp1d(frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
+        body_pos_re = interpolator(target_samples)
+        positions = xr.DataArray(data=body_pos_re,
+                                 dims=['time', 'flies', 'bodyparts', 'coords'],
+                                 coords={'time': time,
+                                         'bodyparts': body_parts,
+                                         'nearest_frame': (('time'), nearest_frame_time),
                                          'coords': ['y', 'x']},
-                             attrs={'description': 'coords are "allocentric" - rel. to the full frame',
-                                    'sampling_rate_Hz': sampling_rate / step,
-                                    'time_units': 'seconds',
-                                    'spatial_units': 'pixels',
+                                 attrs={'description': 'coords are "allocentric" - rel. to the full frame',
+                                        'sampling_rate_Hz': sampling_rate / step,
+                                        'time_units': 'seconds',
+                                        'spatial_units': 'pixels',
                                         'background': background,
                                         'tracks_fixed': with_fixed_tracks})
-    dataset_data['body_positions'] = positions
+        dataset_data['body_positions'] = positions
 
     # POSES
     if with_poses:
