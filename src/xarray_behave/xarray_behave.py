@@ -85,10 +85,17 @@ def load_segmentation(filepath):
 
 def load_manual_annotation(filepath):
     """Load output produced by ManualSegmenter."""
+    try:
     mat_data = loadmat(filepath)
+    except NotImplementedError:
+        with h5py.File(filepath, 'r') as f:
+            mat_data = dict()
+            for key, val in f.items():            
+                mat_data[key.lower()] = val[:].T
+
     manual_events_seconds = dict()
     for key, val in mat_data.items():
-        if len(val) and not key.startswith('_'):  # ignore matfile metadata
+        if len(val) and val.ndim==2 and not key.startswith('_'):  # ignore matfile metadata
             manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1])
     return manual_events_seconds
 
