@@ -167,7 +167,7 @@ def assemble_metrics(dataset):
         return:
             feature_dataset: xarray.Dataset with collection of calculated features.
                 features:
-                    angles [time,flies,y/x]
+                    angles [time,flies]
                     vels [time,flies,forward/lateral]
                     chamber_vels [time,flies,y/x]
                     rotational_speed [time,flies]
@@ -186,57 +186,106 @@ def assemble_metrics(dataset):
 
     first_sample = 0
     last_sample = time.shape[0]
-    sampling_rate = 10_000
+    sampling_rate = 10000
     step = int(sampling_rate / 1000)  # ms - will resample song annotations and tracking data to 1000Hz
 
-    abs_feature_names = ['angles','forward_velocity', 'lateral_velocity']
-                    #, 'chamber_velocity','rotational_speed', 'forward_acceleration','lateral_acceleration','chamber_acceleration',
-                    # 'rotational_acceleration','wing_angle_left','wing_angle_right','wing_angle_sum']
+    abs_feature_names = [
+        'angles',
+        'rotational_speed',
+        'rotational_acceleration',
+        'velocity_magnitude',
+        'velocity_x',
+        'velocity_y',
+        'velocity_forward',
+        'velocity_lateral',
+        'acceleration_mag',
+        'acceleration_x',
+        'acceleration_y',
+        'acceleration_forward',
+        'acceleration_lateral',
+        'wing_angle_left',
+        'wing_angle_right',
+        'wing_angle_sum'
+    ]
 
-    rel_feature_names = ['distance', 'relative_angles']
-                    # 'relative_velocities', 'relative_orientation']
+    rel_feature_names = [
+        'distance',
+        'relative_angle',
+        'relative_orientation',
+        'relative_velocity_mag',
+        'relative_velocity_forward',
+        'relative_velocity_lateral'
+    ]
 
-    HEAD = 0
-    THORAX = 8 #all other positions are relative to thorax
-    WING_L = 9
-    WING_R = 10
-    TAIL = 11
-
-    pose_positions_allo=dataset.pose_positions_allo
-
-    thoraces = pose_positions_allo[...,THORAX,:].values
-    heads = pose_positions_allo[...,HEAD,:].values
-    wing_left = pose_positions_allo[...,WING_L,:].values
-    wing_right = pose_positions_allo[...,WING_R,:].values
-
+    thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax',:].astype(np.float32)
+    heads = dataset.pose_positions_allo.loc[:, :, 'head',:].astype(np.float32)
+    wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing',:].astype(np.float32)
+    wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing',:].astype(np.float32)
 
     # ABSOLUTE FEATURES #
     angles = angle(thoraces,heads)
+    rotational_speed = rot_speed(thoraces,heads)
+    rotational_acc = rot_acceleration(thoraces,heads)
+
     vels = velocity(thoraces,heads)
     chamber_vels = velocity(thoraces,ref='chamber')
-    rotational_speed = rot_speed(thoraces,heads)
     accelerations = acceleration(thoraces,heads)
     chamber_acc = acceleration(thoraces,ref='chamber')
-    rotational_acc = rot_acceleration(thoraces,heads)
+
+    vels_x = chamber_vels[...,1]
+    vels_y = chamber_vels[...,0]
+    vels_forward = vels[...,0]
+    vels_lateral = vels[...,1]
+    vels_mag = np.linalg.norm(vels, axis=2)
+    accs_x = chamber_acc[...,1]
+    accs_y = chamber_acc[...,0]
+    accs_forward = accelerations[...,0]
+    accs_lateral = accelerations[...,1]
+    accs_mag = np.linalg.norm(accelerations, axis=2)
+
     wing_angle_left = angle(heads,thoraces) - angle(thoraces, wing_left)
     wing_angle_right = -(angle(heads,thoraces) - angle(thoraces, wing_right))
     wing_angle_sum = wing_angle_left + wing_angle_right
 
-    absolute = np.concatenate((angles[...,np.newaxis], vels), axis=2) # , chamber_vels[...,np.newaxis], rotational_speed[...,np.newaxis],
-                               # accelerations, chamber_acc[...,np.newaxis], rotational_acc[...,np.newaxis],
-                               # wing_angle_left[...,np.newaxis], wing_angle_right[...,np.newaxis], wing_angle_sum[...,np.newaxis]), axis=2)
+    list_absolute = [
+        angles,
+        rotational_speed,
+        rotational_acc,
+        vels_mag,
+        vels_x,
+        vels_y,
+        vels_forward,
+        vels_lateral,
+        accs_mag,
+        accs_x,
+        accs_y,
+        accs_forward,
+        accs_lateral,
+        wing_angle_left,
+        wing_angle_right,
+        wing_angle_sum
+    ]
+
+    absolute = np.stack(list_absolute,axis=2)
 
     # RELATIVE FEATURES #
     dis = distance(thoraces)
     rel_angles = relative_angle(thoraces, heads)
-    rel_orientation = np.repeat(np.swapaxes(angles[:,:,np.newaxis],1,2),angles.shape[1],axis=1)-np.repeat(angles[:,:,np.newaxis],angles.shape[1],axis=2)
-    rel_velocities = np.empty((chamber_vels.shape[0],chamber_vels.shape[1],chamber_vels.shape[1],2))
-    rel_velocities[...,0] = np.repeat(np.swapaxes(chamber_vels[...,0][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,0][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
-    rel_velocities[...,1] = np.repeat(np.swapaxes(chamber_vels[...,1][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,1][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
+    rel_orientation = np.repeat(np.swapaxes(angles.values[:,:,np.newaxis],1,2),angles.shape[1],axis=1)-np.repeat(angles.values[:,:,np.newaxis],angles.shape[1],axis=2)
+    rel_velocities_forward = np.repeat(np.swapaxes(chamber_vels[...,0][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,0][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
+    rel_velocities_lateral = np.repeat(np.swapaxes(chamber_vels[...,1][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,1][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
+    rel_velocities_mag = np.linalg.norm(np.concatenate((rel_velocities_forward[...,np.newaxis],rel_velocities_lateral[...,np.newaxis]), axis=3), axis=3)
 
-    relative = np.concatenate((dis[...,np.newaxis], rel_angles[...,np.newaxis]), axis=3)
-                                # , rel_velocities, rel_orientation), axis=3)
+    list_relative = [
+        dis,
+        rel_angles,
+        rel_orientation,
+        rel_velocities_mag,
+        rel_velocities_forward,
+        rel_velocities_lateral
+    ]
 
+    relative = np.stack(list_relative,axis=3)
 
     # make DataArray
     absolute_features = xr.DataArray(data=absolute,
