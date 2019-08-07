@@ -171,6 +171,42 @@ def load_poses(filepath):
 
     return poses, poses_allo, body_parts, first_pose_frame, last_pose_frame
 
+def load_poses_deepposekit(filepath):
+    """Load pose tracks estimated using DeepPoseKit.
+
+    Args:
+        filepath (str): name of the file produced by DeepPoseKit
+    
+    Returns:
+        poses_ego (xarray.DataArray): poses in EGOcentric (centered around thorax, head aligned straight upwards
+        poses_allo (xarray.DataArray): poses in ALLOcentric (frame) coordinates
+        partnames (List[str]): list of names for each body part (is already part of the poses_ego/allo xrs)
+        first_pose_frame, last_pose_frame (int): frame corresponding to first and last item in the poses_ego/allo arrays (could attach this info as xr dim)
+    """
+    with zarr.ZipStore(filepath, mode='r') as zarr_store:
+        ds = xr.open_zarr(zarr_store).load()  # the final `load()` prevents 
+    nb_flies = len(ds.flies)
+    box_size = np.array(ds.attrs['box_size'])
+
+    poses_allo = ds.poses + ds.box_centers.data - box_size/2
+
+    first_pose_frame = int(np.argmin(np.isnan(ds.poses[:, 0, 0, 0])))
+    last_pose_frame = int(np.argmin(~np.isnan(ds.poses[first_pose_frame:, 0, 0, 0])) + first_pose_frame)
+
+    # CUT to first/last frame with poses
+    poses_ego = ds.poses[first_pose_frame:last_pose_frame, ...]
+    poses_allo = poses_allo[first_pose_frame:last_pose_frame, ...]
+
+    poses_ego = poses_ego - poses_ego.sel(poseparts='thorax')  # CENTER egocentric poses around thorax
+
+    # ROTATE egocentric poses such that the angle between head and thorax is 0 degrees (straight upwards)
+    head_thorax_angle = 270 + np.arctan2(poses_ego.sel(poseparts='head', coords='y'), poses_ego.sel(poseparts='head', coords='x')) * 180 / np.pi
+    for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle.data, poses_ego.data)):
+        for fly in range(nb_flies):
+            poses_ego.data[cnt, fly, ...] = [rotate_point(pt, -a[fly]) for pt in p_ego[fly]]
+    
+    return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
+
 
 def load_raw_song(filepath_daq, song_channels=None, sampling_rate=10_000):
     """Load daq and merge channels"""
@@ -227,12 +263,25 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
     filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
     body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = load_tracks(filepath_tracks)
 
-    # LOAD POSES
+    # LOAD POSES from DEEPPOSEKIT
     with_poses = False
+    poses_from = None
+    filepath_poses = Path(root, res_path, datename, f'{datename}_densenet-bgsub_scaled_poses.zarr')
+    try:
+        pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = load_poses_deepposekit(filepath_poses)
+        with_poses = True
+        poses_from = 'DeepPoseKit'
+    except Exception as e:
+        logging.warning(f'could not load pose from {filepath_poses}')
+        logging.debug(e)
+    
+    # LOAD POSES from LEAP
+    if not with_poses:
     filepath_poses = Path(root, res_path, datename, f'{datename}_poses.h5')
     try:
-        pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = load_poses(filepath_poses)
+            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = load_poses_leap(filepath_poses)
         with_poses = True
+            poses_from = 'LEAP'
     except Exception as e:
         logging.warning(f'could not load pose from {filepath_poses}')
         logging.debug(e)
@@ -381,7 +430,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
                              attrs={'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
-                                    'spatial_units': 'pixels'})
+                                    'spatial_units': 'pixels',
+                                    'poses_from': poses_from})
         # make DataArray
         poses_allo = xr.DataArray(data=pose_pos_allo_re,
                              dims=['time', 'flies', 'poseparts', 'coords'],
@@ -392,7 +442,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
                              attrs={'description': 'coords are "allocentric" - rel. to frame',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
-                                    'spatial_units': 'pixels'})
+                                    'spatial_units': 'pixels',
+                                    'poses_from': poses_from})
         dataset_data['pose_positions'] = poses
         dataset_data['pose_positions_allo'] = poses_allo
 
