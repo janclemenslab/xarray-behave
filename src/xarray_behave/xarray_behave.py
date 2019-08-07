@@ -197,7 +197,7 @@ def load_poses_deepposekit(filepath):
     nb_flies = len(ds.flies)
     box_size = np.array(ds.attrs['box_size'])
 
-    poses_allo = ds.poses + ds.box_centers.data - box_size/2
+    poses_allo = ds.poses + ds.box_centers - box_size/2
 
     first_pose_frame = int(np.argmin(np.isnan(ds.poses[:, 0, 0, 0])))
     last_pose_frame = int(np.argmin(~np.isnan(ds.poses[first_pose_frame:, 0, 0, 0])) + first_pose_frame)
@@ -207,13 +207,13 @@ def load_poses_deepposekit(filepath):
     poses_allo = poses_allo[first_pose_frame:last_pose_frame, ...]
 
     poses_ego = poses_ego - poses_ego.sel(poseparts='thorax')  # CENTER egocentric poses around thorax
-
+    
     # ROTATE egocentric poses such that the angle between head and thorax is 0 degrees (straight upwards)
     head_thorax_angle = 270 + np.arctan2(poses_ego.sel(poseparts='head', coords='y'), poses_ego.sel(poseparts='head', coords='x')) * 180 / np.pi
     for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle.data, poses_ego.data)):
         for fly in range(nb_flies):
             poses_ego.data[cnt, fly, ...] = [rotate_point(pt, -a[fly]) for pt in p_ego[fly]]
-    
+
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
 
 
