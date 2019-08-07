@@ -231,12 +231,12 @@ def load_times(filepath_timestamps, filepath_daq):
         daq_stamps = f['systemtime'][:]
         daq_sampleinterval = f['samplenumber'][:]
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:, np.newaxis]
-
+    last_sample = daq_samplenumber[-1, 0]    
     interval = np.mean(np.diff(daq_stamps[:np.argmax(daq_stamps<=0),0]))  # seconds
     nb_samples = np.mean(np.diff(daq_samplenumber[:np.argmax(daq_stamps<=0),0]))
     sampling_rate_Hz = np.round(interval * nb_samples)    
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
-    return ss, daq_samplenumber[-1, 0], sampling_rate_Hz
+    return ss, last_sample, sampling_rate_Hz
 
 
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000):
@@ -262,8 +262,20 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     ss, last_sample_number, sampling_rate = load_times(filepath_timestamps, filepath_daq)
 
     # LOAD TRACKS
+    with_tracks = False
+    with_fixed_tracks = False
     filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
+    try:
     body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = load_tracks(filepath_tracks)
+        with_tracks = True
+        with_fixed_tracks = True
+    except Exception as e:
+        logging.warning(f'could not load tracks from {filepath_tracks}')
+        logging.debug(e)
+
+        first_tracked_frame = int(ss.frame(0))
+        last_tracked_frame = int(ss.frame(last_sample_number))
+        logging.warning(f'setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
 
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
@@ -395,6 +407,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['song_events'] = song_events
 
     # BODY POSITION
+    if with_tracks:
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
     interpolator = scipy.interpolate.interp1d(frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
@@ -409,7 +422,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
                                     'spatial_units': 'pixels',
-                                    'background': background})
+                                        'background': background,
+                                        'tracks_fixed': with_fixed_tracks})
     dataset_data['body_positions'] = positions
 
     # POSES
