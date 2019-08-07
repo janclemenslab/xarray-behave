@@ -239,19 +239,21 @@ def load_times(filepath_timestamps, filepath_daq):
     return ss, daq_samplenumber[-1, 0], sampling_rate_Hz
 
 
-def assemble(datename, root='', dat_path='dat', res_path='res'):
+def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000):
     """Assemble data set containing song and video data.
 
-    Synchronizes A/V, resamples annotations (pose, song) to common 1kHz grid.
+    Synchronizes A/V, resamples annotations (pose, song) to common sampling grid.
 
     Args:
         datename
         root = ''
         dat_path = 'dat'
         res_path = 'res'
+        target_sampling_rate [float=1000] Sampling rate in Hz for pose and annotation data.
 
     Returns
-        xarray Dataset
+        xarray Dataset containing
+            [DESCRIPTION]
     """
 
     # load RECORDING and TIMING INFORMATION
@@ -324,7 +326,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res'):
     first_sample = 0
     last_sample = int(last_sample_with_frame)
 
-    step = int(sampling_rate / 1000)  # ms - will resample song annotations and tracking data to 1000Hz
+    step = int(sampling_rate / target_sampling_rate)  # ms - will resample song annotations and tracking data to 1000Hz
     target_samples = np.arange(first_sample, last_sample, step, dtype=np.uintp)  # construct desired sample grid for resampled data
     time = target_samples / sampling_rate  # time in seconds for each sample in the song annotation data
     sampletime = np.arange(first_sample, last_sample) / sampling_rate  # time in seconds for each sample in the song recording
