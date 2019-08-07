@@ -176,7 +176,7 @@ if os.path.exists(datename + '.zarr'):
     dataset = dst.load(datename + '.zarr')
 else:
     logging.info(f'Assembling dataset for {datename}.')
-    dataset = dst.assemble(datename)
+    dataset = dst.assemble(datename, root=root)
     logging.info(f'Saving dataset to {datename}.zarr.')
     dst.save(datename + '.zarr', dataset)
 logging.info(dataset)
