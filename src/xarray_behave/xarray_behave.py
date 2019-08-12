@@ -286,12 +286,12 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         with_tracks = True
         with_fixed_tracks = True
     except Exception as e:
-        logging.warning(f'Could not load tracks from {filepath_tracks}.')
+        logging.info(f'Could not load tracks from {filepath_tracks}.')
         logging.debug(e)
 
         first_tracked_frame = int(ss.frame(0))
         last_tracked_frame = int(ss.frame(last_sample_number))
-        logging.warning(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+        logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
 
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
@@ -302,7 +302,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         with_poses = True
         poses_from = 'DeepPoseKit'
     except Exception as e:
-        logging.warning(f'could not load pose from {filepath_poses}')
+        logging.info(f'Could not load pose from {filepath_poses}.')
         logging.debug(e)
     
     # LOAD POSES from LEAP
@@ -313,7 +313,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             with_poses = True
             poses_from = 'LEAP'
         except Exception as e:
-            logging.warning(f'Could not load pose from {filepath_poses}.')
+            logging.info(f'Could not load pose from {filepath_poses}.')
             logging.debug(e)
 
     # load AUTOMATIC SEGMENTATION - currently produced by matlab
@@ -326,7 +326,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         with_segmentation = True
         with_song = True
     except Exception as e:
-        logging.warning(f'Could not load segmentation from {filepath_segmentation}.')
+        logging.info(f'Could not load segmentation from {filepath_segmentation}.')
         logging.debug(e)
 
     # load RAW song traces
@@ -341,7 +341,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 res['song_raw'] = song_raw
             with_song = True
         except Exception as e:
-            logging.warning(f'could not load song from {filepath_daq}')
+            logging.info(f'Could not load song from {filepath_daq}.')
             logging.debug(e)
     
 
@@ -352,7 +352,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         manual_events_seconds = load_manual_annotation(filepath_segmentation_manual)
         with_segmentation_manual = True
     except Exception as e:
-        logging.warning(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
+        logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
         logging.debug(e)
 
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
