@@ -217,17 +217,24 @@ def load_poses_deepposekit(filepath):
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
 
 
-def load_raw_song(filepath_daq, song_channels=None, sampling_rate=10_000):
-    """Load daq and merge channels"""
+def load_raw_song(filepath_daq, song_channels=None):
+    """[summary]
+    
+    Args:
+        filepath_daq ([type]): [description]
+        song_channels ([type], optional): [description]. Defaults to None.
+            
+    Returns:
+        [type]: [description]
+    """
     from scipy.ndimage import maximum_filter1d
-    if song_channels is None:
+    if song_channels is None:  # the first 16 channels in the data are the mic recordings
         song_channels = list(range(16))
     
     with h5py.File(filepath_daq, 'r') as f:
         song = f['samples'][:, song_channels]
-    
-    song_merged_max = merge_channels(song, sampling_rate)
-    return song_merged_max
+
+    return song
 
 
 def load_times(filepath_timestamps, filepath_daq):
@@ -248,7 +255,7 @@ def load_times(filepath_timestamps, filepath_daq):
     return ss, last_sample, sampling_rate_Hz
 
 
-def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000):
+def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000, keep_multi_channel: bool = False):
     """Assemble data set containing song and video data.
 
     Synchronizes A/V, resamples annotations (pose, song) to common sampling grid.
@@ -259,7 +266,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dat_path = 'dat'
         res_path = 'res'
         target_sampling_rate [float=1000] Sampling rate in Hz for pose and annotation data.
-
+        keep_multi_channel = False add multi-channel data (otherwise will only add merged traces)
     Returns
         xarray Dataset containing
             [DESCRIPTION]
@@ -279,12 +286,12 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         with_tracks = True
         with_fixed_tracks = True
     except Exception as e:
-        logging.warning(f'could not load tracks from {filepath_tracks}')
+        logging.warning(f'Could not load tracks from {filepath_tracks}.')
         logging.debug(e)
 
         first_tracked_frame = int(ss.frame(0))
         last_tracked_frame = int(ss.frame(last_sample_number))
-        logging.warning(f'setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+        logging.warning(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
 
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
@@ -306,27 +313,32 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             with_poses = True
             poses_from = 'LEAP'
         except Exception as e:
-            logging.warning(f'could not load pose from {filepath_poses}')
+            logging.warning(f'Could not load pose from {filepath_poses}.')
             logging.debug(e)
 
     # load AUTOMATIC SEGMENTATION - currently produced by matlab
     with_segmentation = False
     with_song = False
+    res = dict()            
     filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.mat')
     try:
         res = load_segmentation(filepath_segmentation)
         with_segmentation = True
         with_song = True
     except Exception as e:
-        logging.warning(f'could not load segmentation from {filepath_segmentation}')
+        logging.warning(f'Could not load segmentation from {filepath_segmentation}.')
         logging.debug(e)
 
     # load RAW song traces
-    if not with_segmentation:
+    if not with_song or keep_multi_channel:
         try:
-            logging.warning(f'trying to read and merge recording from {filepath_daq}')
-            song = load_raw_song(filepath_daq)
-            res = {'song': song}
+            logging.warning(f'Reading recording from {filepath_daq}.')
+            song_raw = load_raw_song(filepath_daq)            
+            if not with_song:
+                song_merged_max = merge_channels(song_raw, sampling_rate)    
+                res['song'] = song_merged_max
+            if keep_multi_channel:
+                res['song_raw'] = song_raw
             with_song = True
         except Exception as e:
             logging.warning(f'could not load song from {filepath_daq}')
@@ -340,7 +352,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         manual_events_seconds = load_manual_annotation(filepath_segmentation_manual)
         with_segmentation_manual = True
     except Exception as e:
-        logging.warning(f'could not load manual segmentation from {filepath_segmentation_manual}')
+        logging.warning(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
         logging.debug(e)
 
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
@@ -359,10 +371,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     nearest_frame_time = interpolator(target_samples).astype(np.uintp)
 
     dataset_data = dict()
-    # RAW SONG RECORDING
-    if with_song:
-        merged_song_recording = res['song'][first_sample:last_sample, 0]  # cut recording to match new grid
-        song = xr.DataArray(data=merged_song_recording,
+    if with_song:  # MERGED and RAW song recording    
+        song = xr.DataArray(data=res['song'][first_sample:last_sample, 0],  # cut recording to match new grid
                             dims=['sampletime'],
                             coords={'sampletime': sampletime, },
                             attrs={'description': 'Song signal merged across all recording channels.',
@@ -371,8 +381,17 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                    'amplitude_units': 'volts'})
         dataset_data['song'] = song
 
-    if with_segmentation:
-        # SONG LABELS
+        if keep_multi_channel:
+            song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, 0],  # cut recording to match new grid
+                                dims=['sampletime'],
+                                coords={'sampletime': sampletime, },
+                                attrs={'description': 'Raw song recording (multi channel).',
+                                        'sampling_rate_Hz': sampling_rate,
+                                        'time_units': 'seconds',
+                                        'amplitude_units': 'volts'})
+            dataset_data['song_raw'] = song_raw
+        
+    if with_segmentation:  # SONG LABELS        
         song_labels = xr.DataArray(data=res['song_mask'][first_sample:last_sample:step, 0].astype(np.uint8),
                                    dims=['time'],
                                    coords={'time': time,
