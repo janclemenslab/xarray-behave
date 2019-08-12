@@ -383,7 +383,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
         if keep_multi_channel:
             song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
-                                dims=['sampletime'],
+                                dims=['sampletime', 'channels'],
                                 coords={'sampletime': sampletime, },
                                 attrs={'description': 'Raw song recording (multi channel).',
                                         'sampling_rate_Hz': sampling_rate,
