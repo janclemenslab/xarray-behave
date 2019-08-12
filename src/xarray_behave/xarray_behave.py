@@ -332,7 +332,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # load RAW song traces
     if not with_song or keep_multi_channel:
         try:
-            logging.warning(f'Reading recording from {filepath_daq}.')
+            logging.info(f'Reading recording from {filepath_daq}.')
             song_raw = load_raw_song(filepath_daq)            
             if not with_song:
                 song_merged_max = merge_channels(song_raw, sampling_rate)    
