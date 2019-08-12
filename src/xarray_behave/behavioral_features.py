@@ -14,16 +14,16 @@ def distance(positions):
     dis = np.empty((positions.shape[0], nagents, nagents))
     dis.fill(np.nan)
 
-    for i,j in itertools.combinations(range(nagents), r=2):
-        diff_ij = np.squeeze(np.diff(positions[:,[i,j],:],axis=1))
+    for i, j in itertools.combinations(range(nagents), r=2):
+        diff_ij = np.squeeze(np.diff(positions[:, [i, j], :], axis=1))
         distance = np.sqrt(np.einsum('ij,ij->i', diff_ij, diff_ij))
-        dis[:,i,j] = distance
-        dis[:,j,i] = distance
+        dis[:, i, j] = distance
+        dis[:, j, i] = distance
 
     return dis
 
 
-def velocity(pos1,pos2: np.array=None,timestep: float=1,ref: str='self'):
+def velocity(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 'self'):
     """
     arg:
         pos1: position of vector's base, center of agent. [time, agent, y/x]
@@ -39,17 +39,17 @@ def velocity(pos1,pos2: np.array=None,timestep: float=1,ref: str='self'):
 
     if ref == 'self':
         vels_mags = np.linalg.norm(vels_yx, axis=2)    # velocity magnitude
-        angle_diff = np.arctan2(vels_yx[...,0], vels_yx[...,1]) - np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])    # angle difference between velocity vector and orientation vector
+        angle_diff = np.arctan2(vels_yx[..., 0], vels_yx[..., 1]) - np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])    # angle difference between velocity vector and orientation vector
         vels = np.empty_like(vels_yx)    # velocity components with reference to self orientation
-        vels[:,:,0] = vels_mags*np.cos(angle_diff)    # forward
-        vels[:,:,1] = -vels_mags*np.sin(angle_diff)    # lateral
+        vels[:, :, 0] = vels_mags*np.cos(angle_diff)    # forward
+        vels[:, :, 1] = -vels_mags*np.sin(angle_diff)    # lateral
     elif ref == 'chamber':
         vels = vels_yx
 
     return vels
 
 
-def acceleration(pos1,pos2: np.array=None,timestep: float=1,ref: str='self'):
+def acceleration(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 'self'):
     """
     arg:
         pos1: position of vector's base, center of agent. [time, flies, y/x]
@@ -65,10 +65,10 @@ def acceleration(pos1,pos2: np.array=None,timestep: float=1,ref: str='self'):
 
     if ref == 'self':
         accs_mags = np.linalg.norm(accs_yx, axis=2)    # acceleration magnitude
-        angle_diff = np.arctan2(accs_yx[...,0], accs_yx[...,1]) - np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])    # angle difference between acceleration vector and orientation vector
+        angle_diff = np.arctan2(accs_yx[..., 0], accs_yx[..., 1]) - np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])    # angle difference between acceleration vector and orientation vector
         accs = np.empty_like(accs_yx)    # acceleration components with reference to self orientation
-        accs[:,:,0] = accs_mags*np.cos(angle_diff)    # forward
-        accs[:,:,1] = -accs_mags*np.sin(angle_diff)    # lateral
+        accs[:, :, 0] = accs_mags*np.cos(angle_diff)    # forward
+        accs[:, :, 1] = -accs_mags*np.sin(angle_diff)    # lateral
     elif ref == 'chamber':
         accs = accs_yx
 
@@ -83,7 +83,7 @@ def angle(pos1, pos2):
     returns:
         angles: orientation of flies with respect to chamber. 0 degrees when flies look towards positive x axis, 90 degrees when vertical and looking upwards. [time, flies]
     """
-    return np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1]) * 180 / np.pi
+    return np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1]) * 180 / np.pi
 
 
 def relative_angle(pos1, pos2):
@@ -99,7 +99,7 @@ def relative_angle(pos1, pos2):
     rel_angles = np.empty((pos1.shape[0], nagents, nagents), dtype=np.float32)
     rel_angles.fill(np.nan)
 
-    for i,j in itertools.combinations(range(nagents), r=2):
+    for i, j in itertools.combinations(range(nagents), r=2):
         x1 = pos2[:, i, 1]-pos1[:, i, 1]
         y1 = pos2[:, i, 0]-pos1[:, i, 0]
         x2 = pos1[:, j, 1]-pos2[:, i, 1]
@@ -119,7 +119,7 @@ def relative_angle(pos1, pos2):
     return rel_angles*180/np.pi
 
 
-def rot_speed(pos1, pos2, timestep: float=1):
+def rot_speed(pos1, pos2, timestep: float = 1):
     """
     arg:
         pos1: position of vector's base, center of agent. [time, flies, y/x]
@@ -129,10 +129,10 @@ def rot_speed(pos1, pos2, timestep: float=1):
     """
 
     # orientations
-    angles = np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])
+    angles = np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])
 
     # unwrap orientations
-    unwrapped_angles = np.unwrap(angles,axis=0)*180/np.pi
+    unwrapped_angles = np.unwrap(angles, axis=0)*180/np.pi
 
     # rotational speed
     rot_speed = np.gradient(unwrapped_angles, timestep, axis=0)
@@ -140,7 +140,7 @@ def rot_speed(pos1, pos2, timestep: float=1):
     return rot_speed
 
 
-def rot_acceleration(pos1, pos2, timestep: float=1):
+def rot_acceleration(pos1, pos2, timestep: float = 1):
     """
     arg:
         pos1: position of vector's base, center of agent. [time, flies, y/x]
@@ -150,13 +150,13 @@ def rot_acceleration(pos1, pos2, timestep: float=1):
     """
 
     # orientations
-    angles = np.arctan2(pos2[...,0] - pos1[...,0], pos2[...,1] - pos1[...,1])
+    angles = np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])
 
     # unwrap orientations
-    unwrapped_angles = np.unwrap(angles,axis=0)*180/np.pi
+    unwrapped_angles = np.unwrap(angles, axis=0)*180/np.pi
 
     # rotational speed
-    rot_accs = np.gradient(np.gradient(unwrapped_angles, timestep, axis=0),timestep, axis=0)
+    rot_accs = np.gradient(np.gradient(unwrapped_angles, timestep, axis=0), timestep, axis=0)
 
     return rot_accs
 
@@ -184,8 +184,6 @@ def assemble_metrics(dataset):
     time = dataset.time
     nearest_frame_time = dataset.nearest_frame
 
-    first_sample = 0
-    last_sample = time.shape[0]
     sampling_rate = 10000
     step = int(sampling_rate / 1000)  # ms - will resample song annotations and tracking data to 1000Hz
 
@@ -217,34 +215,34 @@ def assemble_metrics(dataset):
         'relative_velocity_lateral'
     ]
 
-    thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax',:].astype(np.float32)
-    heads = dataset.pose_positions_allo.loc[:, :, 'head',:].astype(np.float32)
-    wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing',:].astype(np.float32)
-    wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing',:].astype(np.float32)
+    thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax', :].astype(np.float32)
+    heads = dataset.pose_positions_allo.loc[:, :, 'head', :].astype(np.float32)
+    wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing', :].astype(np.float32)
+    wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].astype(np.float32)
 
     # ABSOLUTE FEATURES #
-    angles = angle(thoraces,heads)
-    rotational_speed = rot_speed(thoraces,heads)
-    rotational_acc = rot_acceleration(thoraces,heads)
+    angles = angle(thoraces, heads)
+    rotational_speed = rot_speed(thoraces, heads)
+    rotational_acc = rot_acceleration(thoraces, heads)
 
-    vels = velocity(thoraces,heads)
-    chamber_vels = velocity(thoraces,ref='chamber')
-    accelerations = acceleration(thoraces,heads)
-    chamber_acc = acceleration(thoraces,ref='chamber')
+    vels = velocity(thoraces, heads)
+    chamber_vels = velocity(thoraces, ref='chamber')
+    accelerations = acceleration(thoraces, heads)
+    chamber_acc = acceleration(thoraces, ref='chamber')
 
-    vels_x = chamber_vels[...,1]
-    vels_y = chamber_vels[...,0]
-    vels_forward = vels[...,0]
-    vels_lateral = vels[...,1]
+    vels_x = chamber_vels[..., 1]
+    vels_y = chamber_vels[..., 0]
+    vels_forward = vels[..., 0]
+    vels_lateral = vels[..., 1]
     vels_mag = np.linalg.norm(vels, axis=2)
-    accs_x = chamber_acc[...,1]
-    accs_y = chamber_acc[...,0]
-    accs_forward = accelerations[...,0]
-    accs_lateral = accelerations[...,1]
+    accs_x = chamber_acc[..., 1]
+    accs_y = chamber_acc[..., 0]
+    accs_forward = accelerations[..., 0]
+    accs_lateral = accelerations[..., 1]
     accs_mag = np.linalg.norm(accelerations, axis=2)
 
-    wing_angle_left = angle(heads,thoraces) - angle(thoraces, wing_left)
-    wing_angle_right = -(angle(heads,thoraces) - angle(thoraces, wing_right))
+    wing_angle_left = angle(heads, thoraces) - angle(thoraces, wing_left)
+    wing_angle_right = -(angle(heads, thoraces) - angle(thoraces, wing_right))
     wing_angle_sum = wing_angle_left + wing_angle_right
 
     list_absolute = [
@@ -266,15 +264,15 @@ def assemble_metrics(dataset):
         wing_angle_sum
     ]
 
-    absolute = np.stack(list_absolute,axis=2)
+    absolute = np.stack(list_absolute, axis=2)
 
     # RELATIVE FEATURES #
     dis = distance(thoraces)
     rel_angles = relative_angle(thoraces, heads)
-    rel_orientation = np.repeat(np.swapaxes(angles.values[:,:,np.newaxis],1,2),angles.shape[1],axis=1)-np.repeat(angles.values[:,:,np.newaxis],angles.shape[1],axis=2)
-    rel_velocities_forward = np.repeat(np.swapaxes(chamber_vels[...,0][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,0][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
-    rel_velocities_lateral = np.repeat(np.swapaxes(chamber_vels[...,1][:,:,np.newaxis],1,2),chamber_vels.shape[1],axis=1)-np.repeat(chamber_vels[...,1][:,:,np.newaxis],chamber_vels.shape[1],axis=2)
-    rel_velocities_mag = np.linalg.norm(np.concatenate((rel_velocities_forward[...,np.newaxis],rel_velocities_lateral[...,np.newaxis]), axis=3), axis=3)
+    rel_orientation = np.repeat(np.swapaxes(angles.values[:, :, np.newaxis], 1, 2), angles.shape[1], axis=1)-np.repeat(angles.values[:, :, np.newaxis], angles.shape[1], axis=2)
+    rel_velocities_forward = np.repeat(np.swapaxes(chamber_vels[..., 0][:, :, np.newaxis], 1, 2), chamber_vels.shape[1], axis=1)-np.repeat(chamber_vels[..., 0][:, :, np.newaxis], chamber_vels.shape[1], axis=2)
+    rel_velocities_lateral = np.repeat(np.swapaxes(chamber_vels[..., 1][:, :, np.newaxis], 1, 2), chamber_vels.shape[1], axis=1)-np.repeat(chamber_vels[..., 1][:, :, np.newaxis], chamber_vels.shape[1], axis=2)
+    rel_velocities_mag = np.linalg.norm(np.concatenate((rel_velocities_forward[..., np.newaxis], rel_velocities_lateral[..., np.newaxis]), axis=3), axis=3)
 
     list_relative = [
         dis,
@@ -285,31 +283,30 @@ def assemble_metrics(dataset):
         rel_velocities_lateral
     ]
 
-    relative = np.stack(list_relative,axis=3)
+    relative = np.stack(list_relative, axis=3)
 
     # make DataArray
     absolute_features = xr.DataArray(data=absolute,
-                         dims=['time', 'flies', 'movement_features'],
-                         coords={'time': time,
-                                 'movement_features': abs_feature_names,
-                                 'nearest_frame': (('time'), nearest_frame_time)},
-                         attrs={'description': 'coords are "egocentric" - rel. to box',
-                                'sampling_rate_Hz': sampling_rate / step,
-                                'time_units': 'seconds',
-                                'spatial_units': 'pixels'})
+                                     dims=['time', 'flies', 'movement_features'],
+                                     coords={'time': time,
+                                             'movement_features': abs_feature_names,
+                                             'nearest_frame': (('time'), nearest_frame_time)},
+                                     attrs={'description': 'coords are "egocentric" - rel. to box',
+                                            'sampling_rate_Hz': sampling_rate / step,
+                                            'time_units': 'seconds',
+                                            'spatial_units': 'pixels'})
 
     relative_features = xr.DataArray(data=relative,
-                         dims=['time', 'flies', 'relative_flies', 'movement_features'],
-                         coords={'time': time,
-                                 'movement_features': rel_feature_names,
-                                 'nearest_frame': (('time'), nearest_frame_time)},
-                         attrs={'description': 'coords are "egocentric" - rel. to box',
-                                'sampling_rate_Hz': sampling_rate / step,
-                                'time_units': 'seconds',
-                                'spatial_units': 'pixels'})
-
+                                     dims=['time', 'flies', 'relative_flies', 'movement_features'],
+                                     coords={'time': time,
+                                             'movement_features': rel_feature_names,
+                                             'nearest_frame': (('time'), nearest_frame_time)},
+                                     attrs={'description': 'coords are "egocentric" - rel. to box',
+                                            'sampling_rate_Hz': sampling_rate / step,
+                                            'time_units': 'seconds',
+                                            'spatial_units': 'pixels'})
 
     # MAKE ONE DATASET
     feature_dataset = xr.Dataset({'absolute_features': absolute_features, 'relative_features': relative_features},
-                         attrs={})
+                                 attrs={})
     return feature_dataset
