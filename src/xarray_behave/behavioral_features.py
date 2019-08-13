@@ -286,20 +286,20 @@ def assemble_metrics(dataset):
     relative = np.stack(list_relative, axis=3)
 
     # make DataArray
-    absolute_features = xr.DataArray(data=absolute,
-                                     dims=['time', 'flies', 'movement_features'],
+    abs_features = xr.DataArray(data=absolute,
+                                     dims=['time', 'flies', 'absolute_features'],
                                      coords={'time': time,
-                                             'movement_features': abs_feature_names,
+                                             'absolute_features': abs_feature_names,
                                              'nearest_frame': (('time'), nearest_frame_time)},
                                      attrs={'description': 'coords are "egocentric" - rel. to box',
                                             'sampling_rate_Hz': sampling_rate / step,
                                             'time_units': 'seconds',
                                             'spatial_units': 'pixels'})
 
-    relative_features = xr.DataArray(data=relative,
-                                     dims=['time', 'flies', 'relative_flies', 'movement_features'],
+    rel_features = xr.DataArray(data=relative,
+                                     dims=['time', 'flies', 'relative_flies', 'relative_features'],
                                      coords={'time': time,
-                                             'movement_features': rel_feature_names,
+                                             'relative_features': rel_feature_names,
                                              'nearest_frame': (('time'), nearest_frame_time)},
                                      attrs={'description': 'coords are "egocentric" - rel. to box',
                                             'sampling_rate_Hz': sampling_rate / step,
@@ -307,6 +307,6 @@ def assemble_metrics(dataset):
                                             'spatial_units': 'pixels'})
 
     # MAKE ONE DATASET
-    feature_dataset = xr.Dataset({'absolute_features': absolute_features, 'relative_features': relative_features},
+    feature_dataset = xr.Dataset({'abs_features': abs_features, 'rel_features': rel_features},
                                  attrs={})
     return feature_dataset
