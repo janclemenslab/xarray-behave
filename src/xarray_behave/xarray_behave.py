@@ -405,8 +405,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # SONG EVENTS
     if with_segmentation_manual:
         manual_events_samples = {key: (val * sampling_rate).astype(np.uintp) for key, val in manual_events_seconds.items()}
-        for key, val in manual_events_samples.items():  # make mask for events that are defined by start/end points
-            if val.shape[1] == 2:
+        # make mask for events that are defined by start/end points (sine)
+        for key, val in manual_events_samples.items():  
+            if val.shape[1] == 2:  # val contains start/end points of each event
                 mask = [np.arange(t0, t1+1, dtype=np.uintp) for (t0, t1) in val]
                 manual_events_samples[key] = np.concatenate(mask)
         events = manual_events_samples
@@ -421,8 +422,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     if with_segmentation_manual or with_segmentation:
         eventtypes = [*events.keys()]
-        nb_eventtypes = len(eventtypes)
-        song_events_np = np.zeros((len(time), nb_eventtypes), dtype=np.bool)  # pre-allocate grid holding event data
+        song_events_np = np.zeros((len(time), len(eventtypes)), dtype=np.bool)  # pre-allocate grid holding event data
         for cnt, key in enumerate(events.keys()):
             event_times = np.unique((events[key] / step).astype(np.uintp))
             event_times = event_times[event_times < last_sample_with_frame / step]
@@ -468,7 +468,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         interpolator = scipy.interpolate.interp1d(frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
         pose_pos_allo_re = interpolator(target_samples)
 
-        # make DataArray
+        # poses in EGOCENTRIC coordinates
         poses = xr.DataArray(data=pose_pos_re,
                              dims=['time', 'flies', 'poseparts', 'coords'],
                              coords={'time': time,
@@ -480,7 +480,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                     'time_units': 'seconds',
                                     'spatial_units': 'pixels',
                                     'poses_from': poses_from})
-        # make DataArray
+        dataset_data['pose_positions'] = poses
+
+        # poses in ALLOcentric (frame-relative) coordinates
         poses_allo = xr.DataArray(data=pose_pos_allo_re,
                              dims=['time', 'flies', 'poseparts', 'coords'],
                              coords={'time': time,
@@ -492,7 +494,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                     'time_units': 'seconds',
                                     'spatial_units': 'pixels',
                                     'poses_from': poses_from})
-        dataset_data['pose_positions'] = poses
         dataset_data['pose_positions_allo'] = poses_allo
 
     # MAKE THE DATASET
