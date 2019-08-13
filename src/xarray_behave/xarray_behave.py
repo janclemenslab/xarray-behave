@@ -97,7 +97,7 @@ def load_manual_annotation(filepath):
     manual_events_seconds = dict()
     for key, val in mat_data.items():
         if len(val) and val.ndim==2 and not key.startswith('_'):  # ignore matfile metadata
-            manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1])
+            manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
     return manual_events_seconds
 
 
@@ -354,7 +354,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     except Exception as e:
         logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
         logging.debug(e)
-
+    
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
     first_sample = 0
     last_sample = int(last_sample_with_frame)
@@ -404,7 +404,11 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # SONG EVENTS
     if with_segmentation_manual:
-        manual_events_samples = {key: val * sampling_rate for key, val in manual_events_seconds.items()}
+        manual_events_samples = {key: (val * sampling_rate).astype(np.uintp) for key, val in manual_events_seconds.items()}
+        for key, val in manual_events_samples.items():  # make mask for events that are defined by start/end points
+            if val.shape[1] == 2:
+                mask = [np.arange(t0, t1+1, dtype=np.uintp) for (t0, t1) in val]
+                manual_events_samples[key] = np.concatenate(mask)
         events = manual_events_samples
     else:
         events = dict()
@@ -413,14 +417,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         events['song_pulse_any'] = res['pulse_times_samples']
         events['song_pulse_slow'] = res['pulse_times_samples'][res['pulse_labels'] == 1]
         events['song_pulse_fast'] = res['pulse_times_samples'][res['pulse_labels'] == 0]
-        events['sine'] = song_labels == 2
+        events['sine'] = np.where(song_labels == 2)[0]
 
     if with_segmentation_manual or with_segmentation:
         eventtypes = [*events.keys()]
         nb_eventtypes = len(eventtypes)
         song_events_np = np.zeros((len(time), nb_eventtypes), dtype=np.bool)  # pre-allocate grid holding event data
         for cnt, key in enumerate(events.keys()):
-            event_times = (events[key] / step).astype(np.uintp)
+            event_times = np.unique((events[key] / step).astype(np.uintp))
             event_times = event_times[event_times < last_sample_with_frame / step]
             song_events_np[event_times, cnt] = True
 
