@@ -239,11 +239,11 @@ def load_raw_song(filepath_daq, song_channels=None):
 
 def load_times(filepath_timestamps, filepath_daq):
     """Load daq and cam time stamps, create muxer"""
-    with h5py.File(filepath_timestamps) as f:
+    with h5py.File(filepath_timestamps, 'r') as f:
         cam_stamps = f['timeStamps'][:]
 
     # DAQ time stamps
-    with h5py.File(filepath_daq) as f:
+    with h5py.File(filepath_daq, 'r') as f:
         daq_stamps = f['systemtime'][:]
         daq_sampleinterval = f['samplenumber'][:]
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:, np.newaxis]
