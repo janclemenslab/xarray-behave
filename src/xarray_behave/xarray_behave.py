@@ -285,8 +285,8 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
     """
     time = dataset.time
     nearest_frame_time = dataset.nearest_frame
-
     sampling_rate = 10000
+    # TODO: extract sampling_rate from dataset.pose_positions.attrs!!!
     step = int(sampling_rate / 1000)  # ms - will resample song annotations and tracking data to 1000Hz
 
     thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax', :].astype(np.float32)
@@ -426,6 +426,13 @@ def save(savepath, dataset):
         dataset.to_zarr(store=zarr_store, compute=True)
 
 
+def _normalize_strings(dataset):
+    dn = dict()
+    for key, val in dataset.coords.items():
+        if val.dtype == 'S16':
+            val.data = np.array([v.decode() for v in val.data])
+        dn[key] = val
+
 def load(savepath, normalize_strings: bool = True):
     """[summary]
 
@@ -440,6 +447,6 @@ def load(savepath, normalize_strings: bool = True):
         dataset = xr.open_zarr(zarr_store).load()  # the final `load()` prevents lazy loading
 
     if normalize_strings:
-        pass
+        dataset = _normalize_strings(dataset)
 
     return dataset
