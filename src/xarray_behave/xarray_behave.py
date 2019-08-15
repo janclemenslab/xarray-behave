@@ -5,8 +5,8 @@ import xarray as xr
 import zarr
 import logging
 from pathlib import Path
-from .loaders import *
-from .metrics import *
+from . import loaders as ld
+from . import metrics as mt
 
 
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000, keep_multi_channel: bool = False):
@@ -29,14 +29,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # load RECORDING and TIMING INFORMATION
     filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
     filepath_daq = Path(root, dat_path, datename, f'{datename}_daq.h5')
-    ss, last_sample_number, sampling_rate = load_times(filepath_timestamps, filepath_daq)
+    ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
 
     # LOAD TRACKS
     with_tracks = False
     with_fixed_tracks = False
     filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
     try:
-        body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = load_tracks(filepath_tracks)
+        body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks)
         with_tracks = True
         with_fixed_tracks = True
     except Exception as e:
@@ -52,7 +52,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     poses_from = None
     filepath_poses = Path(root, res_path, datename, f'{datename}_densenet-bgsub_scaled_poses.zarr')
     try:
-        pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = load_poses_deepposekit(filepath_poses)
+        pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_deepposekit(filepath_poses)
         with_poses = True
         poses_from = 'DeepPoseKit'
     except Exception as e:
@@ -63,7 +63,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     if not with_poses:
         filepath_poses = Path(root, res_path, datename, f'{datename}_poses.h5')
         try:
-            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = load_poses_leap(filepath_poses)
+            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses)
             with_poses = True
             poses_from = 'LEAP'
         except Exception as e:
@@ -76,7 +76,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     res = dict()
     filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.mat')
     try:
-        res = load_segmentation(filepath_segmentation)
+        res = ld.load_segmentation(filepath_segmentation)
         with_segmentation = True
         with_song = True
     except Exception as e:
@@ -87,9 +87,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     if not with_song or keep_multi_channel:
         try:
             logging.info(f'Reading recording from {filepath_daq}.')
-            song_raw = load_raw_song(filepath_daq)
+            song_raw = ld.load_raw_song(filepath_daq)
             if not with_song:
-                song_merged_max = merge_channels(song_raw, sampling_rate)
+                song_merged_max = ld.merge_channels(song_raw, sampling_rate)
                 res['song'] = song_merged_max
             if keep_multi_channel:
                 res['song_raw'] = song_raw
@@ -102,7 +102,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     with_segmentation_manual = False
     filepath_segmentation_manual = Path(root, res_path, datename, f'{datename}_songmanual.mat')
     try:
-        manual_events_seconds = load_manual_annotation(filepath_segmentation_manual)
+        manual_events_seconds = ld.load_manual_annotation(filepath_segmentation_manual)
         with_segmentation_manual = True
     except Exception as e:
         logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
@@ -294,14 +294,14 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
     wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing', :].astype(np.float32)
     wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].astype(np.float32)
 
-    angles = angle(thoraces, heads)
-    chamber_vels = velocity(thoraces, ref='chamber')
+    angles = mt.angle(thoraces, heads)
+    chamber_vels = mt.velocity(thoraces, ref='chamber')
     
     ds_dict = dict()
     if make_abs:
-        vels = velocity(thoraces, heads)
-        accelerations = acceleration(thoraces, heads)
-        chamber_acc = acceleration(thoraces, ref='chamber')
+        vels = mt.velocity(thoraces, heads)
+        accelerations = mt.acceleration(thoraces, heads)
+        chamber_acc = mt.acceleration(thoraces, ref='chamber')
 
         vels_x = chamber_vels[..., 1]
         vels_y = chamber_vels[..., 0]
@@ -313,13 +313,12 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
         accs_forward = accelerations[..., 0]
         accs_lateral = accelerations[..., 1]
         accs_mag = np.linalg.norm(accelerations, axis=2)
-
         
-        rotational_speed = rot_speed(thoraces, heads)
-        rotational_acc = rot_acceleration(thoraces, heads)
+        rotational_speed = mt.rot_speed(thoraces, heads)
+        rotational_acc = mt.rot_acceleration(thoraces, heads)
 
-        wing_angle_left = angle(heads, thoraces) - angle(thoraces, wing_left)
-        wing_angle_right = -(angle(heads, thoraces) - angle(thoraces, wing_right))
+        wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
+        wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
         wing_angle_sum = wing_angle_left + wing_angle_right
 
         list_absolute = [
@@ -373,8 +372,8 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
                                         'spatial_units': 'pixels'})
     if make_rel:
         # RELATIVE FEATURES #
-        dis = distance(thoraces)
-        rel_angles = relative_angle(thoraces, heads)
+        dis = mt.distance(thoraces)
+        rel_angles = mt.relative_angle(thoraces, heads)
         rel_orientation = np.repeat(np.swapaxes(angles.values[:, :, np.newaxis], 1, 2), angles.shape[1], axis=1)-np.repeat(angles.values[:, :, np.newaxis], angles.shape[1], axis=2)
         rel_velocities_forward = np.repeat(np.swapaxes(chamber_vels[..., 0][:, :, np.newaxis], 1, 2), chamber_vels.shape[1], axis=1)-np.repeat(chamber_vels[..., 0][:, :, np.newaxis], chamber_vels.shape[1], axis=2)
         rel_velocities_lateral = np.repeat(np.swapaxes(chamber_vels[..., 1][:, :, np.newaxis], 1, 2), chamber_vels.shape[1], axis=1)-np.repeat(chamber_vels[..., 1][:, :, np.newaxis], chamber_vels.shape[1], axis=2)
