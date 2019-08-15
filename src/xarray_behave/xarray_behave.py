@@ -432,6 +432,7 @@ def _normalize_strings(dataset):
         if val.dtype == 'S16':
             val.data = np.array([v.decode() for v in val.data])
         dn[key] = val
+    return dataset
 
 def load(savepath, normalize_strings: bool = True):
     """[summary]
