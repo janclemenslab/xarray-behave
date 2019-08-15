@@ -1,6 +1,6 @@
+"""Calculate metrics from behavioral data."""
 import numpy as np
 import itertools
-import xarray as xr
 
 
 def distance(positions):
