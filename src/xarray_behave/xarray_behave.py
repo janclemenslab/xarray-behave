@@ -400,20 +400,26 @@ def _normalize_strings(dataset):
         dn[key] = val
     return dataset
 
-def load(savepath, normalize_strings: bool = True):
+
+def load(savepath, lazy: bool = False, normalize_strings: bool = True):
     """[summary]
 
     Args:
         savepath ([type]): [description]
+        lazy (bool, optional): [description]. Defaults to True.
         normalize_strings (bool, optional): [description]. Defaults to True.
 
     Returns:
         [type]: [description]
     """
-    with zarr.ZipStore(savepath, mode='r') as zarr_store:
-        dataset = xr.open_zarr(zarr_store).load()  # the final `load()` prevents lazy loading
+    zarr_store = zarr.ZipStore(savepath, mode='r')
+    dataset = xr.open_zarr(zarr_store)
+    if not lazy:
+        dataset.load()
+        zarr_store.close()
 
     if normalize_strings:
         dataset = _normalize_strings(dataset)
+
 
     return dataset
