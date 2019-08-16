@@ -322,41 +322,17 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
         wing_angle_sum = wing_angle_left + wing_angle_right
 
         list_absolute = [
-            angles,
-            rotational_speed,
-            rotational_acc,
-            vels_mag,
-            vels_x,
-            vels_y,
-            vels_forward,
-            vels_lateral,
-            accs_mag,
-            accs_x,
-            accs_y,
-            accs_forward,
-            accs_lateral,
-            wing_angle_left,
-            wing_angle_right,
-            wing_angle_sum
+            angles, rotational_speed, rotational_acc,
+            vels_mag, vels_x, vels_y, vels_forward, vels_lateral,
+            accs_mag, accs_x, accs_y, accs_forward, accs_lateral,
+            wing_angle_left, wing_angle_right, wing_angle_sum
         ]
 
         abs_feature_names = [
-            'angles',
-            'rotational_speed',
-            'rotational_acceleration',
-            'velocity_magnitude',
-            'velocity_x',
-            'velocity_y',
-            'velocity_forward',
-            'velocity_lateral',
-            'acceleration_mag',
-            'acceleration_x',
-            'acceleration_y',
-            'acceleration_forward',
-            'acceleration_lateral',
-            'wing_angle_left',
-            'wing_angle_right',
-            'wing_angle_sum'
+            'angles', 'rotational_speed', 'rotational_acceleration',
+            'velocity_magnitude', 'velocity_x', 'velocity_y', 'velocity_forward', 'velocity_lateral',
+            'acceleration_mag', 'acceleration_x', 'acceleration_y', 'acceleration_forward', 'acceleration_lateral',
+            'wing_angle_left', 'wing_angle_right', 'wing_angle_sum'
         ]
 
         absolute = np.stack(list_absolute, axis=2)
@@ -374,27 +350,19 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
         # RELATIVE FEATURES #
         dis = mt.distance(thoraces)
         rel_angles = mt.relative_angle(thoraces, heads)
-        rel_orientation = np.repeat(np.swapaxes(angles.values[:, :, np.newaxis], 1, 2), angles.shape[1], axis=1)-np.repeat(angles.values[:, :, np.newaxis], angles.shape[1], axis=2)
-        rel_velocities_forward = np.repeat(np.swapaxes(chamber_vels[..., 0][:, :, np.newaxis], 1, 2), chamber_vels.shape[1], axis=1)-np.repeat(chamber_vels[..., 0][:, :, np.newaxis], chamber_vels.shape[1], axis=2)
-        rel_velocities_lateral = np.repeat(np.swapaxes(chamber_vels[..., 1][:, :, np.newaxis], 1, 2), chamber_vels.shape[1], axis=1)-np.repeat(chamber_vels[..., 1][:, :, np.newaxis], chamber_vels.shape[1], axis=2)
-        rel_velocities_mag = np.linalg.norm(np.concatenate((rel_velocities_forward[..., np.newaxis], rel_velocities_lateral[..., np.newaxis]), axis=3), axis=3)
+        rel_orientation = angles.values[:, np.newaxis, :] - angles.values[:, :, np.newaxis]
+        rel_velocities_forward = chamber_vels[..., 0][:, np.newaxis, :] - chamber_vels[..., 0][:, :, np.newaxis]
+        rel_velocities_lateral = chamber_vels[..., 1][:, np.newaxis, :] - chamber_vels[..., 1][:, :, np.newaxis]
+        rel_velocities_mag = np.sqrt(rel_velocities_forward**2 + rel_velocities_lateral**2)
 
         list_relative = [
-            dis,
-            rel_angles,
-            rel_orientation,
-            rel_velocities_mag,
-            rel_velocities_forward,
-            rel_velocities_lateral
+            dis, rel_angles, rel_orientation,
+            rel_velocities_mag, rel_velocities_forward, rel_velocities_lateral
         ]
 
         rel_feature_names = [
-            'distance',
-            'relative_angle',
-            'relative_orientation',
-            'relative_velocity_mag',
-            'relative_velocity_forward',
-            'relative_velocity_lateral'
+            'distance', 'relative_angle', 'relative_orientation',
+            'relative_velocity_mag', 'relative_velocity_forward', 'relative_velocity_lateral'
         ]
 
         relative = np.stack(list_relative, axis=3)
@@ -409,8 +377,7 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
                                        'spatial_units': 'pixels'})
 
     # MAKE ONE DATASET
-    feature_dataset = xr.Dataset(ds_dict,
-                                 attrs={})
+    feature_dataset = xr.Dataset(ds_dict, attrs={})
     return feature_dataset
 
 
