@@ -3,24 +3,65 @@ import numpy as np
 import itertools
 
 
-def distance(positions):
-    """ arg:
-            positions: positions of the thorax. [time, flies, y/x]
-        returns:
-            dists: distances between flies. [time, flies, flies]
+def distance(pos1, pos2=None, set_self_to_nan: bool = False):
+    """Compute pairwise euclidean distances.
+    
+    Args:
+        pos1 ([type]): positions of the thorax. [time, flies1, y/x]
+        pos2 ([type], optional): positions of the thorax. [time, flies2, y/x], Defaults to None
+        set_self_to_nan (bool, optional): set self-distances (diagonal along 2nd and 3rd dim) to nan. Defaults to False. Will be ignored if pos2 is not None.
+    
+    Returns:
+        [type]: distances between flies. [time, flies1, flies2]
     """
-    nagents = positions.shape[1]
+    if pos2 is not None:
+        set_self_to_nan = False
 
-    dis = np.empty((positions.shape[0], nagents, nagents))
-    dis.fill(np.nan)
+    if pos2 is None:
+        pos2 = pos1
 
-    for i, j in itertools.combinations(range(nagents), r=2):
-        diff_ij = np.squeeze(np.diff(positions[:, [i, j], :], axis=1))
-        distance = np.sqrt(np.einsum('ij,ij->i', diff_ij, diff_ij))
-        dis[:, i, j] = distance
-        dis[:, j, i] = distance
+    dis = np.sqrt(np.sum((pos1.data[:, np.newaxis, :, :] - pos2.data[:, :, np.newaxis, :])**2, axis=-1))
 
+    if set_self_to_nan:
+        nb_flies = pos1.shape[1]
+        dis[..., range(nb_flies), range(nb_flies)] = np.nan  # set diag to np.nan
     return dis
+
+
+def yx2fwdlat(pos1, pos2, dyx):
+    """[summary]
+
+    Args:
+        pos1 ([type]): [description]
+        pos2 ([type]): [description]
+        dyx ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    mags = np.linalg.norm(dyx, axis=2)  # acceleration magnitude
+    angle_diff = angle(dyx, degrees=False) - angle(pos1, pos2, degrees=False)  # angle difference between dyx and orientation
+    fwdlat = np.empty_like(dyx)    # acceleration components with reference to self orientation
+    fwdlat[:, :, 0] = mags*np.cos(angle_diff)    # forward
+    fwdlat[:, :, 1] = -mags*np.sin(angle_diff)    # lateral
+    return fwdlat
+
+
+def derivative(x, dt: float = 1, degree: int = 1, axis: int = 0):
+    """Calculate derivative of x with respect to axis.
+    
+    Args:
+        x ([type]): Data. At last 1D.
+        dt (float, optional): Timestep. Defaults to 1.
+        degree (int, optional): Number of time the gradient is taken. Defaults to 1 (velocity). degree=2 return acceleration.
+        axis (int, optional): Axis along which to take the gradient. Defaults to 0.
+    
+    Returns:
+        [type]: [description]
+    """
+    for _ in range(degree):
+        x = np.gradient(x, dt, axis=axis)
+    return x
 
 
 def velocity(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 'self'):
@@ -33,19 +74,9 @@ def velocity(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 'self'
     returns:
         vels: change of variable with respect to time. [time,agent,y/x]
     """
-
-    # velocity in reference to chamber
-    vels_yx = np.gradient(pos1, timestep, axis=0)
-
+    vels = derivative(pos1, timestep, degree=1)
     if ref == 'self':
-        vels_mags = np.linalg.norm(vels_yx, axis=2)    # velocity magnitude
-        angle_diff = np.arctan2(vels_yx[..., 0], vels_yx[..., 1]) - np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])    # angle difference between velocity vector and orientation vector
-        vels = np.empty_like(vels_yx)    # velocity components with reference to self orientation
-        vels[:, :, 0] = vels_mags*np.cos(angle_diff)    # forward
-        vels[:, :, 1] = -vels_mags*np.sin(angle_diff)    # lateral
-    elif ref == 'chamber':
-        vels = vels_yx
-
+        vels = yx2fwdlat(pos1, pos2, vels)
     return vels
 
 
@@ -61,62 +92,54 @@ def acceleration(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 's
     """
 
     # acceleration in reference to chamber
-    accs_yx = np.gradient(np.gradient(pos1, timestep, axis=0), timestep, axis=0)
-
+    accs = derivative(pos1, timestep, degree=2)
     if ref == 'self':
-        accs_mags = np.linalg.norm(accs_yx, axis=2)    # acceleration magnitude
-        angle_diff = np.arctan2(accs_yx[..., 0], accs_yx[..., 1]) - np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])    # angle difference between acceleration vector and orientation vector
-        accs = np.empty_like(accs_yx)    # acceleration components with reference to self orientation
-        accs[:, :, 0] = accs_mags*np.cos(angle_diff)    # forward
-        accs[:, :, 1] = -accs_mags*np.sin(angle_diff)    # lateral
-    elif ref == 'chamber':
-        accs = accs_yx
-
+        accs = yx2fwdlat(pos1, pos2, accs)
     return accs
 
 
-def angle(pos1, pos2):
+def angle(pos1, pos2=None, degrees: bool = True, unwrap: bool = False):
+    """Compute angle.
+    
+    Args:
+        pos1 ([type]): position of vector's base, center of agent. [time, agent, y/x]
+        pos2 ([type], optional): position of vector's head, head of agent. [time, agent, y/x]. If provided will compute angle between pos1 and pos2. Defaults to None.
+        degrees (bool, optional): [description]. Defaults to True.
+        unwrap (bool, optional): [description]. Defaults to False.
+
+    Returns:
+        [type]: orientation of flies with respect to chamber. 0 degrees when flies look towards positive x axis, 90 degrees when vertical and looking upwards. [time, flies]
     """
-    arg:
-        pos1: position of vector's base, center of agent. [time, agent, y/x]
-        pos2: position of vector's head, head of agent. [time, agent, y/x]
-    returns:
-        angles: orientation of flies with respect to chamber. 0 degrees when flies look towards positive x axis, 90 degrees when vertical and looking upwards. [time, flies]
-    """
-    return np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1]) * 180 / np.pi
+    if pos2 is None:
+        ang = np.arctan2(pos1[..., 0], pos1[..., 1])
+    else:
+        ang = np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])
+    
+    if unwrap:
+        ang = np.unwrap(ang)
+
+    if degrees:
+        ang = ang * 180.0 / np.pi
+    return ang
 
 
 def relative_angle(pos1, pos2):
     """ Angle between agents. An element (k,i,j) from the output is the angle at kth sample between ith (reference head) and jth (target base).
     arg:
-        pos1: positions of the thoraxes for all flies. [time, flies, y/x]
+        pos1: positions of the thoraces for all flies. [time, flies, y/x]
         pos2: positions of the heads for all flies. [time, flies, y/x]
     returns:
         rel_angles: orientation of flies with respect to chamber. [time, flies, flies]
     """
+    d0 = pos2.values - pos1.values
+    d1 = pos1.values[:, np.newaxis, :, :] - pos2.values[:, :, np.newaxis, :]  # all pairwise "distances"
 
-    nagents = pos1.shape[1]
-    rel_angles = np.empty((pos1.shape[0], nagents, nagents), dtype=np.float32)
-    rel_angles.fill(np.nan)
+    dot = d0[:, :, np.newaxis, 1]*d1[:, :, :, 1] + d0[:, :, np.newaxis, 0]*d1[:, :, :, 0]
+    det = d0[:, :, np.newaxis, 1]*d1[:, :, :, 0] - d0[:, :, np.newaxis, 0]*d1[:, :, :, 1]        
 
-    for i, j in itertools.combinations(range(nagents), r=2):
-        x1 = pos2[:, i, 1]-pos1[:, i, 1]
-        y1 = pos2[:, i, 0]-pos1[:, i, 0]
-        x2 = pos1[:, j, 1]-pos2[:, i, 1]
-        y2 = pos1[:, j, 0]-pos2[:, i, 0]
-        dot = x1*x2 + y1*y2
-        det = x1*y2 - y1*x2
-        rel_angles[:, i, j] = np.arctan2(det, dot)
+    rel_angles = np.arctan2(det, dot)
 
-        x1 = pos2[:, j, 1]-pos1[:, j, 1]
-        y1 = pos2[:, j, 0]-pos1[:, j, 0]
-        x2 = pos1[:, i, 1]-pos2[:, j, 1]
-        y2 = pos1[:, i, 0]-pos2[:, j, 0]
-        dot = x1*x2 + y1*y2
-        det = x1*y2 - y1*x2
-        rel_angles[:, j, i] = np.arctan2(det, dot)
-
-    return rel_angles*180/np.pi
+    return rel_angles * 180.0 / np.pi
 
 
 def rot_speed(pos1, pos2, timestep: float = 1):
@@ -127,35 +150,22 @@ def rot_speed(pos1, pos2, timestep: float = 1):
     returns:
         rot_speed: rotational speed. [time, flies]
     """
-
-    # orientations
-    angles = np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])
-
-    # unwrap orientations
-    unwrapped_angles = np.unwrap(angles, axis=0)*180/np.pi
-
-    # rotational speed
-    rot_speed = np.gradient(unwrapped_angles, timestep, axis=0)
-
+    unwrapped_angles = angle(pos1, pos2, unwrap=True)
+    rot_speed = derivative(unwrapped_angles, timestep, degree=1)
     return rot_speed
 
 
 def rot_acceleration(pos1, pos2, timestep: float = 1):
+    """[summary]
+    
+    Args:
+        pos1 ([type]): position of vector's base, center of agent. [time, flies, y/x]
+        pos2 ([type]): position of vector's head, head of agent. [time, flies, y/x]
+        timestep (float, optional): [description]. Defaults to 1.
+    
+    Returns:
+        [type]: rotational acceleration. [time, flies]
     """
-    arg:
-        pos1: position of vector's base, center of agent. [time, flies, y/x]
-        pos2: position of vector's head, head of agent. [time, flies, y/x]
-    returns:
-        rot_accs: rotational acceleration. [time, flies]
-    """
-
-    # orientations
-    angles = np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])
-
-    # unwrap orientations
-    unwrapped_angles = np.unwrap(angles, axis=0)*180/np.pi
-
-    # rotational speed
-    rot_accs = np.gradient(np.gradient(unwrapped_angles, timestep, axis=0), timestep, axis=0)
-
+    unwrapped_angles = angle(pos1, pos2, unwrap=True)
+    rot_accs = derivative(unwrapped_angles, timestep, degree=2)
     return rot_accs
