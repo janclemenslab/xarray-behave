@@ -9,7 +9,7 @@ from . import loaders as ld
 from . import metrics as mt
 
 
-def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000, keep_multi_channel: bool = False):
+def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000, keep_multi_channel: bool = False, resample_video_data: bool = True):
     """Assemble data set containing song and video data.
 
     Synchronizes A/V, resamples annotations (pose, song) to common sampling grid.
@@ -196,12 +196,18 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # BODY POSITION
     if with_tracks:
-        frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
-        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        interpolator = scipy.interpolate.interp1d(
-            frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
-        body_pos_re = interpolator(target_samples)
-        positions = xr.DataArray(data=body_pos_re,
+        if resample_video_data:  # resample to common grid at target_sampling_rate.
+            frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
+            frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
+        
+            interpolator = scipy.interpolate.interp1d(
+                frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
+            body_pos = interpolator(target_samples)
+        else:
+            time = ss.frame_time(frame_numbers)
+            nearest_frame_time = frame_numbers
+        
+        positions = xr.DataArray(data=body_pos,
                                  dims=['time', 'flies', 'bodyparts', 'coords'],
                                  coords={'time': time,
                                          'bodyparts': body_parts,
@@ -217,18 +223,23 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # POSES
     if with_poses:
-        # resample to common grid at 1000Hz.
-        frame_numbers = np.arange(first_pose_frame, last_pose_frame)
-        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        interpolator = scipy.interpolate.interp1d(
-            frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
-        pose_pos_re = interpolator(target_samples)
-        interpolator = scipy.interpolate.interp1d(
-            frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
-        pose_pos_allo_re = interpolator(target_samples)
-
+        if resample_video_data:  # resample to common grid at target_sampling_rate.
+            frame_numbers = np.arange(first_pose_frame, last_pose_frame)
+            frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
+        
+            interpolator = scipy.interpolate.interp1d(
+                frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
+            pose_pos = interpolator(target_samples)
+        
+            interpolator = scipy.interpolate.interp1d(
+                frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
+            pose_pos_allo = interpolator(target_samples)
+        else:
+            time = ss.frame_time(frame_numbers)
+            nearest_frame_time = frame_numbers
+            
         # poses in EGOCENTRIC coordinates
-        poses = xr.DataArray(data=pose_pos_re,
+        poses = xr.DataArray(data=pose_pos,
                              dims=['time', 'flies', 'poseparts', 'coords'],
                              coords={'time': time,
                                      'poseparts': pose_parts,
@@ -242,7 +253,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['pose_positions'] = poses
 
         # poses in ALLOcentric (frame-relative) coordinates
-        poses_allo = xr.DataArray(data=pose_pos_allo_re,
+        poses_allo = xr.DataArray(data=pose_pos_allo,
                                   dims=['time', 'flies', 'poseparts', 'coords'],
                                   coords={'time': time,
                                           'poseparts': pose_parts,
@@ -296,7 +307,7 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
 
     angles = mt.angle(thoraces, heads)
     chamber_vels = mt.velocity(thoraces, ref='chamber')
-    
+
     ds_dict = dict()
     if make_abs:
         vels = mt.velocity(thoraces, heads)
@@ -313,7 +324,7 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
         accs_forward = accelerations[..., 0]
         accs_lateral = accelerations[..., 1]
         accs_mag = np.linalg.norm(accelerations, axis=2)
-        
+
         rotational_speed = mt.rot_speed(thoraces, heads)
         rotational_acc = mt.rot_acceleration(thoraces, heads)
 
@@ -338,14 +349,14 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
         absolute = np.stack(list_absolute, axis=2)
 
         ds_dict['abs_features'] = xr.DataArray(data=absolute,
-                                    dims=['time', 'flies', 'absolute_features'],
-                                    coords={'time': time,
-                                            'absolute_features': abs_feature_names,
-                                            'nearest_frame': (('time'), nearest_frame_time)},
-                                    attrs={'description': 'coords are "egocentric" - rel. to box',
-                                        'sampling_rate_Hz': sampling_rate / step,
-                                        'time_units': 'seconds',
-                                        'spatial_units': 'pixels'})
+                                               dims=['time', 'flies', 'absolute_features'],
+                                               coords={'time': time,
+                                                       'absolute_features': abs_feature_names,
+                                                       'nearest_frame': (('time'), nearest_frame_time)},
+                                               attrs={'description': 'coords are "egocentric" - rel. to box',
+                                                      'sampling_rate_Hz': sampling_rate / step,
+                                                      'time_units': 'seconds',
+                                                      'spatial_units': 'pixels'})
     if make_rel:
         # RELATIVE FEATURES #
         dis = mt.distance(thoraces)
@@ -367,14 +378,14 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
 
         relative = np.stack(list_relative, axis=3)
         ds_dict['rel_features'] = xr.DataArray(data=relative,
-                                dims=['time', 'flies', 'relative_flies', 'relative_features'],
-                                coords={'time': time,
-                                        'relative_features': rel_feature_names,
-                                        'nearest_frame': (('time'), nearest_frame_time)},
-                                attrs={'description': 'coords are "egocentric" - rel. to box',
-                                       'sampling_rate_Hz': sampling_rate / step,
-                                       'time_units': 'seconds',
-                                       'spatial_units': 'pixels'})
+                                               dims=['time', 'flies', 'relative_flies', 'relative_features'],
+                                               coords={'time': time,
+                                                       'relative_features': rel_feature_names,
+                                                       'nearest_frame': (('time'), nearest_frame_time)},
+                                               attrs={'description': 'coords are "egocentric" - rel. to box',
+                                                      'sampling_rate_Hz': sampling_rate / step,
+                                                      'time_units': 'seconds',
+                                                      'spatial_units': 'pixels'})
 
     # MAKE ONE DATASET
     feature_dataset = xr.Dataset(ds_dict, attrs={})
@@ -403,12 +414,12 @@ def _normalize_strings(dataset):
 
 def load(savepath, lazy: bool = False, normalize_strings: bool = True):
     """[summary]
-
+    
     Args:
         savepath ([type]): [description]
         lazy (bool, optional): [description]. Defaults to True.
         normalize_strings (bool, optional): [description]. Defaults to True.
-
+    
     Returns:
         [type]: [description]
     """
@@ -420,6 +431,6 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True):
 
     if normalize_strings:
         dataset = _normalize_strings(dataset)
-
+        
 
     return dataset
