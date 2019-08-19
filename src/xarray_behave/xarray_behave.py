@@ -36,6 +36,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     with_tracks = False
     with_fixed_tracks = False
     filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
+    filepath_tracks_nonfixed = Path(root, res_path, datename, f'{datename}_tracks.h5')
     try:
         body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks)
         with_tracks = True
@@ -43,10 +44,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     except Exception as e:
         logging.info(f'Could not load tracks from {filepath_tracks}.')
         logging.debug(e)
-
-        first_tracked_frame = int(ss.frame(0))
-        last_tracked_frame = int(ss.frame(last_sample_number))
-        logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+        try:
+            logging.info(f'Trying non-fixed tracks at {filepath_tracks_nonfixed}.')
+            body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks_nonfixed)
+            with_tracks = True
+        except Exception as e:
+            logging.info(f'   This failed, too:')
+            logging.debug(e)
+            logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+            first_tracked_frame = int(ss.frame(0))
+            last_tracked_frame = int(ss.frame(last_sample_number))
 
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
