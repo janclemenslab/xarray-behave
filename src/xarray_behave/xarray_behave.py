@@ -51,10 +51,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         except Exception as e:
             logging.info(f'   This failed, too:')
             logging.debug(e)
-            logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
             first_tracked_frame = int(ss.frame(0))
             last_tracked_frame = int(ss.frame(last_sample_number))
-
+            logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+            
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
     poses_from = None
