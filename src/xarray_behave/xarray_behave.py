@@ -51,7 +51,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
     poses_from = None
-    filepath_poses = Path(root, res_path, datename, f'{datename}_densenet-bgsub_scaled_poses.zarr')
+    filepath_poses = Path(root, res_path, datename, f'{datename}_poses_dpk.zarr')
     try:
         pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_deepposekit(filepath_poses)
         with_poses = True
