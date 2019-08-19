@@ -1,6 +1,7 @@
 """Load files created by various analysis programs created."""
 import numpy as np
 import h5py
+import deepdish as dd
 
 import scipy.interpolate
 from scipy.io import loadmat
@@ -103,14 +104,22 @@ def load_tracks(filepath):
     """Load tracker data"""
     with h5py.File(filepath, 'r') as f:
         if 'data' in f.keys():  # in old-style or unfixes tracks, everything is in the 'data' group
-            f = f['data']    
-        chbb = f['chambers_bounding_box'][:]
-        heads = f['lines'][:, 0, :, 0, :]   # nframe, fly id, coordinates
-        tails = f['lines'][:, 0, :, 1, :]   # nframe, fly id, coordinates
-        box_centers = f['centers'][:, 0, :, :]   # nframe, fly id, coordinates
-        background = f['background'][:]
-        first_tracked_frame = f.attrs['start_frame']
-        last_tracked_frame = f.attrs['frame_count']
+            data = dd.io.load(filepath)
+            chbb = data['chambers_bounding_box'][:]
+            heads = data['lines'][:, 0, :, 0, :]   # nframe, fly id, coordinates
+            tails = data['lines'][:, 0, :, 1, :]   # nframe, fly id, coordinates
+            box_centers = data['centers'][:, 0, :, :]   # nframe, fly id, coordinates
+            background = data['background'][:]
+            first_tracked_frame = data['start_frame']
+            last_tracked_frame = data['frame_count']                       
+        else:
+            chbb = f['chambers_bounding_box'][:]
+            heads = f['lines'][:, 0, :, 0, :]   # nframe, fly id, coordinates
+            tails = f['lines'][:, 0, :, 1, :]   # nframe, fly id, coordinates
+            box_centers = f['centers'][:, 0, :, :]   # nframe, fly id, coordinates
+            background = f['background'][:]
+            first_tracked_frame = f.attrs['start_frame']
+            last_tracked_frame = f.attrs['frame_count']
     # everything to frame coords
     heads = heads[..., ::-1]
     tails = tails[..., ::-1]
