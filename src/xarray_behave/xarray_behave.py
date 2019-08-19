@@ -9,7 +9,8 @@ from . import loaders as ld
 from . import metrics as mt
 
 
-def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000, keep_multi_channel: bool = False, resample_video_data: bool = True):
+def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000,
+             keep_multi_channel: bool = False, resample_video_data: bool = True):
     """Assemble data set containing song and video data.
 
     Synchronizes A/V, resamples annotations (pose, song) to common sampling grid.
@@ -196,17 +197,20 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # BODY POSITION
     if with_tracks:
+        frame_times = ss.frame_time(frame_numbers)
+        fps = 1/np.nanmean(np.diff(frame_times))
+
         if resample_video_data:  # resample to common grid at target_sampling_rate.
             frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
             frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        
+
             interpolator = scipy.interpolate.interp1d(
                 frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
             body_pos = interpolator(target_samples)
         else:
-            time = ss.frame_time(frame_numbers)
+            time = frame_times
             nearest_frame_time = frame_numbers
-        
+
         positions = xr.DataArray(data=body_pos,
                                  dims=['time', 'flies', 'bodyparts', 'coords'],
                                  coords={'time': time,
@@ -216,6 +220,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
+                                        'video_fps': fps,
                                         'spatial_units': 'pixels',
                                         'background': background,
                                         'tracks_fixed': with_fixed_tracks})
@@ -223,6 +228,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # POSES
     if with_poses:
+        frame_times = ss.frame_time(frame_numbers)
+        fps = 1/np.nanmean(np.diff(frame_times))
+
         if resample_video_data:  # resample to common grid at target_sampling_rate.
             frame_numbers = np.arange(first_pose_frame, last_pose_frame)
             frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
@@ -235,7 +243,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
             pose_pos_allo = interpolator(target_samples)
         else:
-            time = ss.frame_time(frame_numbers)
+            time = frame_times
             nearest_frame_time = frame_numbers
             
         # poses in EGOCENTRIC coordinates
@@ -248,6 +256,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                              attrs={'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
+                                    'video_fps': fps,
                                     'spatial_units': 'pixels',
                                     'poses_from': poses_from})
         dataset_data['pose_positions'] = poses
@@ -262,6 +271,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                   attrs={'description': 'coords are "allocentric" - rel. to frame',
                                          'sampling_rate_Hz': sampling_rate / step,
                                          'time_units': 'seconds',
+                                         'video_fps': fps,
                                          'spatial_units': 'pixels',
                                          'poses_from': poses_from})
         dataset_data['pose_positions_allo'] = poses_allo
@@ -274,36 +284,50 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     return dataset
 
 
-def assemble_metrics(dataset, make_abs=True, make_rel=True):
-    """ arg:
-            dataset: xarray.Dataset from datastructure module, which takes experiment name as input.
-        return:
-            feature_dataset: xarray.Dataset with collection of calculated features.
-                features:
-                    angles [time,flies]
-                    vels [time,flies,forward/lateral]
-                    chamber_vels [time,flies,y/x]
-                    rotational_speed [time,flies]
-                    accelerations [time,flies,forward/lateral]
-                    chamber_acc [time,flies,y/x]
-                    rotational_acc [time,flies]
-                    wing_angle_left [time,flies]
-                    wing_angle_right [time,flies]
-                    wing_angle_sum [time,flies]
-                    relative angle [time,flies,flies]
-                    (relative orientation) [time,flies,flies]
-                    (relative velocities) [time,flies,flies,y/x]
+def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smooth_positions: bool = True):
+    """[summary]
+    
+    Args:
+        dataset ([type]): [description]
+        make_abs (bool, optional): [description]. Defaults to True.
+        make_rel (bool, optional): [description]. Defaults to True.
+        smooth_positions (bool, optional): [description]. Defaults to True.
+    
+    Returns:
+        [type]: [description]
+        xarray.Dataset: containing these features:
+                angles [time,flies]
+                vels [time,flies,forward/lateral]
+                chamber_vels [time,flies,y/x]
+                rotational_speed [time,flies]
+                accelerations [time,flies,forward/lateral]
+                chamber_acc [time,flies,y/x]
+                rotational_acc [time,flies]
+                wing_angle_left [time,flies]
+                wing_angle_right [time,flies]
+                wing_angle_sum [time,flies]
+                relative angle [time,flies,flies]
+                (relative orientation) [time,flies,flies]
+                (relative velocities) [time,flies,flies,y/x]
     """
+
     time = dataset.time
     nearest_frame_time = dataset.nearest_frame
-    sampling_rate = 10000
-    # TODO: extract sampling_rate from dataset.pose_positions.attrs!!!
-    step = int(sampling_rate / 1000)  # ms - will resample song annotations and tracking data to 1000Hz
+    sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
+    frame_rate = dataset.pose_positions.attrs['video_fps']
 
-    thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax', :].astype(np.float32)
-    heads = dataset.pose_positions_allo.loc[:, :, 'head', :].astype(np.float32)
-    wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing', :].astype(np.float32)
-    wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].astype(np.float32)
+    thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax', :].values.astype(np.float32)
+    heads = dataset.pose_positions_allo.loc[:, :, 'head', :].values.astype(np.float32)
+    wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing', :].values.astype(np.float32)
+    wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].values.astype(np.float32)
+
+    if smooth_positions:
+        # adapt window len to framerate and sampling frequency - should span 2 frames to get smooth acceleration traces
+        winlen = np.ceil(2 / frame_rate * sampling_rate)
+        thoraces = mt.smooth(thoraces, winlen)
+        heads = mt.smooth(heads, winlen)
+        wing_left = mt.smooth(wing_left, winlen)
+        wing_right = mt.smooth(wing_right, winlen)
 
     angles = mt.angle(thoraces, heads)
     chamber_vels = mt.velocity(thoraces, ref='chamber')
@@ -354,14 +378,14 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
                                                        'absolute_features': abs_feature_names,
                                                        'nearest_frame': (('time'), nearest_frame_time)},
                                                attrs={'description': 'coords are "egocentric" - rel. to box',
-                                                      'sampling_rate_Hz': sampling_rate / step,
+                                                      'sampling_rate_Hz': sampling_rate,
                                                       'time_units': 'seconds',
                                                       'spatial_units': 'pixels'})
     if make_rel:
         # RELATIVE FEATURES #
         dis = mt.distance(thoraces)
         rel_angles = mt.relative_angle(thoraces, heads)
-        rel_orientation = angles.values[:, np.newaxis, :] - angles.values[:, :, np.newaxis]
+        rel_orientation = angles[:, np.newaxis, :] - angles[:, :, np.newaxis]
         rel_velocities_forward = chamber_vels[..., 0][:, np.newaxis, :] - chamber_vels[..., 0][:, :, np.newaxis]
         rel_velocities_lateral = chamber_vels[..., 1][:, np.newaxis, :] - chamber_vels[..., 1][:, :, np.newaxis]
         rel_velocities_mag = np.sqrt(rel_velocities_forward**2 + rel_velocities_lateral**2)
@@ -383,7 +407,7 @@ def assemble_metrics(dataset, make_abs=True, make_rel=True):
                                                        'relative_features': rel_feature_names,
                                                        'nearest_frame': (('time'), nearest_frame_time)},
                                                attrs={'description': 'coords are "egocentric" - rel. to box',
-                                                      'sampling_rate_Hz': sampling_rate / step,
+                                                      'sampling_rate_Hz': sampling_rate,
                                                       'time_units': 'seconds',
                                                       'spatial_units': 'pixels'})
 
@@ -404,6 +428,7 @@ def save(savepath, dataset):
 
 
 def _normalize_strings(dataset):
+    """Ensure all keys in coords are proper (unicode?) python strings, not byte strings."""
     dn = dict()
     for key, val in dataset.coords.items():
         if val.dtype == 'S16':
@@ -431,6 +456,5 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True):
 
     if normalize_strings:
         dataset = _normalize_strings(dataset)
-        
 
     return dataset

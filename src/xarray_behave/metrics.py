@@ -1,6 +1,29 @@
 """Calculate metrics from behavioral data."""
 import numpy as np
-import itertools
+import scipy.signal.windows
+
+
+def smooth(x, winlen: int = 201):
+    """Smooth data along time dimension (axis=0) with Gaussian window.
+
+    Args:
+        x ([type]): [description]
+        winlen (int, optional): duration of gaussian window in samples. std will be winlen/8. Defaults to 201 (std=25 samples).
+
+    Returns:
+        [type]: [description]
+    """
+    win = scipy.signal.windows.gaussian(winlen, winlen/8)
+    win /= sum(win)
+    x = scipy.ndimage.convolve1d(x, win, axis=0, mode='nearest')
+    return x
+
+
+def remove_nan(x):
+    """Replace any nan value with nearest valid value."""
+    mask = np.isnan(x)
+    x[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x[~mask])
+    return x
 
 
 def distance(pos1, pos2=None, set_self_to_nan: bool = False):
@@ -20,7 +43,7 @@ def distance(pos1, pos2=None, set_self_to_nan: bool = False):
     if pos2 is None:
         pos2 = pos1
 
-    dis = np.sqrt(np.sum((pos1.data[:, np.newaxis, :, :] - pos2.data[:, :, np.newaxis, :])**2, axis=-1))
+    dis = np.sqrt(np.sum((pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :])**2, axis=-1))
 
     if set_self_to_nan:
         nb_flies = pos1.shape[1]
@@ -131,8 +154,8 @@ def relative_angle(pos1, pos2):
     returns:
         rel_angles: orientation of flies with respect to chamber. [time, flies, flies]
     """
-    d0 = pos2.values - pos1.values
-    d1 = pos1.values[:, np.newaxis, :, :] - pos2.values[:, :, np.newaxis, :]  # all pairwise "distances"
+    d0 = pos2 - pos1
+    d1 = pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :]  # all pairwise "distances"
 
     dot = d0[:, :, np.newaxis, 1]*d1[:, :, :, 1] + d0[:, :, np.newaxis, 0]*d1[:, :, :, 0]
     det = d0[:, :, np.newaxis, 1]*d1[:, :, :, 0] - d0[:, :, np.newaxis, 0]*d1[:, :, :, 1]        
