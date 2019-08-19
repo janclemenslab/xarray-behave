@@ -101,7 +101,6 @@ def load_manual_annotation(filepath):
 
 def load_tracks(filepath):
     """Load tracker data"""
-    breakpoint()
     with h5py.File(filepath, 'r') as f:
         if 'data' in f.keys():  # in old-style or unfixes tracks, everything is in the 'data' group
             f = f['data']    
