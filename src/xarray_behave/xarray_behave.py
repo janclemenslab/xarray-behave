@@ -321,9 +321,11 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
     wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing', :].values.astype(np.float32)
     wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].values.astype(np.float32)
 
+
     if smooth_positions:
-        # adapt window len to framerate and sampling frequency - should span 2 frames to get smooth acceleration traces
-        winlen = np.ceil(2 / frame_rate * sampling_rate)
+        # Smoothing window should span 2 frames to get smooth acceleration traces. 
+        # Since std of Gaussian used for smoothing has std of winlen/8, winlen should span 16 frames.
+        winlen = np.ceil(16 / frame_rate * sampling_rate)
         thoraces = mt.smooth(thoraces, winlen)
         heads = mt.smooth(heads, winlen)
         wing_left = mt.smooth(wing_left, winlen)
