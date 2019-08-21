@@ -155,16 +155,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                            'amplitude_units': 'volts'})
             dataset_data['song_raw'] = song_raw
 
-    if with_segmentation:  # SONG LABELS
-        song_labels = xr.DataArray(data=res['song_mask'][first_sample:last_sample:step, 0].astype(np.uint8),
-                                   dims=['time'],
-                                   coords={'time': time,
-                                           'nearest_frame': (('time'), nearest_frame_time), },
-                                   attrs={'description': 'Song label for each sample - 0: silence, 1: pulse, 2: sine.',
-                                          'sampling_rate_Hz': sampling_rate / step,
-                                          'time_units': 'seconds', })
-        dataset_data['song_labels'] = song_labels
-
     # SONG EVENTS
     if with_segmentation_manual:
         manual_events_samples = {key: (val * sampling_rate).astype(np.uintp)
