@@ -20,7 +20,7 @@ import logging
 import time
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
-import xarray_behave as dst
+import xarray_behave as xb
 import numpy as np
 from videoreader import VideoReader
 
@@ -38,6 +38,10 @@ class KeyPressWidget(pg.GraphicsLayoutWidget):
 
 def keyPressed(evt):
     global t0, span, crop, fly, STOP
+    if evt.key() == QtCore.Qt.Key_Left:
+        t0 -= 100
+    elif evt.key() == QtCore.Qt.Key_Right:
+        t0 += 100
     if evt.key() == QtCore.Qt.Key_A:
         t0 -= span/2
     elif evt.key() == QtCore.Qt.Key_D:
@@ -46,6 +50,9 @@ def keyPressed(evt):
         span /= 2
     elif evt.key() == QtCore.Qt.Key_S:
         span *= 2
+    elif evt.key() == QtCore.Qt.Key_X:
+        swap_flies(dataset, t0)
+        logging.info(f'   Swapping flies 1 & 2 at time {t0}.')
     elif evt.key() == QtCore.Qt.Key_C:
         crop = not crop
         logging.info(f'   Cropping = {crop}.')
@@ -62,7 +69,7 @@ def keyPressed(evt):
             STOP = True
             
     span = int(max(500, span))
-    t0 = int(np.clip(t0, 0, tmax))
+    t0 = int(np.clip(t0, span/2, tmax - span/2))
     update(t0, span, crop, fly)
     app.processEvents()
 
@@ -75,14 +82,11 @@ def update(index, span, crop=False, fly=0):
 
         # clear trace plot and update with new trace
         t0 = int(index - span / 2)
-        t0 = max(0, t0)
         t1 = int(index + span / 2)
-        t1 = max(t0 + span, t1)
         
         x = dataset.sampletime[t0:t1].values
         y = dataset.song[t0:t1].values
         step = int(np.ceil(len(x) / fs_song / 2))
-        step = max(step, 1)  # make sure step is at least 1
         slice_view.clear()
         slice_view.plot(x[::step], y[::step])
         
@@ -153,24 +157,32 @@ def play(rate=100):
     global t0, span, crop, fly, STOP
     RUN = True
     cnt = 0
-    start_time = 0
+    # start_time = 0
     while RUN:
         cnt += 1
-        if cnt % 10 == 0:
-            logging.info(f'{time.time()-start_time},{len(slice_view.items())}')
-            start_time = time.time()
+        # if cnt % 10 == 0:
+            # logging.info(f'{time.time()-start_time},{len(slice_view.items())}')
+            # start_time = time.time()
         t0 += rate
         update(t0, span, crop, fly)
         app.processEvents()
         if STOP:
             RUN = False
-        
+
+
+def swap_flies(dataset, index, fly1=0, fly2=1):
+    swap_events.append(index)
+    fs_song = dataset.song.attrs['sampling_rate_Hz']
+    fs_other = dataset.pose_positions_allo.attrs['sampling_rate_Hz']
+    index_other = int(index * fs_other / fs_song)
+    dataset.pose_positions_allo.values[index_other:, :, ...] = dataset.pose_positions_allo.values[index_other:, ::-1, ...]
+    return dataset
 
 pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way   
 logging.basicConfig(level=logging.INFO)
 
 datename = 'localhost-20181120_144618'
-root =''
+root = ''
 if len(sys.argv)>=2:
     datename = sys.argv[1]
 if len(sys.argv)>=3:
@@ -178,18 +190,18 @@ if len(sys.argv)>=3:
 
 if os.path.exists(datename + '.zarr'):
     logging.info(f'Loading dataset from {datename}.zarr.')
-    dataset = dst.load(datename + '.zarr')
+    dataset = xb.load(datename + '.zarr')
 else:
     logging.info(f'Assembling dataset for {datename}.')
-    dataset = dst.assemble(datename, root=root)
+    dataset = xb.assemble(datename, root=root)
     logging.info(f'Saving dataset to {datename}.zarr.')
-    dst.save(datename + '.zarr', dataset)
+    xb.save(datename + '.zarr', dataset)
 logging.info(dataset)
 filepath = dataset.attrs['video_filename']
 vr = VideoReaderNP(filepath[:-3] + 'avi')
 
 # indices
-t0 = 1_100_000
+t0 = 2_800_000#1_100_000
 span = 100_000
 if hasattr(dataset, 'song'):
     tmax = len(dataset.song)
@@ -200,6 +212,7 @@ crop = False
 fly = 0
 nb_flies = np.max(dataset.flies).values+1
 STOP = True
+swap_events = []
 
 app = pg.QtGui.QApplication([])
 win = pg.QtGui.QMainWindow()
