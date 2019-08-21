@@ -64,6 +64,43 @@ def merge_channels(data, sampling_rate):
     return data_merged_max
 
 
+def load_swap_indices(filepath):
+    a = np.loadtxt(filepath, dtype=np.uintp)
+    indices, flies1, flies2 = np.split(a, [1, 2], axis=-1)  # split columns in file into variables
+    return indices, flies1, flies2
+
+
+def swap_flies(dataset, indices, flies1=0, flies2=1):
+    """Swap flies in dataset.
+
+    Caution: datavariables are currently hard-coded!
+    Caution: Swap *may* be in place so *might* will alter original dataset.
+
+    Args:
+        dataset ([type]): Dataset for which to swap flies
+        indices ([type]): List of indices at which to swap flies.
+        flies1 (int or list/tuple, optional): Either a single value for all indices or a list with one value per item in indices. Defaults to 0.
+        flies2 (int or list/tuple, optional): Either a single value for all indices or a list with one value per item in indices. Defaults to 1.
+
+    Returns:
+        dataset with swapped indices ()
+    """
+    for cnt, index in enumerate(indices):        
+        if isinstance(flies1, (list, tuple)) and isinstance(flies2, (list, tuple)):
+            fly1, fly2 = flies1[cnt], flies2[cnt]
+        else:
+            fly1, fly2 = flies1, flies2
+
+        if 'pose_positions_allo' in dataset:
+            dataset.pose_positions_allo.values[index:, [fly2, fly1], ...] = dataset.pose_positions_allo.values[index:, [fly1, fly2], ...]
+        if 'pose_positions' in dataset:
+            dataset.pose_positions.values[index:, [fly2, fly1], ...] = dataset.pose_positions.values[index:, [fly1, fly2], ...]
+        if 'body_positions' in dataset:
+            dataset.body_positions.values[index:, [fly2, fly1], ...] = dataset.body_positions.values[index:, [fly1, fly2], ...]
+
+    return dataset
+
+
 def load_segmentation(filepath):
     """Load output produced by FlySongSegmenter."""
     res = dict()

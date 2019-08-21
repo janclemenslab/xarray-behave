@@ -13,17 +13,55 @@ D - zoom out
 C - crop video around position fly
 F - next fly for cropping
 X - swap first with second fly for all frames following the current frame 
+O - 
 SPACE - play/stop video/song trace in
 """
 import os
 import sys
 import logging
-import time
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 import xarray_behave as xb
 import numpy as np
 from videoreader import VideoReader
+from pathlib import Path
+
+class VideoReaderNP(VideoReader):
+    """VideoReader posing as numpy array."""
+    def __getitem__(self, index):
+        return self.read(index)[1]
+
+    @property
+    def dtype(self):
+        return np.uint8
+
+    @property
+    def shape(self):
+        return (self.number_of_frames, *self.frame_shape)
+
+    @property
+    def ndim(self):
+        return len(self.shape)
+
+    @property
+    def size(self):
+        return np.product(self.shape)
+
+    def min(self):
+        return 0
+    
+    def max(self):
+        return 255
+
+    def transpose(self, *args):
+        return self
+
+
+class ImageViewVR(pg.ImageView):
+
+    def quickMinMax(self, data):
+        """Dummy min/max for numpy videoreader."""
+        return 0, 255
 
 
 class KeyPressWidget(pg.GraphicsLayoutWidget):
@@ -54,6 +92,10 @@ def keyPressed(evt):
     elif evt.key() == QtCore.Qt.Key_X:
         swap_flies(t0)
         logging.info(f'   Swapping flies 1 & 2 at time {t0}.')
+    elif evt.key() == QtCore.Qt.Key_O:
+        savefilename = Path(root, 'res', datename, f'{datename}_idswaps.txt')
+        save_swap_events(savefilename, swap_events)
+        logging.info(f'   Saving list of swap indices to {savefilename}.')
     elif evt.key() == QtCore.Qt.Key_C:
         crop = not crop
         logging.info(f'   Cropping = {crop}.')
@@ -114,56 +156,12 @@ def update(index, span, crop=False, fly=0):
         frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around one of the flies
     image_view.clear()
     image_view.setImage(frame)
-        
-
-class VideoReaderNP(VideoReader):
-    """VideoReader posing as numpy array."""
-    def __getitem__(self, index):
-        return self.read(index)[1]
-
-    @property
-    def dtype(self):
-        return np.uint8
-
-    @property
-    def shape(self):
-        return (self.number_of_frames, *self.frame_shape)
-
-    @property
-    def ndim(self):
-        return len(self.shape)
-
-    @property
-    def size(self):
-        return np.product(self.shape)
-
-    def min(self):
-        return 0
-    
-    def max(self):
-        return 255
-
-    def transpose(self, *args):
-        return self
-
-
-class ImageViewVR(pg.ImageView):
-
-    def quickMinMax(self, data):
-        """Dummy min/max for numpy videoreader."""
-        return 0, 255
 
 
 def play(rate=100):    
     global t0, span, crop, fly, STOP
     RUN = True
-    cnt = 0
-    # start_time = 0
     while RUN:
-        cnt += 1
-        # if cnt % 10 == 0:
-            # logging.info(f'{time.time()-start_time},{len(slice_view.items())}')
-            # start_time = time.time()
         t0 += rate
         update(t0, span, crop, fly)
         app.processEvents()
@@ -173,13 +171,13 @@ def play(rate=100):
 
 def swap_flies(index, fly1=0, fly2=1):
     # use swap_dims to swap flies in all dataarrays in the data set?
-    if index in swap_events:  # if already in there remove - swapping a second time negates first swap
-        swap_events.remove(index)
-    else:
-        swap_events.append(index)
     fs_song = dataset.song.attrs['sampling_rate_Hz']
     fs_other = dataset.pose_positions_allo.attrs['sampling_rate_Hz']
     index_other = int(index * fs_other / fs_song)
+    if [index_other, fly1, fly2] in swap_events:  # if already in there remove - swapping a second time negates first swap
+        swap_events.remove([index_other, fly1, fly2])
+    else:
+        swap_events.append([index_other, fly1, fly2])
     ## THE FOLLOWING DOES NOT UPDATE THE DATASET:
     # for var_name, var in dataset.data_vars.items():
     #     if 'flies' in var.dims:
@@ -188,6 +186,11 @@ def swap_flies(index, fly1=0, fly2=1):
     dataset.pose_positions_allo.values[index_other:, [fly2, fly1], ...] = dataset.pose_positions_allo.values[index_other:, [fly1, fly2], ...]
     dataset.pose_positions.values[index_other:, [fly2, fly1], ...] = dataset.pose_positions.values[index_other:, [fly1, fly2], ...]
     dataset.body_positions.values[index_other:, [fly2, fly1], ...] = dataset.body_positions.values[index_other:, [fly1, fly2], ...]
+
+
+def save_swap_events(savefilename, lst):    
+    np.savetxt(savefilename, lst, fmt='%d', header='index fly1 fly2')
+
 
 pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way   
 logging.basicConfig(level=logging.INFO)

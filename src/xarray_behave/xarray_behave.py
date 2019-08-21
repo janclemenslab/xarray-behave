@@ -12,7 +12,7 @@ from . import metrics as mt
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000,
              keep_multi_channel: bool = False, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
-             make_mask: bool = False) -> None:
+             make_mask: bool = False, fix_fly_indices: bool = True) -> None:
     """[summary]
     
     Args:
@@ -27,6 +27,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         include_tracks (bool, optional): [description]. Defaults to True.
         include_poses (bool, optional): [description]. Defaults to True.
         make_mask (bool, optional): ..., Defaults to False.
+        fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
     
     Returns:
         None
@@ -288,6 +289,18 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # save command line args
     dataset.attrs = {'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
                      'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path}
+
+    if fix_fly_indices:
+        try:
+            filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
+            indices, flies1, flies2 = ld.load_swap_indices(filepath_swap)
+            dataset = ld.swap_flies(dataset, indices, flies1=0, flies2=1)
+            logging.info(f'  Fixed fly identities using info from {filepath_swap}.')
+        except Exception as e:
+            breakpoint()
+            logging.info(f'  Could not fix fly identities using info from {filepath_swap}.')
+            logging.debug(e)
+
     return dataset
 
 
