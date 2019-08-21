@@ -10,21 +10,26 @@ from . import metrics as mt
 
 
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000,
-             keep_multi_channel: bool = False, resample_video_data: bool = True):
-    """Assemble data set containing song and video data.
-
-    Synchronizes A/V, resamples annotations (pose, song) to common sampling grid.
-
+             keep_multi_channel: bool = False, resample_video_data: bool = True,
+             include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
+             make_mask: bool = False) -> None:
+    """[summary]
+    
     Args:
-        datename
-        root = ''
-        dat_path = 'dat'
-        res_path = 'res'
-        target_sampling_rate [float=1000] Sampling rate in Hz for pose and annotation data.
-        keep_multi_channel = False add multi-channel data (otherwise will only add merged traces)
-    Returns
-        xarray Dataset containing
-            [DESCRIPTION]
+        datename ([type]): [description]
+        root (str, optional): [description]. Defaults to ''.
+        dat_path (str, optional): [description]. Defaults to 'dat'.
+        res_path (str, optional): [description]. Defaults to 'res'.
+        target_sampling_rate (int, optional): Sampling rate in Hz for pose and annotation data. Defaults to 1000.
+        keep_multi_channel (bool, optional): Add multi-channel data (otherwise will only add merged traces). Defaults to False.
+        resample_video_data (bool, optional): Or keep video with original frame times. Defaults to True.
+        include_song (bool, optional): [description]. Defaults to True.
+        include_tracks (bool, optional): [description]. Defaults to True.
+        include_poses (bool, optional): [description]. Defaults to True.
+        make_mask (bool, optional): ..., Defaults to False.
+    
+    Returns:
+        None
     """
 
     # load RECORDING and TIMING INFORMATION
@@ -35,86 +40,90 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # LOAD TRACKS
     with_tracks = False
     with_fixed_tracks = False
-    filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
-    filepath_tracks_nonfixed = Path(root, res_path, datename, f'{datename}_tracks.h5')
-    try:
-        body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks)
-        with_tracks = True
-        with_fixed_tracks = True
-    except Exception as e:
-        logging.info(f'Could not load tracks from {filepath_tracks}.')
-        logging.debug(e)
+    if include_tracks:
+        filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
+        filepath_tracks_nonfixed = Path(root, res_path, datename, f'{datename}_tracks.h5')
         try:
-            logging.info(f'Trying non-fixed tracks at {filepath_tracks_nonfixed}.')
-            body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks_nonfixed)
+            body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks)
             with_tracks = True
+            with_fixed_tracks = True
         except Exception as e:
-            logging.info(f'   This failed, too:')
+            logging.info(f'Could not load tracks from {filepath_tracks}.')
             logging.debug(e)
-            first_tracked_frame = int(ss.frame(0))
-            last_tracked_frame = int(ss.frame(last_sample_number))
-            logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+            try:
+                logging.info(f'Trying non-fixed tracks at {filepath_tracks_nonfixed}.')
+                body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks_nonfixed)
+                with_tracks = True
+            except Exception as e:
+                logging.info(f'   This failed, too:')
+                logging.debug(e)
+    if not with_tracks:
+        first_tracked_frame = int(ss.frame(0))
+        last_tracked_frame = int(ss.frame(last_sample_number))
+        logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
             
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
     poses_from = None
-    filepath_poses = Path(root, res_path, datename, f'{datename}_poses_dpk.zarr')
-    try:
-        pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_deepposekit(filepath_poses)
-        with_poses = True
-        poses_from = 'DeepPoseKit'
-    except Exception as e:
-        logging.info(f'Could not load pose from {filepath_poses}.')
-        logging.debug(e)
-
-    # LOAD POSES from LEAP
-    if not with_poses:
-        filepath_poses = Path(root, res_path, datename, f'{datename}_poses.h5')
+    if include_poses:
+        filepath_poses = Path(root, res_path, datename, f'{datename}_poses_dpk.zarr')
         try:
-            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses)
+            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_deepposekit(filepath_poses)
             with_poses = True
-            poses_from = 'LEAP'
+            poses_from = 'DeepPoseKit'
         except Exception as e:
             logging.info(f'Could not load pose from {filepath_poses}.')
             logging.debug(e)
 
+        # LOAD POSES from LEAP
+        if not with_poses:
+            filepath_poses = Path(root, res_path, datename, f'{datename}_poses.h5')
+            try:
+                pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses)
+                with_poses = True
+                poses_from = 'LEAP'
+            except Exception as e:
+                logging.info(f'Could not load pose from {filepath_poses}.')
+                logging.debug(e)
+
     # load AUTOMATIC SEGMENTATION - currently produced by matlab
     with_segmentation = False
+    with_segmentation_manual = False        
     with_song = False
-    res = dict()
-    filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.mat')
-    try:
-        res = ld.load_segmentation(filepath_segmentation)
-        with_segmentation = True
-        with_song = True
-    except Exception as e:
-        logging.info(f'Could not load segmentation from {filepath_segmentation}.')
-        logging.debug(e)
-
-    # load RAW song traces
-    if not with_song or keep_multi_channel:
+    if include_song:
+        res = dict()
+        filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.mat')
         try:
-            logging.info(f'Reading recording from {filepath_daq}.')
-            song_raw = ld.load_raw_song(filepath_daq)
-            if not with_song:
-                song_merged_max = ld.merge_channels(song_raw, sampling_rate)
-                res['song'] = song_merged_max
-            if keep_multi_channel:
-                res['song_raw'] = song_raw
+            res = ld.load_segmentation(filepath_segmentation)
+            with_segmentation = True
             with_song = True
         except Exception as e:
-            logging.info(f'Could not load song from {filepath_daq}.')
+            logging.info(f'Could not load segmentation from {filepath_segmentation}.')
             logging.debug(e)
 
-    # load MANUAL SONG ANNOTATIONS
-    with_segmentation_manual = False
-    filepath_segmentation_manual = Path(root, res_path, datename, f'{datename}_songmanual.mat')
-    try:
-        manual_events_seconds = ld.load_manual_annotation(filepath_segmentation_manual)
-        with_segmentation_manual = True
-    except Exception as e:
-        logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
-        logging.debug(e)
+        # load RAW song traces
+        if not with_song or keep_multi_channel:
+            try:
+                logging.info(f'Reading recording from {filepath_daq}.')
+                song_raw = ld.load_raw_song(filepath_daq)
+                if not with_song:
+                    song_merged_max = ld.merge_channels(song_raw, sampling_rate)
+                    res['song'] = song_merged_max
+                if keep_multi_channel:
+                    res['song_raw'] = song_raw
+                with_song = True
+            except Exception as e:
+                logging.info(f'Could not load song from {filepath_daq}.')
+                logging.debug(e)
+
+        # load MANUAL SONG ANNOTATIONS
+        filepath_segmentation_manual = Path(root, res_path, datename, f'{datename}_songmanual.mat')
+        try:
+            manual_events_seconds = ld.load_manual_annotation(filepath_segmentation_manual)
+            with_segmentation_manual = True
+        except Exception as e:
+            logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
+            logging.debug(e)
 
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
     first_sample = 0
@@ -172,11 +181,12 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         events['song_pulse_any'] = res['pulse_times_samples']
         events['song_pulse_slow'] = res['pulse_times_samples'][res['pulse_labels'] == 1]
         events['song_pulse_fast'] = res['pulse_times_samples'][res['pulse_labels'] == 0]
-        events['sine'] = np.where(song_labels == 2)[0]
+        sine_song = res['song_mask'][first_sample:last_sample:step, 0] == 2
+        events['sine'] = np.where(sine_song == 2)[0]
 
     if with_segmentation_manual or with_segmentation:
         eventtypes = [*events.keys()]
-        song_events_np = np.zeros((len(time), len(eventtypes)), dtype=np.bool)  # pre-allocate grid holding event data
+        song_events_np = np.full((len(time), len(eventtypes)), False, dtype=np.bool)  # pre-allocate grid holding event data
         for cnt, key in enumerate(events.keys()):
             event_times = np.unique((events[key] / step).astype(np.uintp))
             event_times = event_times[event_times < last_sample_with_frame / step]

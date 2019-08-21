@@ -74,21 +74,26 @@ def update(index, span, crop=False, fly=0):
         index_other = int(index * fs_other / fs_song)
 
         # clear trace plot and update with new trace
-        x = dataset.sampletime[int(index - span/2):int(index + span/2)].values
-        y = dataset.song[int(index - span/2):int(index + span/2)].values
-        step = int(np.ceil(len(x) / fs_song /2))
+        t0 = int(index - span / 2)
+        t0 = max(0, t0)
+        t1 = int(index + span / 2)
+        t1 = max(t0 + span, t1)
+        
+        x = dataset.sampletime[t0:t1].values
+        y = dataset.song[t0:t1].values
+        step = int(np.ceil(len(x) / fs_song / 2))
+        step = max(step, 1)  # make sure step is at least 1
         slice_view.clear()
         slice_view.plot(x[::step], y[::step])
         
         # # mark song events in trace
-        vibration_indices = np.where(dataset.song_events[int(index_other - span/20):int(index_other + span/20), 0].values)[0] * int(1 / fs_other * fs_song)
+        vibration_indices = np.where(dataset.song_events[int(index_other - span / 20):int(index_other + span / 20), 0].values)[0] * int(1 / fs_other * fs_song)
         vibrations = x[vibration_indices]
         for vib in vibrations:
             slice_view.addItem(pg.InfiniteLine(movable=False, angle=90, pos=vib))
         
         # indicate time point of displayed frame in trace
-        slice_view.addItem(pg.InfiniteLine(movable=False, angle=90, pos=x[int(span/2)], pen=pg.mkPen(color='r', width=1)))
-        # get frame number        
+        slice_view.addItem(pg.InfiniteLine(movable=False, angle=90, pos=x[int(span / 2)], pen=pg.mkPen(color='r', width=1)))
     else:
         fs_other = dataset.body_positions.attrs['sampling_rate_Hz']
         index_other = int(index * fs_other / 10_000)

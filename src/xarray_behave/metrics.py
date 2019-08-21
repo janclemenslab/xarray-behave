@@ -28,12 +28,12 @@ def remove_nan(x):
 
 def distance(pos1, pos2=None, set_self_to_nan: bool = False):
     """Compute pairwise euclidean distances.
-    
+
     Args:
         pos1 ([type]): positions of the thorax. [time, flies1, y/x]
         pos2 ([type], optional): positions of the thorax. [time, flies2, y/x], Defaults to None
         set_self_to_nan (bool, optional): set self-distances (diagonal along 2nd and 3rd dim) to nan. Defaults to False. Will be ignored if pos2 is not None.
-    
+
     Returns:
         [type]: distances between flies. [time, flies1, flies2]
     """
