@@ -12,6 +12,7 @@ S - zoom in
 D - zoom out
 C - crop video around position fly
 F - next fly for cropping
+X - swap first with second fly for all frames following the current frame 
 SPACE - play/stop video/song trace in
 """
 import os
@@ -38,20 +39,20 @@ class KeyPressWidget(pg.GraphicsLayoutWidget):
 
 def keyPressed(evt):
     global t0, span, crop, fly, STOP
-    if evt.key() == QtCore.Qt.Key_Left:
-        t0 -= 100
-    elif evt.key() == QtCore.Qt.Key_Right:
-        t0 += 100
+    if evt.key() == QtCore.Qt.Key_Left:  # go one frame back
+        t0 -= frame_interval  # TODO get val from fps
+    elif evt.key() == QtCore.Qt.Key_Right:  # advance by one frame
+        t0 += frame_interval  # TODO get val from fps
     if evt.key() == QtCore.Qt.Key_A:
-        t0 -= span/2
+        t0 -= span / 2
     elif evt.key() == QtCore.Qt.Key_D:
-        t0 += span/2
+        t0 += span / 2
     elif evt.key() == QtCore.Qt.Key_W:
         span /= 2
     elif evt.key() == QtCore.Qt.Key_S:
         span *= 2
     elif evt.key() == QtCore.Qt.Key_X:
-        swap_flies(dataset, t0)
+        swap_flies(t0)
         logging.info(f'   Swapping flies 1 & 2 at time {t0}.')
     elif evt.key() == QtCore.Qt.Key_C:
         crop = not crop
@@ -170,22 +171,32 @@ def play(rate=100):
             RUN = False
 
 
-def swap_flies(dataset, index, fly1=0, fly2=1):
-    swap_events.append(index)
+def swap_flies(index, fly1=0, fly2=1):
+    # use swap_dims to swap flies in all dataarrays in the data set?
+    if index in swap_events:  # if already in there remove - swapping a second time negates first swap
+        swap_events.remove(index)
+    else:
+        swap_events.append(index)
     fs_song = dataset.song.attrs['sampling_rate_Hz']
     fs_other = dataset.pose_positions_allo.attrs['sampling_rate_Hz']
     index_other = int(index * fs_other / fs_song)
-    dataset.pose_positions_allo.values[index_other:, :, ...] = dataset.pose_positions_allo.values[index_other:, ::-1, ...]
-    return dataset
+    ## THE FOLLOWING DOES NOT UPDATE THE DATASET:
+    # for var_name, var in dataset.data_vars.items():
+    #     if 'flies' in var.dims:
+    #         var.sel(time=slice(index,None), flies=fly1).values, var.sel(time=slice(index,None), flies=fly2).values = var.sel(time=slice(index,None), flies=fly2).values, var.sel(time=slice(index,None), flies=fly1).values
+    #         dataset.data_vars[var_name].values = var.values
+    dataset.pose_positions_allo.values[index_other:, [fly2, fly1], ...] = dataset.pose_positions_allo.values[index_other:, [fly1, fly2], ...]
+    dataset.pose_positions.values[index_other:, [fly2, fly1], ...] = dataset.pose_positions.values[index_other:, [fly1, fly2], ...]
+    dataset.body_positions.values[index_other:, [fly2, fly1], ...] = dataset.body_positions.values[index_other:, [fly1, fly2], ...]
 
 pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way   
 logging.basicConfig(level=logging.INFO)
 
 datename = 'localhost-20181120_144618'
 root = ''
-if len(sys.argv)>=2:
+if len(sys.argv) >= 2:
     datename = sys.argv[1]
-if len(sys.argv)>=3:
+if len(sys.argv) >= 3:
     root = sys.argv[2]
 
 if os.path.exists(datename + '.zarr'):
@@ -201,18 +212,19 @@ filepath = dataset.attrs['video_filename']
 vr = VideoReaderNP(filepath[:-3] + 'avi')
 
 # indices
-t0 = 2_800_000#1_100_000
+t0 = 2_800_000  #1_100_000
 span = 100_000
 if hasattr(dataset, 'song'):
     tmax = len(dataset.song)
 else:
-    tmax = len(dataset.body_positions)*10
+    tmax = len(dataset.body_positions) * 10  # TODO: get factor from dataset
 
 crop = False
 fly = 0
 nb_flies = np.max(dataset.flies).values+1
 STOP = True
 swap_events = []
+frame_interval = 100  # TODO: get from dataset
 
 app = pg.QtGui.QApplication([])
 win = pg.QtGui.QMainWindow()
@@ -227,10 +239,10 @@ slice_view = pg.PlotWidget(name="song")
 cw = KeyPressWidget()
 cw.sigKeyPress.connect(keyPressed)
 
-l = pg.QtGui.QVBoxLayout()
-l.addWidget(image_view, stretch=4)
-l.addWidget(slice_view, stretch=1)
-cw.setLayout(l)
+ly = pg.QtGui.QVBoxLayout()
+ly.addWidget(image_view, stretch=4)
+ly.addWidget(slice_view, stretch=1)
+cw.setLayout(ly)
 win.setCentralWidget(cw)
 win.show()
 
@@ -238,7 +250,7 @@ image_view.ui.histogram.hide()
 image_view.ui.roiBtn.hide()
 image_view.ui.menuBtn.hide()
 
-update(t0,span, crop, fly)
+update(t0, span, crop, fly)
 
 # Start Qt event loop unless running in interactive mode or using pyside.
 if __name__ == '__main__':
