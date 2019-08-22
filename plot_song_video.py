@@ -1,14 +1,14 @@
 """PLOT SONG AND PLAY VIDEO IN SYNC
 
-`python plot_song_video.py datename root`
+`python plot_song_video.py datename root cuepoints`
 
 datename: experiment name (e.g. localhost-20181120_144618)
 root: defaults to the current directory - this will work if you're in #Common/chainingmic
-
-Keys (may need to "activate" plot by clicking on song trace first to make this work):
+cuepoints: string evaluating to a list (e.g. '[100, 50000, 100000]' - including the quotation ticks)
+Keys (may need to "activate" plokeyst by clicking on song trace first to make this work):
 W/A - move left/right
 S/D - zoom in/out
-K/L - jump to previous/next
+K/L - jump to previous/next cue point
 M - toggle mark  position of each fly with colored dot
 C - toggle crop video around position fly
 F - next fly for cropping
@@ -33,7 +33,7 @@ from videoreader import VideoReader
 from pathlib import Path
 import cv2
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 
 def make_colors(nb_flies):
@@ -239,8 +239,14 @@ def save_swap_events(savefilename, lst):
     np.savetxt(savefilename, lst, fmt='%d', header='index fly1 fly2')
 
 
+def click(event):
+    event.accept()
+    pos = event.pos()
+    logging.debug(f'mouse clicked at x={int(pos.x())}, y={int(pos.y())}.')
+    # now id and select nearest fly
+
+
 pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
-logging.basicConfig(level=logging.INFO)
 
 datename = 'localhost-20181120_144618'
 root = ''
@@ -290,6 +296,7 @@ win.setWindowTitle("psv")
 
 image_view = ImageViewVR(name="img_view")
 image_view.setImage(vr)
+image_view.getImageItem().mouseClickEvent = click
 
 slice_view = pg.PlotWidget(name="song")
 
@@ -302,7 +309,6 @@ ly.addWidget(slice_view, stretch=1)
 cw.setLayout(ly)
 win.setCentralWidget(cw)
 win.show()
-
 image_view.ui.histogram.hide()
 image_view.ui.roiBtn.hide()
 image_view.ui.menuBtn.hide()
@@ -311,6 +317,6 @@ update(t0, span, crop, fly)
 
 # Start Qt event loop unless running in interactive mode or using pyside.
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
