@@ -6,10 +6,9 @@ datename: experiment name (e.g. localhost-20181120_144618)
 root: defaults to the current directory - this will work if you're in #Common/chainingmic
 
 Keys (may need to "activate" plot by clicking on song trace first to make this work):
-W - move left
-A - move right
-S - zoom in
-D - zoom out
+W/A - move left/right
+S/D - zoom in/out
+K/L - jump to previous/next
 M - toggle mark  position of each fly with colored dot
 C - toggle crop video around position fly
 F - next fly for cropping
@@ -34,13 +33,14 @@ from videoreader import VideoReader
 from pathlib import Path
 import cv2
 
+logging.basicConfig(level=logging.INFO)
+
 
 def make_colors(nb_flies):
     colors = np.zeros((1, nb_flies, 3), np.uint8)
     colors[0, :, 1:] = 220  # set saturation and brightness to 220
     colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_flies)  # set range of hues
     colors = cv2.cvtColor(colors, cv2.COLOR_HSV2BGR)[0].astype(np.uint8)[..., ::-1]
-    # colors = [list(map(float, thisColor)) for thisColor in colors]  # convert all items in color list to float
     return colors
 
 
@@ -95,7 +95,7 @@ class KeyPressWidget(pg.GraphicsLayoutWidget):
 
 
 def keyPressed(evt):
-    global t0, span, crop, fly, STOP, dot
+    global t0, span, crop, fly, STOP, dot, cue_index, span
     if evt.key() == QtCore.Qt.Key_Left:  # go one frame back
         t0 -= frame_interval  # TODO get val from fps
     elif evt.key() == QtCore.Qt.Key_Right:  # advance by one frame
@@ -110,6 +110,15 @@ def keyPressed(evt):
         span *= 2
     elif evt.key() == QtCore.Qt.Key_M:
         dot = not dot
+    elif evt.key() == QtCore.Qt.Key_K:
+        cue_index = max(0, cue_index-1)
+        logging.debug(f'cue val at cue_index {cue_index} is {cue_points[cue_index]}')
+        # t0 = dataset.time[cue_points[cue_index]].values  # jump to PREV cue point
+        t0 = cue_points[cue_index]  # jump to PREV cue point
+    elif evt.key() == QtCore.Qt.Key_L:
+        cue_index = min(cue_index+1, len(cue_points)-1)
+        logging.debug(f'cue val at cue_index {cue_index} is {cue_points[cue_index]}')
+        t0 = cue_points[cue_index]  # jump to PREV cue point
     elif evt.key() == QtCore.Qt.Key_X:
         swap_flies(t0)
         logging.info(f'   Swapping flies 1 & 2 at time {t0}.')
@@ -133,7 +142,9 @@ def keyPressed(evt):
             STOP = True
 
     span = int(max(500, span))
+    logging.debug(t0)
     t0 = int(np.clip(t0, span/2, tmax - span/2))
+    logging.debug(t0)
     update(t0, span, crop, fly)
     app.processEvents()
 
@@ -191,7 +202,7 @@ def update(index, span, crop=False, fly=0):
     image_view.setImage(frame)
 
 
-def play(rate=100):
+def play(rate=100):  # TODO: get rate from ds (video fps attr)
     global t0, span, crop, fly, STOP
     RUN = True
     while RUN:
@@ -233,10 +244,14 @@ logging.basicConfig(level=logging.INFO)
 
 datename = 'localhost-20181120_144618'
 root = ''
+cue_points = []
 if len(sys.argv) >= 2:
     datename = sys.argv[1]
 if len(sys.argv) >= 3:
     root = sys.argv[2]
+if len(sys.argv) >= 4:
+    cue_points = eval(sys.argv[3])
+
 
 # if os.path.exists(datename + '.zarr'):
 #     logging.info(f'Loading dataset from {datename}.zarr.')
@@ -261,6 +276,7 @@ else:
 crop = False
 dot = True
 fly = 0
+cue_index = 0
 nb_flies = np.max(dataset.flies).values+1
 fly_colors = make_colors(nb_flies)
 STOP = True
@@ -295,5 +311,6 @@ update(t0, span, crop, fly)
 
 # Start Qt event loop unless running in interactive mode or using pyside.
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
