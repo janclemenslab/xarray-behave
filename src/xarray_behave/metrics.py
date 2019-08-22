@@ -26,13 +26,14 @@ def remove_nan(x):
     return x
 
 
-def distance(pos1, pos2=None, set_self_to_nan: bool = False):
+def distance(pos1, pos2=None, set_self_to_nan: bool = False, exclude_cross_terms: bool = False):
     """Compute pairwise euclidean distances.
 
     Args:
         pos1 ([type]): positions of the thorax. [time, flies1, y/x]
         pos2 ([type], optional): positions of the thorax. [time, flies2, y/x], Defaults to None
         set_self_to_nan (bool, optional): set self-distances (diagonal along 2nd and 3rd dim) to nan. Defaults to False. Will be ignored if pos2 is not None.
+        exclude_cross_terms (boolean, optional):, Defaults to False.
 
     Returns:
         [type]: distances between flies. [time, flies1, flies2]
@@ -43,7 +44,10 @@ def distance(pos1, pos2=None, set_self_to_nan: bool = False):
     if pos2 is None:
         pos2 = pos1
 
-    dis = np.sqrt(np.sum((pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :])**2, axis=-1))
+    if exclude_cross_terms:
+        dis = np.sqrt(np.sum((pos1 - pos2)**2, axis=-1))
+    else:
+        dis = np.sqrt(np.sum((pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :])**2, axis=-1))
 
     if set_self_to_nan:
         nb_flies = pos1.shape[1]

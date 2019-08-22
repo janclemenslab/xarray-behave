@@ -297,8 +297,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             dataset = ld.swap_flies(dataset, indices, flies1=0, flies2=1)
             logging.info(f'  Fixed fly identities using info from {filepath_swap}.')
         except Exception as e:
-            breakpoint()
-            logging.info(f'  Could not fix fly identities using info from {filepath_swap}.')
+            logging.debug(f'  Could not fix fly identities using info from {filepath_swap}.')
             logging.debug(e)
 
     return dataset
