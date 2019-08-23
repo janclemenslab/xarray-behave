@@ -318,8 +318,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '', cue_points
     
     Args:
         datename (str): experiment id. Defaults to 'localhost-20181120_144618'.
-        root (str): pat
-        h containing the `dat` and `res` folders for the experiment. Defaults to ''.
+        root (str): path containing the `dat` and `res` folders for the experiment. Defaults to ''.
         cue_points (str): Should evaluate to a list of indices. Defaults to '[]'.
     """
     # if os.path.exists(datename + '.zarr'):
