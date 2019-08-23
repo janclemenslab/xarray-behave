@@ -11,4 +11,4 @@ pip install git+http://github.com/janclemenslab/xarray-behave
 ## Usage
 See `demo.ipynb`.
 
-`plot_song_video.py` plots song and video in synchrony. see top of `plot_song_video.py` for usage/arguments/keys.
+`psv.py` plots song and video in synchrony. see top of `psv.py` for usage/arguments/keys.
