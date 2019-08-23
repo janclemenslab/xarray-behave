@@ -9,7 +9,8 @@ Keys (may need to "activate" plokeyst by clicking on song trace first to make th
 W/A - move left/right
 S/D - zoom in/out
 K/L - jump to previous/next cue point
-M - toggle mark  position of each fly with colored dot
+M - toggle mark thorax each fly with colored dot
+P - toggle mark all tracked body parts with color dots
 C - toggle crop video around position fly
 F - next fly for cropping
 X - swap first with second fly for all frames following the current frame 
@@ -103,8 +104,6 @@ class PSV():
         self.vr = vr
         self.cue_points = cue_points
 
-
-        # indices
         self.span = 100_000
         self.t0 = int(self.span/2) #2_800_000  # 1_100_000
         if hasattr(self.ds, 'song'):
@@ -113,12 +112,16 @@ class PSV():
             self.tmax = len(self.ds.body_positions) * 10  # TODO: get factor from self.ds
 
         self.crop = False
-        self.dot = True
+        self.show_dot = True
+        self.old_show_dot_state = self.show_dot
+        self.show_poses = False
         self.focal_fly = 0
         self.other_fly = 1
         self.cue_index = 0
         self.nb_flies = np.max(self.ds.flies).values+1
-        self.focal_fly_colors = make_colors(self.nb_flies)
+        self.fly_colors = make_colors(self.nb_flies)
+        self.nb_bodyparts = len(self.ds.poseparts)
+        self.bodypart_colors = make_colors(self.nb_bodyparts)
         self.STOP = True
         self.swap_events = []
         self.mousex, self.mousey = None, None
@@ -168,8 +171,15 @@ class PSV():
             self.span /= 2
         elif evt.key() == QtCore.Qt.Key_S:
             self.span *= 2
+        elif evt.key() == QtCore.Qt.Key_P:
+            self.show_poses = not self.show_poses
+            if self.show_poses:
+                self.old_show_dot_state = self.show_dot
+                self.show_dot = False
+            else:
+                self.show_dot = self.old_show_dot_state
         elif evt.key() == QtCore.Qt.Key_M:
-            self.dot = not self.dot
+            self.show_dot = not self.show_dot
         elif evt.key() == QtCore.Qt.Key_K:
             self.cue_index = max(0, self.cue_index-1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
@@ -237,13 +247,21 @@ class PSV():
         fn = self.ds.body_positions.nearest_frame[index_other]
         frame = self.vr[fn]
         thorax_index = 8
-        if self.dot:
-            dot_size = 2
+        dot_size = 2
+        if self.show_poses:
+            for dot_fly in range(self.nb_flies):
+                fly_pos = self.ds.pose_positions_allo[index_other, dot_fly, ...].values
+                x_dot = np.clip((fly_pos[..., 0]-dot_size, fly_pos[..., 0]+dot_size), 0, self.vr.frame_width-1).astype(np.uintp)
+                y_dot = np.clip((fly_pos[..., 1]-dot_size, fly_pos[..., 1]+dot_size), 0, self.vr.frame_height-1).astype(np.uintp)
+                for bodypart_color, x_pos, y_pos in zip(self.bodypart_colors, x_dot.T, y_dot.T):
+                    frame[slice(*x_pos), slice(*y_pos), :] = bodypart_color  # now crop frame around one of the flies
+
+        if self.show_dot:
             for dot_fly in range(self.nb_flies):
                 fly_pos = self.ds.pose_positions_allo[index_other, dot_fly, thorax_index].values
                 x_dot = np.clip((fly_pos[0]-dot_size, fly_pos[0]+dot_size), 0, self.vr.frame_width-1).astype(np.uintp)
                 y_dot = np.clip((fly_pos[1]-dot_size, fly_pos[1]+dot_size), 0, self.vr.frame_height-1).astype(np.uintp)
-                frame[slice(*x_dot), slice(*y_dot), :] = self.focal_fly_colors[dot_fly]  # now crop frame around one of the flies
+                frame[slice(*x_dot), slice(*y_dot), :] = self.fly_colors[dot_fly]  # set pixels around 
 
         if self.crop:
             fly_pos = self.ds.pose_positions_allo[index_other, self.focal_fly, thorax_index]
