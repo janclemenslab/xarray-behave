@@ -17,9 +17,9 @@ X - swap first with second fly for all frames following the current frame
 O - save swap indices to file
 SPACE - play/stop video/song trace in
 """
-# TODO - IN PROGRESS: capture mouse events to select swap flies in case there are more than 2 flies (fly1 could be focal fly from crop, fly2 determined by mouse click position) 
+# DONE- IN PROGRESS: capture mouse events to select swap flies in case there are more than 2 flies (fly1 could be focal fly from crop, fly2 determined by mouse click position) 
 #       see http://www.pyqtgraph.org/documentation/graphicsscene/mouseclickevent.html
-# TODO: use defopt for catching/processing cmdline args
+# DONE: use defopt for catching/processing cmdline args
 # DONE: remove horrible global vars and global scope!
 
 
@@ -34,6 +34,7 @@ from videoreader import VideoReader
 from pathlib import Path
 import cv2
 import defopt
+from functools import partial
 
 
 def make_colors(nb_flies):
@@ -140,11 +141,36 @@ class PSV():
         self.image_view.getImageItem().mouseClickEvent = self.click
 
         self.slice_view = pg.PlotWidget(name="song")
-
+        
         self.cw = KeyPressWidget()
         self.cw.sigKeyPress.connect(self.keyPressed)
+        
+        self.buttonP = QtGui.QPushButton("[p]oses")
+        self.buttonP.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_P))
+        self.buttonM = QtGui.QPushButton("[m]ark thorax")
+        self.buttonM.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_M))
+        self.buttonC = QtGui.QPushButton("[c]rop frame")
+        self.buttonC.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_C))
+        self.buttonK = QtGui.QPushButton("next [K] cue point")
+        self.buttonK.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_K))
+        self.buttonL = QtGui.QPushButton("previous [L] cue point")
+        self.buttonL.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_L))
+        self.buttonX = QtGui.QPushButton("[x]change fly labels")
+        self.buttonX.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_X))
+        self.buttonO = QtGui.QPushButton("save [O] exchange points")
+        self.buttonO.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_O))
 
+        self.hl = QtGui.QHBoxLayout()
+        self.hl.addWidget(self.buttonP, stretch=1)
+        self.hl.addWidget(self.buttonM, stretch=1)
+        self.hl.addWidget(self.buttonC, stretch=1)
+        self.hl.addWidget(self.buttonK, stretch=1)
+        self.hl.addWidget(self.buttonL, stretch=1)
+        self.hl.addWidget(self.buttonX, stretch=1)
+        self.hl.addWidget(self.buttonO, stretch=1)
+        
         self.ly = pg.QtGui.QVBoxLayout()
+        self.ly.addLayout(self.hl)
         self.ly.addWidget(self.image_view, stretch=4)
         self.ly.addWidget(self.slice_view, stretch=1)
         self.cw.setLayout(self.ly)
@@ -153,7 +179,6 @@ class PSV():
         self.image_view.ui.histogram.hide()
         self.image_view.ui.roiBtn.hide()
         self.image_view.ui.menuBtn.hide()
-
         self.update()
 
 
@@ -181,14 +206,16 @@ class PSV():
         elif evt.key() == QtCore.Qt.Key_M:
             self.show_dot = not self.show_dot
         elif evt.key() == QtCore.Qt.Key_K:
-            self.cue_index = max(0, self.cue_index-1)
-            logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
-            # t0 = self.ds.time[cue_points[cue_index]].values  # jump to PREV cue point
-            self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
+            if self.cue_points:
+                self.cue_index = max(0, self.cue_index-1)
+                logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
+                # t0 = self.ds.time[cue_points[cue_index]].values  # jump to PREV cue point
+                self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
         elif evt.key() == QtCore.Qt.Key_L:
-            self.cue_index = min(self.cue_index+1, len(self.cue_points)-1)
-            logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
-            self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
+            if self.cue_points:
+                self.cue_index = min(self.cue_index+1, len(self.cue_points)-1)
+                logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
+                self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
         elif evt.key() == QtCore.Qt.Key_X:
             self.ds, self.swap_events = swap_flies(self.ds, self.t0, self.swap_events)  # make this class method
             logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
@@ -213,7 +240,8 @@ class PSV():
 
         self.span = int(max(500, self.span))
         self.t0 = int(np.clip(self.t0, self.span/2, self.tmax - self.span/2))
-        self.update()
+        if self.STOP:  # avoid unecessary update if playback is running
+            self.update()
         self.app.processEvents()
 
 
@@ -272,6 +300,7 @@ class PSV():
             frame = frame[slice(*x_range), slice(*y_range), :]
         self.image_view.clear()
         self.image_view.setImage(frame)
+        self.app.processEvents()
 
     def play(self, rate=100):  # TODO: get rate from ds (video fps attr)
         RUN = True
@@ -302,9 +331,14 @@ class PSV():
         fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
         self.other_fly = np.argmin(fly_dist)
         logging.debug(f"Selected {self.other_fly}.")
-        t_up = pg.TextItem(f"Selected {self.other_fly}.", (255, 255, 255), anchor=(0, 0))
+        # t_up = pg.TextItem(f"Selected {self.other_fly}.", (255, 255, 255), anchor=(0, 0))
         # t_up.setPos(i + 0.5, -j + 0.5)
         # breakpoint()
+
+    def synthetic_key(self, key):
+        evt = QtGui.QKeyEvent(QtGui.QKeyEvent.KeyPress, key, QtCore.Qt.NoModifier) 
+        self.app.sendEvent(self.cw, evt)
+        self.app.processEvents()
 
 
 def swap_flies(ds, index, swap_events, fly1=0, fly2=1):
