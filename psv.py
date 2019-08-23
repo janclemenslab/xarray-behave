@@ -183,7 +183,7 @@ class PSV():
             self.ds, self.swap_events = swap_flies(self.ds, self.t0, self.swap_events)  # make this class method
             logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
         elif evt.key() == QtCore.Qt.Key_O:
-            savefilename = Path(ds.attrs['root'], ds.attrs['res_path'], ds.attrs['datename'], f"{ds.attrs['datename']}_idswaps_test.txt")
+            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
             save_swap_events(savefilename, self.swap_events)
             logging.info(f'   Saving list of swap indices to {savefilename}.')
         elif evt.key() == QtCore.Qt.Key_C:
