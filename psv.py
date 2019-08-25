@@ -98,6 +98,7 @@ class KeyPressWidget(pg.GraphicsLayoutWidget):
 class PSV():
 
     BOX_SIZE = 200
+    MAX_AUDIO_AMP = 3.0
 
     def __init__(self, ds, vr, cue_points=[]):
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
@@ -128,6 +129,7 @@ class PSV():
         self.mousex, self.mousey = None, None
         self.frame_interval = 100  # TODO: get from self.ds
         # FIXME: will fail for datasets w/o song
+        
         self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
         self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
 
@@ -159,6 +161,8 @@ class PSV():
         self.buttonX.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_X))
         self.buttonO = QtGui.QPushButton("save [O] exchange points")
         self.buttonO.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_O))
+        self.buttonE = QtGui.QPushButton("play [E] audio")
+        self.buttonE.clicked.connect(partial(self.synthetic_key, key=QtCore.Qt.Key_E))
 
         self.hl = QtGui.QHBoxLayout()
         self.hl.addWidget(self.buttonP, stretch=1)
@@ -168,6 +172,7 @@ class PSV():
         self.hl.addWidget(self.buttonL, stretch=1)
         self.hl.addWidget(self.buttonX, stretch=1)
         self.hl.addWidget(self.buttonO, stretch=1)
+        self.hl.addWidget(self.buttonE, stretch=1)
         
         self.ly = pg.QtGui.QVBoxLayout()
         self.ly.addLayout(self.hl)
@@ -196,6 +201,8 @@ class PSV():
             self.span /= 2
         elif evt.key() == QtCore.Qt.Key_S:
             self.span *= 2
+        elif evt.key() == QtCore.Qt.Key_E:
+            self.play_audio(max_amp=self.MAX_AUDIO_AMP, wait_done=False)  # play in background
         elif evt.key() == QtCore.Qt.Key_P:
             self.show_poses = not self.show_poses
             if self.show_poses:
@@ -233,7 +240,7 @@ class PSV():
             if self.STOP:
                 logging.info(f'   Starting playback.')
                 self.STOP = False
-                self.play()
+                self.play_video()
             else:
                 logging.info(f'   Stopping playback.')
                 self.STOP = True
@@ -247,7 +254,7 @@ class PSV():
 
     def update(self):
         """Updates the view."""
-        if hasattr(self.ds, 'song'):
+        if 'song' in self.ds:
             index_other = int(self.t0 * self.fs_other / self.fs_song)
 
             # clear trace plot and update with new trace
@@ -302,7 +309,7 @@ class PSV():
         self.image_view.setImage(frame)
         self.app.processEvents()
 
-    def play(self, rate=100):  # TODO: get rate from ds (video fps attr)
+    def play_video(self, rate=100):  # TODO: get rate from ds (video fps attr)
         RUN = True
         while RUN:
             self.t0 += rate
@@ -340,6 +347,34 @@ class PSV():
         self.app.sendEvent(self.cw, evt)
         self.app.processEvents()
 
+    def play_audio(self, max_amp=None, wait_done=False):
+        """Play vector as audio using the simpleaudio package.
+
+        Args:
+            max_amp ([type], optional): Maximum amplitude of the waveform. Will clip values below and above. Defaults to None (max abs value of current waveform).
+            wait_done (bool, optional): Block UI until playback is done. Defaults to False.
+        """
+        if 'song' in self.ds:
+            import simpleaudio
+            time0 = int(self.t0 - self.span / 2)
+            time1 = int(self.t0 + self.span / 2)
+            x = self.ds.song[time0:time1].values
+            # normalize to 16-bit range and convert to 16-bit data
+            if max_amp is None:
+                max_amp = np.nanmax(np.abs(x))
+            x = x * 32767 / max_amp
+            x = x.astype(np.int16)
+            # simpleaudio can only play at these rates - choose the one nearest to our rate
+            allowed_sample_rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 192000]  # Hz
+            sample_rate = min(allowed_sample_rates, key=lambda x:abs(x-int(self.fs_song)))
+            # FIXME resample audio to new sample_rate to preserve sound
+            # start playback
+            play_obj = simpleaudio.play_buffer(x, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
+            if wait_done:# block UI until playback is done
+                play_obj.wait_done()
+        else:
+            logging.info(f'Could not play sound - no merged-channel sound data in the dataset.')
+
 
 def swap_flies(ds, index, swap_events, fly1=0, fly2=1):
     # use swap_dims to swap flies in all dataarrays in the data set?
@@ -363,6 +398,7 @@ def swap_flies(ds, index, swap_events, fly1=0, fly2=1):
 
 def save_swap_events(savefilename, lst):
     np.savetxt(savefilename, lst, fmt='%d', header='index fly1 fly2')
+
 
 
 def main(datename: str = 'localhost-20181120_144618', root: str = '', cue_points: str = '[]'):
