@@ -31,7 +31,7 @@ import sys
 import logging
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
-import xarray_behave as xb
+from . import xarray_behave as xb
 import numpy as np
 from videoreader import VideoReader
 from pathlib import Path
