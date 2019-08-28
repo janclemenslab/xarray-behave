@@ -244,13 +244,17 @@ class PSV():
             savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
             save_swap_events(savefilename, self.swap_events)
             logging.info(f'   Saving list of swap indices to {savefilename}.')
-        elif evt.key() == QtCore.Qt.Key_C:
+        elif evt.key() == QtCore.Qt.Key_C:  # crop video
             self.crop = not self.crop
             logging.info(f'   Cropping = {self.crop}.')
-        elif evt.key() == QtCore.Qt.Key_F:
-            self.focal_fly = (self.focal_fly+1) % self.nb_flies
+        elif evt.key() == QtCore.Qt.Key_F:  # change focal fly
+            tmp = (self.focal_fly+1) % self.nb_flies
+            if tmp == self.other_fly:  # swap focal and other fly if same
+                self.other_fly, self.focal_fly = self.focal_fly, self.other_fly
+            else:
+                self.focal_fly = tmp
             logging.info(f'   Cropping around fly {self.focal_fly}.')
-        elif evt.key() == QtCore.Qt.Key_Space:
+        elif evt.key() == QtCore.Qt.Key_Space:  # control p
             if self.STOP:
                 logging.info(f'   Starting playback.')
                 self.STOP = False
@@ -317,10 +321,18 @@ class PSV():
                 fly_pos = self.ds.pose_positions_allo[index_other, dot_fly, thorax_index].values
                 x_dot = np.clip((fly_pos[0]-dot_size, fly_pos[0]+dot_size), 0, self.vr.frame_width-1).astype(np.uintp)
                 y_dot = np.clip((fly_pos[1]-dot_size, fly_pos[1]+dot_size), 0, self.vr.frame_height-1).astype(np.uintp)
-                frame[slice(*x_dot), slice(*y_dot), :] = self.fly_colors[dot_fly]  # set pixels around 
-
+                frame[slice(*x_dot), slice(*y_dot), :] = self.fly_colors[dot_fly]  # set pixels around
+            
+            import skimage.draw
+            fly_pos = self.ds.pose_positions_allo[index_other, self.focal_fly, thorax_index].values.astype(np.uintp)
+            xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], 8, method='bresenham')
+            frame[xx, yy, :] = self.bodypart_colors[2]
+            fly_pos = self.ds.pose_positions_allo[index_other, self.other_fly, thorax_index].values.astype(np.uintp)
+            xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], 8, method='bresenham')
+            frame[xx, yy, :] = self.bodypart_colors[6]
+            
         if self.crop:
-            fly_pos = self.ds.pose_positions_allo[index_other, self.focal_fly, thorax_index]
+            fly_pos = self.ds.pose_positions_allo[index_other, self.focal_fly, thorax_index].values
             # makes sure crop does not exceed frame bounds
             x_range = np.clip((fly_pos[0]-self.BOX_SIZE, fly_pos[0]+self.BOX_SIZE), 0, self.vr.frame_width-1).astype(np.uintp)
             y_range = np.clip((fly_pos[1]-self.BOX_SIZE, fly_pos[1]+self.BOX_SIZE), 0, self.vr.frame_height-1).astype(np.uintp)
@@ -362,6 +374,7 @@ class PSV():
         # t_up = pg.TextItem(f"Selected {self.other_fly}.", (255, 255, 255), anchor=(0, 0))
         # t_up.setPos(i + 0.5, -j + 0.5)
         # breakpoint()
+        self.update()
 
     def synthetic_key(self, key):
         evt = QtGui.QKeyEvent(QtGui.QKeyEvent.KeyPress, key, QtCore.Qt.NoModifier) 
