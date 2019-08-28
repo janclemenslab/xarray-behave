@@ -16,6 +16,7 @@ F - next fly for cropping
 X - swap first with second fly for all frames following the current frame 
 O - save swap indices to file
 E - play current waveform as sound
+V - toggle show song events in waveform (showing song events slows down video rate - untoggle if you want fast video playback)
 R/T - increase/decrease frequency resolution in spectrogram
 G - toggle show spectrogram
 SPACE - play/stop video/song trace in
@@ -127,12 +128,15 @@ class PSV():
         self.fly_colors = make_colors(self.nb_flies)
         self.nb_bodyparts = len(self.ds.poseparts)
         self.bodypart_colors = make_colors(self.nb_bodyparts)
+        self.nb_eventtypes = len(self.ds.event_types)
+        self.eventype_colors = make_colors(self.nb_eventtypes)
         self.STOP = True
         self.swap_events = []
         self.mousex, self.mousey = None, None
         self.frame_interval = 100  # TODO: get from self.ds
         self.show_spec = True
         self.spec_win = 200
+        self.show_songevents = True
         # FIXME: will fail for datasets w/o song
         
         self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
@@ -167,6 +171,7 @@ class PSV():
         self.add_keyed_button(self.hl, "show spectro[G]ram", QtCore.Qt.Key_G)
         self.add_keyed_button(self.hl, "inc f[R]equency", QtCore.Qt.Key_R)
         self.add_keyed_button(self.hl, "inc [T]ime res", QtCore.Qt.Key_T)
+        self.add_keyed_button(self.hl, "show song e[V]ents", QtCore.Qt.Key_V)
  
         self.ly = pg.QtGui.QVBoxLayout()
         self.ly.addLayout(self.hl)
@@ -194,9 +199,7 @@ class PSV():
         button.clicked.connect(partial(self.synthetic_key, key=qt_keycode))
         parent.addWidget(button, stretch=1)
 
-
     def keyPressed(self, evt):
-        # global t0, span, crop, fly, STOP, dot, cue_index, span
         if evt.key() == QtCore.Qt.Key_Left:  # go a single frame back
             self.t0 -= self.frame_interval
         elif evt.key() == QtCore.Qt.Key_Right:  # advance by a single frame
@@ -223,7 +226,9 @@ class PSV():
                 self.old_show_dot_state = self.show_dot
                 self.show_dot = False
             else:
-                self.show_dot = self.old_show_dot_state
+                self.show_dot = self.old_show_dot_state        
+        elif evt.key() == QtCore.Qt.Key_V:
+            self.show_songevents = not self.show_songevents
         elif evt.key() == QtCore.Qt.Key_M:
             self.show_dot = not self.show_dot
         elif evt.key() == QtCore.Qt.Key_K:
@@ -286,12 +291,36 @@ class PSV():
             self.slice_view.plot(x[::step], y[::step])
 
             # # mark song events in trace
-            vibration_indices = np.where(self.ds.song_events[int(
-                index_other - self.span / 20):int(index_other + self.span / 20), 0].values)[0] * int(1 / self.fs_other * self.fs_song)
-            vibrations = x[vibration_indices]
-            for vib in vibrations:
-                self.slice_view.addItem(pg.InfiniteLine(movable=False, angle=90, pos=vib))
+            # vibration_indices = np.where(self.ds.song_events[int(index_other - self.span / 20):int(index_other + self.span / 20), 0].values)[0] * int(1 / self.fs_other * self.fs_song)
+            # vibrations = x[vibration_indices]
+            # for vib in vibrations:
+            #     self.slice_view.addItem(pg.InfiniteLine(movable=False, angle=90, pos=vib))if self.show_songevents:
+            for event_type in range(self.nb_eventtypes):
+                event_pen = pg.mkPen(color=self.eventype_colors[event_type], width=1)
+                if 'sine' in self.ds.event_types.values[event_type]:
+                    event_trace = self.ds.song_events[int(index_other - self.span / 20):int(index_other + self.span / 20), event_type].values
+                    d_event_trace = np.diff(event_trace.astype(np.int))
+                    event_onset_indices = x[np.where(d_event_trace > 0)[0] * int(1 / self.fs_other * self.fs_song)]
+                    event_offset_indices = x[np.where(d_event_trace < 0)[0] * int(1 / self.fs_other * self.fs_song)]
 
+                    # FIXME both will fail if there is only a single but incomplete sine song in the x-range since the respective other will have zero length
+                    if len(event_offset_indices) and len(event_onset_indices) and event_offset_indices[0] < event_onset_indices[0]:  # first offset outside of x-range
+                        event_onset_indices = np.pad(event_onset_indices, (1, 0), mode='constant', constant_values=x[0])  # add additional onset at x[0] boundary
+                    if len(event_offset_indices) and len(event_onset_indices)  and event_offset_indices[-1] < event_onset_indices[-1]:  # last offset outside of x-range
+                        event_offset_indices = np.pad(event_offset_indices, (0, 1), mode='constant', constant_values=x[-1])  # add additional offset at x[-1] boundary
+
+                    for onset, offset in zip(event_onset_indices, event_offset_indices):
+                        self.slice_view.addItem(pg.LinearRegionItem(values=(onset, offset),
+                                                                    movable=False))#, orientation=pg.LinearRegionItem.Horizontal)  # for sine
+                else:
+                    event_indices = np.where(self.ds.song_events[int(index_other - self.span / 20):int(index_other + self.span / 20), event_type].values)[0] * int(1 / self.fs_other * self.fs_song)
+                    events = x[event_indices]
+                    for evt in events:
+                        self.slice_view.addItem(pg.InfiniteLine(movable=False,
+                                                                angle=90,
+                                                                pos=evt,
+                                                                pen=event_pen))
+            
             # indicate time point of displayed frame in trace
             self.slice_view.addItem(pg.InfiniteLine(movable=False, angle=90,
                                                     pos=x[int(self.span / 2)],
