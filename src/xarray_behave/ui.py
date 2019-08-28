@@ -1,6 +1,6 @@
 """PLOT SONG AND PLAY VIDEO IN SYNC
 
-`python plot_song_video.py datename root cuepoints`
+`python -m xarray_behave.ui datename root cuepoints`
 
 datename: experiment name (e.g. localhost-20181120_144618)
 root: defaults to the current directory - this will work if you're in #Common/chainingmic
