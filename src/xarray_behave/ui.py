@@ -16,7 +16,7 @@ F - next fly for cropping
 X - swap first with second fly for all frames following the current frame 
 O - save swap indices to file
 E - play current waveform as sound
-F/T - increase decrease frequency resolution in spectrogram
+R/T - increase/decrease frequency resolution in spectrogram
 G - toggle show spectrogram
 SPACE - play/stop video/song trace in
 """
@@ -165,7 +165,7 @@ class PSV():
         self.add_keyed_button(self.hl, "save [O] exchange points", QtCore.Qt.Key_O)
         self.add_keyed_button(self.hl, "play [E] audio", QtCore.Qt.Key_E)
         self.add_keyed_button(self.hl, "show spectro[G]ram", QtCore.Qt.Key_G)
-        self.add_keyed_button(self.hl, "inc [F]requency", QtCore.Qt.Key_F)
+        self.add_keyed_button(self.hl, "inc f[R]equency", QtCore.Qt.Key_R)
         self.add_keyed_button(self.hl, "inc [T]ime res", QtCore.Qt.Key_T)
  
         self.ly = pg.QtGui.QVBoxLayout()
@@ -211,7 +211,7 @@ class PSV():
             self.span *= 2
         elif evt.key() == QtCore.Qt.Key_G:
             self.show_spec = not self.show_spec
-        elif evt.key() == QtCore.Qt.Key_F:
+        elif evt.key() == QtCore.Qt.Key_R:
             self.spec_win = int(self.spec_win * 2)
         elif evt.key() == QtCore.Qt.Key_T:
             self.spec_win = int(max(2, self.spec_win // 2))
@@ -238,7 +238,7 @@ class PSV():
                 logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
                 self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
         elif evt.key() == QtCore.Qt.Key_X:
-            self.ds, self.swap_events = swap_flies(self.ds, self.t0, self.swap_events)  # make this class method
+            self.ds, self.swap_events = swap_flies(self.ds, self.t0, self.swap_events, self.focal_fly, self.other_fly)  # make this class method
             logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
         elif evt.key() == QtCore.Qt.Key_O:
             savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
