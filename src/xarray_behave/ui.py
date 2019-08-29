@@ -5,27 +5,9 @@
 datename: experiment name (e.g. localhost-20181120_144618)
 root: defaults to the current directory - this will work if you're in #Common/chainingmic
 cuepoints: string evaluating to a list (e.g. '[100, 50000, 100000]' - including the quotation ticks)
-Keys (may need to "activate" plokeyst by clicking on song trace first to make this work):
-W/A - move left/right
-S/D - zoom in/out
-K/L - jump to previous/next cue point
-M - toggle mark thorax each fly with colored dot
-P - toggle mark all tracked body parts with color dots (plot poses)
-C - toggle crop video around position fly
-F - next fly for cropping
-X - swap first with second fly for all frames following the current frame 
-O - save swap indices to file
-E - play current waveform as sound
-V - toggle show song events in waveform (showing song events slows down video rate - untoggle if you want fast video playback)
-R/T - increase/decrease frequency resolution in spectrogram
-G - toggle show spectrogram
-SPACE - play/stop video/song trace in
 """
-# DONE- IN PROGRESS: capture mouse events to select swap flies in case there are more than 2 flies (fly1 could be focal fly from crop, fly2 determined by mouse click position) 
-#       see http://www.pyqtgraph.org/documentation/graphicsscene/mouseclickevent.html
-# DONE: use defopt for catching/processing cmdline args
-# DONE: remove horrible global vars and global scope!
-
+# TODO make span and t0 properties with getter that checks bounds
+# TODO fix sine annotation
 
 import os
 import sys
@@ -33,70 +15,12 @@ import logging
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 from . import xarray_behave as xb
+from . import _ui_utils
 import numpy as np
-from videoreader import VideoReader
 from pathlib import Path
-import cv2
 import defopt
+import skimage.draw
 from functools import partial
-
-
-def make_colors(nb_flies):
-    colors = np.zeros((1, nb_flies, 3), np.uint8)
-    colors[0, :, 1:] = 220  # set saturation and brightness to 220
-    colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_flies)  # set range of hues
-    colors = cv2.cvtColor(colors, cv2.COLOR_HSV2BGR)[0].astype(np.uint8)[..., ::-1]
-    return colors
-
-
-class VideoReaderNP(VideoReader):
-    """VideoReader posing as numpy array."""
-
-    def __getitem__(self, index):
-        return self.read(index)[1]
-
-    @property
-    def dtype(self):
-        return np.uint8
-
-    @property
-    def shape(self):
-        return (self.number_of_frames, *self.frame_shape)
-
-    @property
-    def ndim(self):
-        return len(self.shape)
-
-    @property
-    def size(self):
-        return np.product(self.shape)
-
-    def min(self):
-        return 0
-
-    def max(self):
-        return 255
-
-    def transpose(self, *args):
-        return self
-
-
-class ImageViewVR(pg.ImageView):
-
-    def quickMinMax(self, data):
-        """Dummy min/max for numpy videoreader. The Original function tries to read the full video!"""
-        return 0, 255
-
-
-class KeyPressWidget(pg.GraphicsLayoutWidget):
-    sigKeyPress = QtCore.pyqtSignal(object)
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def keyPressEvent(self, ev):
-        self.scene().keyPressEvent(ev)
-        self.sigKeyPress.emit(ev)
 
 
 class PSV():
@@ -111,34 +35,43 @@ class PSV():
         self.cue_points = cue_points
 
         self.span = 100_000
-        self.t0 = int(self.span/2) #2_800_000  # 1_100_000
+        self.t0 = int(self.span/2)
         if hasattr(self.ds, 'song'):
             self.tmax = len(self.ds.song)
         else:
             self.tmax = len(self.ds.body_positions) * 10  # TODO: get factor from self.ds
-
+        
         self.crop = False
+        self.thorax_index = 8
         self.show_dot = True
+        self.dot_size = 2
+        self.circle_size = 8
         self.old_show_dot_state = self.show_dot
         self.show_poses = False
+        self.index_other = 0
         self.focal_fly = 0
         self.other_fly = 1
         self.cue_index = 0
+        
         self.nb_flies = np.max(self.ds.flies).values+1
-        self.fly_colors = make_colors(self.nb_flies)
+        self.fly_colors = _ui_utils.make_colors(self.nb_flies)
         self.nb_bodyparts = len(self.ds.poseparts)
-        self.bodypart_colors = make_colors(self.nb_bodyparts)
+        self.bodypart_colors = _ui_utils.make_colors(self.nb_bodyparts)
         self.nb_eventtypes = len(self.ds.event_types)
-        self.eventype_colors = make_colors(self.nb_eventtypes)
+        self.eventype_colors = _ui_utils.make_colors(self.nb_eventtypes)
+        
+        self.current_event_index = -1
+
         self.STOP = True
         self.swap_events = []
-        self.mousex, self.mousey = None, None
+        self.mouseX, self.mouseY = None, None
+        self.mouseT = None
         self.frame_interval = 100  # TODO: get from self.ds
         self.show_spec = True
         self.spec_win = 200
         self.show_songevents = True
-        # FIXME: will fail for datasets w/o song
-        
+
+        # FIXME: will fail for datasets w/o song        
         self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
         self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
 
@@ -147,34 +80,84 @@ class PSV():
         self.win.resize(800, 800)
         self.win.setWindowTitle("psv")
 
-        self.image_view = ImageViewVR(name="img_view")
+        self.bar = self.win.menuBar()
+        file = self.bar.addMenu("File")
+        self.add_keyed_menuitem(file, "Save swap files", self.save_swaps)
+        self.add_keyed_menuitem(file, "Save annotations", self.save_annotations)
+        file.addSeparator()
+        file.addAction("Exit")
+        
+        edit = self.bar.addMenu("Edit")
+        self.add_keyed_menuitem(edit, "Swap flies", self.swap_flies, QtCore.Qt.Key_X)
+        
+        view_play = self.bar.addMenu("Playback")
+        self.add_keyed_menuitem(view_play, "Play video", self.toggle_playvideo, QtCore.Qt.Key_Space,
+                                checkable=True, checked=not self.STOP)
+        view_play.addSeparator()
+        self.add_keyed_menuitem(view_play, " < Reverse one frame", self.single_frame_reverse, QtCore.Qt.Key_Left),
+        self.add_keyed_menuitem(view_play, "<< Reverse jump", self.jump_reverse, QtCore.Qt.Key_A)
+        self.add_keyed_menuitem(view_play, ">> Forward jump", self.jump_forward, QtCore.Qt.Key_D)
+        self.add_keyed_menuitem(view_play, " > Forward one frame", self.single_frame_advance, QtCore.Qt.Key_Right)                                
+        view_play.addSeparator()
+        self.add_keyed_menuitem(view_play, "Move to previous cue point", self.set_prev_cuepoint, QtCore.Qt.Key_K)
+        self.add_keyed_menuitem(view_play, "Move to next cue point", self.set_next_cuepoint, QtCore.Qt.Key_L)
+        view_play.addSeparator()
+        self.add_keyed_menuitem(view_play, "Zoom in song", self.zoom_in_song, QtCore.Qt.Key_W)
+        self.add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, QtCore.Qt.Key_S)
+        
+        view_video = self.bar.addMenu("Video")
+        self.add_keyed_menuitem(view_video, "Crop frame", self.toggle_crop, QtCore.Qt.Key_C,
+                                checkable=True, checked=self.crop)
+        self.add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, QtCore.Qt.Key_F)
+        view_video.addSeparator()
+        self.add_keyed_menuitem(view_video, "Show fly position", self.toggle_show_dot, QtCore.Qt.Key_M,
+                                checkable=True, checked=self.show_dot)
+        self.add_keyed_menuitem(view_video, "Show poses", self.toggle_show_poses, QtCore.Qt.Key_P,
+                                checkable=True, checked=self.show_poses)
+        
+        view_audio = self.bar.addMenu("Audio")
+        self.add_keyed_menuitem(view_audio, "Play waveform as audio", self.play_audio, QtCore.Qt.Key_E)
+        view_audio.addSeparator()
+        self.add_keyed_menuitem(view_audio, "Show annotations", self.toggle_show_songevents, QtCore.Qt.Key_V, 
+                                checkable=True, checked=self.show_songevents)
+        view_audio.addSeparator()
+        self.add_keyed_menuitem(view_audio, "Show spectrogram", self.toggle_show_spec, QtCore.Qt.Key_G,
+                                checkable=True, checked=self.show_spec)
+        self.add_keyed_menuitem(view_audio, "Increase frequency resolution", self.dec_freq_res, QtCore.Qt.Key_R)
+        self.add_keyed_menuitem(view_audio, "Increase temporal resolution", self.inc_freq_res, QtCore.Qt.Key_T)
+        
+        view_annotate = self.bar.addMenu("Annotate")
+        self.choices = []
+        tmp = self.add_keyed_menuitem(view_annotate, "No annotation", partial(self.set_current_event, src=-1),
+                                      eval('QtCore.Qt.Key_' + str(0)),
+                                      checkable=True, checked=True)
+        self.choices.append(tmp)
+
+        # FIXME only allow *_manual events here?
+        for cnt, event_type in enumerate(self.ds.event_types.values):
+            tmp = self.add_keyed_menuitem(view_annotate, "add " + event_type, partial(self.set_current_event, src=cnt),
+                                          eval('QtCore.Qt.Key_' + str(cnt+1)),
+                                          checkable=True, checked=False)
+            self.choices.append(tmp)
+        view_annotate.addSeparator()
+        self.add_keyed_menuitem(view_annotate, "Delete events of selected type in view", self.delete_current_events, QtCore.Qt.Key_U)
+        self.add_keyed_menuitem(view_annotate, "Delete all events in view", self.delete_all_events, QtCore.Qt.Key_Y)
+        
+        self.bar.addMenu("View")
+        
+        self.image_view = _ui_utils.ImageViewVR(name="img_view")
         self.image_view.setImage(self.vr)
-        self.image_view.getImageItem().mouseClickEvent = self.click
+        self.image_view.getImageItem().mouseClickEvent = self.click_video
 
         self.spec_view = pg.ImageView(name="spec_view", view=pg.PlotItem())
         self.spec_view.view.enableAutoScale()
+        
         self.slice_view = pg.PlotWidget(name="song")
-        # self.slice_view.setXLink(self.spec_view.view)
+        self.slice_view.getPlotItem().mouseClickEvent = self.click_song
 
-        self.cw = KeyPressWidget()
-        self.cw.sigKeyPress.connect(self.keyPressed)
-
-        self.hl = QtGui.QHBoxLayout()
-        self.add_keyed_button(self.hl, "[p]oses", QtCore.Qt.Key_P)
-        self.add_keyed_button(self.hl, "[m]ark thorax", QtCore.Qt.Key_M)
-        self.add_keyed_button(self.hl, "[c]rop frame", QtCore.Qt.Key_C)
-        self.add_keyed_button(self.hl, "next [K] cue point", QtCore.Qt.Key_K)
-        self.add_keyed_button(self.hl, "previous [L] cue point", QtCore.Qt.Key_L)
-        self.add_keyed_button(self.hl, "[x]change fly labels", QtCore.Qt.Key_X)
-        self.add_keyed_button(self.hl, "save [O] exchange points", QtCore.Qt.Key_O)
-        self.add_keyed_button(self.hl, "play [E] audio", QtCore.Qt.Key_E)
-        self.add_keyed_button(self.hl, "show spectro[G]ram", QtCore.Qt.Key_G)
-        self.add_keyed_button(self.hl, "inc f[R]equency", QtCore.Qt.Key_R)
-        self.add_keyed_button(self.hl, "inc [T]ime res", QtCore.Qt.Key_T)
-        self.add_keyed_button(self.hl, "show song e[V]ents", QtCore.Qt.Key_V)
+        self.cw = pg.GraphicsLayoutWidget()
  
         self.ly = pg.QtGui.QVBoxLayout()
-        self.ly.addLayout(self.hl)
         self.ly.addWidget(self.image_view, stretch=4)
         self.ly.addWidget(self.slice_view, stretch=1)
         self.ly.addWidget(self.spec_view, stretch=1)
@@ -194,134 +177,167 @@ class PSV():
         
         self.update()
 
-    def add_keyed_button(self, parent, label: str, qt_keycode):
-        button = QtGui.QPushButton(label)   
-        button.clicked.connect(partial(self.synthetic_key, key=qt_keycode))
-        parent.addWidget(button, stretch=1)
+    @property
+    def time0(self):
+        return int(self.t0 - self.span / 2)
 
-    def keyPressed(self, evt):
-        if evt.key() == QtCore.Qt.Key_Left:  # go a single frame back
-            self.t0 -= self.frame_interval
-        elif evt.key() == QtCore.Qt.Key_Right:  # advance by a single frame
-            self.t0 += self.frame_interval
-        if evt.key() == QtCore.Qt.Key_A:
-            self.t0 -= self.span / 2
-        elif evt.key() == QtCore.Qt.Key_D:
-            self.t0 += self.span / 2
-        elif evt.key() == QtCore.Qt.Key_W:
-            self.span /= 2
-        elif evt.key() == QtCore.Qt.Key_S:
-            self.span *= 2
-        elif evt.key() == QtCore.Qt.Key_G:
-            self.show_spec = not self.show_spec
-        elif evt.key() == QtCore.Qt.Key_R:
-            self.spec_win = int(self.spec_win * 2)
-        elif evt.key() == QtCore.Qt.Key_T:
-            self.spec_win = int(max(2, self.spec_win // 2))
-        elif evt.key() == QtCore.Qt.Key_E:
-            self.play_audio(max_amp=self.MAX_AUDIO_AMP, wait_done=False)  # play in background
-        elif evt.key() == QtCore.Qt.Key_P:
-            self.show_poses = not self.show_poses
-            if self.show_poses:
-                self.old_show_dot_state = self.show_dot
-                self.show_dot = False
-            else:
-                self.show_dot = self.old_show_dot_state        
-        elif evt.key() == QtCore.Qt.Key_V:
-            self.show_songevents = not self.show_songevents
-        elif evt.key() == QtCore.Qt.Key_M:
-            self.show_dot = not self.show_dot
-        elif evt.key() == QtCore.Qt.Key_K:
-            if self.cue_points:
-                self.cue_index = max(0, self.cue_index-1)
-                logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
-                # t0 = self.ds.time[cue_points[cue_index]].values  # jump to PREV cue point
-                self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
-        elif evt.key() == QtCore.Qt.Key_L:
-            if self.cue_points:
-                self.cue_index = min(self.cue_index+1, len(self.cue_points)-1)
-                logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
-                self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
-        elif evt.key() == QtCore.Qt.Key_X:
-            self.ds, self.swap_events = swap_flies(self.ds, self.t0, self.swap_events, self.focal_fly, self.other_fly)  # make this class method
-            logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
-        elif evt.key() == QtCore.Qt.Key_O:
-            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
-            save_swap_events(savefilename, self.swap_events)
-            logging.info(f'   Saving list of swap indices to {savefilename}.')
-        elif evt.key() == QtCore.Qt.Key_C:  # crop video
-            self.crop = not self.crop
-            logging.info(f'   Cropping = {self.crop}.')
-        elif evt.key() == QtCore.Qt.Key_F:  # change focal fly
-            tmp = (self.focal_fly+1) % self.nb_flies
-            if tmp == self.other_fly:  # swap focal and other fly if same
-                self.other_fly, self.focal_fly = self.focal_fly, self.other_fly
-            else:
-                self.focal_fly = tmp
-            logging.info(f'   Cropping around fly {self.focal_fly}.')
-        elif evt.key() == QtCore.Qt.Key_Space:  # control p
-            if self.STOP:
-                logging.info(f'   Starting playback.')
-                self.STOP = False
-                self.play_video()
-            else:
-                logging.info(f'   Stopping playback.')
-                self.STOP = True
+    @property
+    def time1(self):
+        return int(self.t0 + self.span / 2)
 
-        self.span = int(max(500, self.span))
-        self.t0 = int(np.clip(self.t0, self.span/2, self.tmax - self.span/2))
-        if self.STOP:  # avoid unecessary update if playback is running
-            self.update()
-        self.app.processEvents()
+    def add_keyed_menuitem(self, parent, label: str, callback, qt_keycode=None, checkable=False, checked=True):
+        """Add new action to menu and register key press."""
+        menuitem = parent.addAction(label)
+        menuitem.setCheckable(checkable)
+        menuitem.setChecked(checked)
+        if qt_keycode is not None:
+            menuitem.setShortcut(qt_keycode)
+        menuitem.triggered.connect(callback)
+        return menuitem
 
+    def save_swaps(self):
+        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
+        np.savetxt(savefilename, self.swap_events, fmt='%d', header='index fly1 fly2')
+        logging.info(f'   Saving list of swap indices to {savefilename}.')
 
+    def save_annotations(self):
+        logging.warning(f'   Not implemented yet.')
+        # savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_annotations.txt")
+        # np.savetxt(savefilename, self.annotations, fmt='%d', header='index ' + ' '.join(self.ds.song_events))
+        # logging.info(f'   Saving annotations to {savefilename}.')
+
+    def set_current_event(self, evt, src):
+        self.current_event_index = src
+        if src == -1:
+            logging.debug(f'  Turned off annotation.')
+        else:
+            logging.debug(f'  Annotating {self.ds.event_types[self.current_event_index].values}.')
+            for cnt, choice in enumerate(self.choices):
+                if cnt != src+1:
+                    choice.setChecked(False)
+                else:
+                    choice.setChecked(True)
+    
+    @_ui_utils._autoupdate
+    def delete_current_events(self):        
+        self.ds.song_events[self.time0:self.time1, self.current_event_index] = False
+        self.logging.inf(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
+
+    @_ui_utils._autoupdate
+    def delete_all_events(self):
+        self.ds.song_events[self.time0:self.time1, :] = False
+        self.logging.inf(f'   Deleted all events in view.')
+
+    @_ui_utils._autoupdate
+    def toggle_show_songevents(self):
+        self.show_songevents = not self.show_songevents
+    
+    @_ui_utils._autoupdate
+    def toggle_show_spec(self):
+        self.show_spec = not self.show_spec
+    
+    @_ui_utils._autoupdate
+    def inc_freq_res(self):
+        self.spec_win = int(self.spec_win * 2)
+    
+    @_ui_utils._autoupdate
+    def dec_freq_res(self):
+        self.spec_win = int(max(2, self.spec_win // 2))
+    
+    def toggle_playvideo(self):
+        if self.STOP:
+            logging.info(f'   Starting playback.')
+            self.STOP = False
+            self.play_video()
+        else:
+            logging.info(f'   Stopping playback.')
+            self.STOP = True
+
+    @_ui_utils._autoupdate
+    def toggle_crop(self):
+        self.crop = not self.crop
+    
+    @_ui_utils._autoupdate
+    def toggle_show_dot(self):
+        self.show_dot = not self.show_dot
+    
+    @_ui_utils._autoupdate
+    def toggle_show_poses(self):
+        self.show_poses = not self.show_poses
+        if self.show_poses:
+            self.old_show_dot_state = self.show_dot
+            self.show_dot = False
+        else:
+            self.show_dot = self.old_show_dot_state
+    
+    @_ui_utils._autoupdate
+    def change_focal_fly(self):
+        tmp = (self.focal_fly+1) % self.nb_flies
+        if tmp == self.other_fly:  # swap focal and other fly if same
+            self.other_fly, self.focal_fly = self.focal_fly, self.other_fly
+        else:
+            self.focal_fly = tmp
+    
+    @_ui_utils._autoupdate
+    def set_prev_cuepoint(self):
+        if self.cue_points:
+            self.cue_index = max(0, self.cue_index-1)
+            logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
+            self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
+    
+    @_ui_utils._autoupdate
+    def set_next_cuepoint(self):
+        if self.cue_points:
+            self.cue_index = min(self.cue_index+1, len(self.cue_points)-1)
+            logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
+            self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
+    
+    @_ui_utils._autoupdate
+    def zoom_in_song(self):
+        self.span /= 2
+    
+    @_ui_utils._autoupdate
+    def zoom_out_song(self):
+        self.span *= 2
+    
+    @_ui_utils._autoupdate
+    def single_frame_reverse(self):
+        self.t0 -= self.frame_interval
+    
+    @_ui_utils._autoupdate
+    def single_frame_advance(self):
+        self.t0 += self.frame_interval
+    
+    @_ui_utils._autoupdate
+    def jump_reverse(self):
+        self.t0 -= self.span / 2
+    
+    @_ui_utils._autoupdate
+    def jump_forward(self):
+        self.t0 += self.span / 2
+    
     def update(self):
         """Updates the view."""
+        self.span = int(max(500, self.span))
+        self.t0 = int(np.clip(self.t0, self.span/2, self.tmax - self.span/2))
+
         if 'song' in self.ds:
-            index_other = int(self.t0 * self.fs_other / self.fs_song)
+            self.index_other = int(self.t0 * self.fs_other / self.fs_song)
 
             # clear trace plot and update with new trace
-            time0 = int(self.t0 - self.span / 2)
-            time1 = int(self.t0 + self.span / 2)
+            # time0 = int(self.t0 - self.span / 2)
+            # time1 = int(self.t0 + self.span / 2)
 
-            x = self.ds.sampletime[time0:time1].values
-            y = self.ds.song[time0:time1].values
+            x = self.ds.sampletime[self.time0:self.time1].values
+            y = self.ds.song[self.time0:self.time1].values
             step = int(np.ceil(len(x) / self.fs_song / 2))
             self.slice_view.clear()
             self.slice_view.plot(x[::step], y[::step])
 
-            # # mark song events in trace
-            # vibration_indices = np.where(self.ds.song_events[int(index_other - self.span / 20):int(index_other + self.span / 20), 0].values)[0] * int(1 / self.fs_other * self.fs_song)
-            # vibrations = x[vibration_indices]
-            # for vib in vibrations:
-            #     self.slice_view.addItem(pg.InfiniteLine(movable=False, angle=90, pos=vib))if self.show_songevents:
-            for event_type in range(self.nb_eventtypes):
-                event_pen = pg.mkPen(color=self.eventype_colors[event_type], width=1)
-                if 'sine' in self.ds.event_types.values[event_type]:
-                    event_trace = self.ds.song_events[int(index_other - self.span / 20):int(index_other + self.span / 20), event_type].values
-                    d_event_trace = np.diff(event_trace.astype(np.int))
-                    event_onset_indices = x[np.where(d_event_trace > 0)[0] * int(1 / self.fs_other * self.fs_song)]
-                    event_offset_indices = x[np.where(d_event_trace < 0)[0] * int(1 / self.fs_other * self.fs_song)]
-
-                    # FIXME both will fail if there is only a single but incomplete sine song in the x-range since the respective other will have zero length
-                    if len(event_offset_indices) and len(event_onset_indices) and event_offset_indices[0] < event_onset_indices[0]:  # first offset outside of x-range
-                        event_onset_indices = np.pad(event_onset_indices, (1, 0), mode='constant', constant_values=x[0])  # add additional onset at x[0] boundary
-                    if len(event_offset_indices) and len(event_onset_indices)  and event_offset_indices[-1] < event_onset_indices[-1]:  # last offset outside of x-range
-                        event_offset_indices = np.pad(event_offset_indices, (0, 1), mode='constant', constant_values=x[-1])  # add additional offset at x[-1] boundary
-
-                    for onset, offset in zip(event_onset_indices, event_offset_indices):
-                        self.slice_view.addItem(pg.LinearRegionItem(values=(onset, offset),
-                                                                    movable=False))#, orientation=pg.LinearRegionItem.Horizontal)  # for sine
-                else:
-                    event_indices = np.where(self.ds.song_events[int(index_other - self.span / 20):int(index_other + self.span / 20), event_type].values)[0] * int(1 / self.fs_other * self.fs_song)
-                    events = x[event_indices]
-                    for evt in events:
-                        self.slice_view.addItem(pg.InfiniteLine(movable=False,
-                                                                angle=90,
-                                                                pos=evt,
-                                                                pen=event_pen))
+            if self.show_songevents:
+                self.plot_song_events(x)
             
-            # indicate time point of displayed frame in trace
+            # time of current frame in trace
             self.slice_view.addItem(pg.InfiniteLine(movable=False, angle=90,
                                                     pos=x[int(self.span / 2)],
                                                     pen=pg.mkPen(color='r', width=1)))
@@ -332,44 +348,86 @@ class PSV():
                 self.spec_view.clear()
         
         else:
-            index_other = int(self.t0 * self.fs_other / 10_000)
-        fn = self.ds.body_positions.nearest_frame[index_other]
-        frame = self.vr[fn]
-        thorax_index = 8
-        dot_size = 2
-        if self.show_poses:
-            for dot_fly in range(self.nb_flies):
-                fly_pos = self.ds.pose_positions_allo[index_other, dot_fly, ...].values
-                x_dot = np.clip((fly_pos[..., 0]-dot_size, fly_pos[..., 0]+dot_size), 0, self.vr.frame_width-1).astype(np.uintp)
-                y_dot = np.clip((fly_pos[..., 1]-dot_size, fly_pos[..., 1]+dot_size), 0, self.vr.frame_height-1).astype(np.uintp)
-                for bodypart_color, x_pos, y_pos in zip(self.bodypart_colors, x_dot.T, y_dot.T):
-                    frame[slice(*x_pos), slice(*y_pos), :] = bodypart_color  # now crop frame around one of the flies
+            self.index_other = int(self.t0 * self.fs_other / 10_000)
 
+        fn = self.ds.body_positions.nearest_frame[self.index_other]
+        frame = self.vr[fn]
+
+        # FIXME the annotations potentially waste time annotating outside of the cropped frame
+        if self.show_poses:
+            frame = self.annotate_poses(frame)    
         if self.show_dot:
-            for dot_fly in range(self.nb_flies):
-                fly_pos = self.ds.pose_positions_allo[index_other, dot_fly, thorax_index].values
-                x_dot = np.clip((fly_pos[0]-dot_size, fly_pos[0]+dot_size), 0, self.vr.frame_width-1).astype(np.uintp)
-                y_dot = np.clip((fly_pos[1]-dot_size, fly_pos[1]+dot_size), 0, self.vr.frame_height-1).astype(np.uintp)
-                frame[slice(*x_dot), slice(*y_dot), :] = self.fly_colors[dot_fly]  # set pixels around
-            
-            import skimage.draw
-            fly_pos = self.ds.pose_positions_allo[index_other, self.focal_fly, thorax_index].values.astype(np.uintp)
-            xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], 8, method='bresenham')
-            frame[xx, yy, :] = self.bodypart_colors[2]
-            fly_pos = self.ds.pose_positions_allo[index_other, self.other_fly, thorax_index].values.astype(np.uintp)
-            xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], 8, method='bresenham')
-            frame[xx, yy, :] = self.bodypart_colors[6]
-            
+            frame = self.annotate_dot(frame)
+
         if self.crop:
-            fly_pos = self.ds.pose_positions_allo[index_other, self.focal_fly, thorax_index].values
-            # makes sure crop does not exceed frame bounds
-            x_range = np.clip((fly_pos[0]-self.BOX_SIZE, fly_pos[0]+self.BOX_SIZE), 0, self.vr.frame_width-1).astype(np.uintp)
-            y_range = np.clip((fly_pos[1]-self.BOX_SIZE, fly_pos[1]+self.BOX_SIZE), 0, self.vr.frame_height-1).astype(np.uintp)
-            # now crop frame around the focal fly
-            frame = frame[slice(*x_range), slice(*y_range), :]
+            frame = self.crop_frame(frame)
+
         self.image_view.clear()
         self.image_view.setImage(frame)
         self.app.processEvents()
+
+    def annotate_poses(self, frame):
+        for dot_fly in range(self.nb_flies):
+            fly_pos = self.ds.pose_positions_allo[self.index_other, dot_fly, ...].values
+            x_dot = np.clip((fly_pos[..., 0]-self.dot_size, fly_pos[..., 0]+self.dot_size), 0, self.vr.frame_width-1).astype(np.uintp)
+            y_dot = np.clip((fly_pos[..., 1]-self.dot_size, fly_pos[..., 1]+self.dot_size), 0, self.vr.frame_height-1).astype(np.uintp)
+            for bodypart_color, x_pos, y_pos in zip(self.bodypart_colors, x_dot.T, y_dot.T):
+                frame[slice(*x_pos), slice(*y_pos), :] = bodypart_color
+        return frame
+
+    def annotate_dot(self, frame):
+
+        for dot_fly in range(self.nb_flies):
+            fly_pos = self.ds.pose_positions_allo[self.index_other, dot_fly, self.thorax_index].values
+            x_dot = np.clip((fly_pos[0]-self.dot_size, fly_pos[0]+self.dot_size), 0, self.vr.frame_width-1).astype(np.uintp)
+            y_dot = np.clip((fly_pos[1]-self.dot_size, fly_pos[1]+self.dot_size), 0, self.vr.frame_height-1).astype(np.uintp)
+            frame[slice(*x_dot), slice(*y_dot), :] = self.fly_colors[dot_fly]  # set pixels around
+        
+        # mark *focal* fly with circle
+        fly_pos = self.ds.pose_positions_allo[self.index_other, self.focal_fly, self.thorax_index].values.astype(np.uintp)
+        xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.circle_size, method='bresenham')
+        frame[xx, yy, :] = self.bodypart_colors[2]
+
+        # mark *other* fly with circle
+        fly_pos = self.ds.pose_positions_allo[self.index_other, self.other_fly, self.thorax_index].values.astype(np.uintp)
+        xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.circle_size, method='bresenham')
+        frame[xx, yy, :] = self.bodypart_colors[6]
+        return frame
+
+    def crop_frame(self, frame):
+        fly_pos = self.ds.pose_positions_allo[self.index_other, self.focal_fly, self.thorax_index].values
+        # makes sure crop does not exceed frame bounds
+        x_range = np.clip((fly_pos[0]-self.BOX_SIZE, fly_pos[0]+self.BOX_SIZE), 0, self.vr.frame_width-1).astype(np.uintp)
+        y_range = np.clip((fly_pos[1]-self.BOX_SIZE, fly_pos[1]+self.BOX_SIZE), 0, self.vr.frame_height-1).astype(np.uintp)
+        frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly        
+        return frame
+
+    def plot_song_events(self, x):
+        for event_type in range(self.nb_eventtypes):
+            event_pen = pg.mkPen(color=self.eventype_colors[event_type], width=1)
+            if 'sine' in self.ds.event_types.values[event_type]:
+                event_trace = self.ds.song_events[int(self.index_other - self.span / 20):int(self.index_other + self.span / 20), event_type].values
+                d_event_trace = np.diff(event_trace.astype(np.int))
+                event_onset_indices = x[np.where(d_event_trace > 0)[0] * int(1 / self.fs_other * self.fs_song)]
+                event_offset_indices = x[np.where(d_event_trace < 0)[0] * int(1 / self.fs_other * self.fs_song)]
+
+                # FIXME both will fail if there is only a single but incomplete sine song in the x-range since the respective other will have zero length
+                if len(event_offset_indices) and len(event_onset_indices) and event_offset_indices[0] < event_onset_indices[0]:  # first offset outside of x-range
+                    event_onset_indices = np.pad(event_onset_indices, (1, 0), mode='constant', constant_values=x[0])  # add additional onset at x[0] boundary
+                if len(event_offset_indices) and len(event_onset_indices)  and event_offset_indices[-1] < event_onset_indices[-1]:  # last offset outside of x-range
+                    event_offset_indices = np.pad(event_offset_indices, (0, 1), mode='constant', constant_values=x[-1])  # add additional offset at x[-1] boundary
+
+                for onset, offset in zip(event_onset_indices, event_offset_indices):
+                    self.slice_view.addItem(pg.LinearRegionItem(values=(onset, offset),
+                                                                movable=False))
+            else:
+                event_indices = np.where(self.ds.song_events[int(self.index_other - self.span / 20):int(self.index_other + self.span / 20), event_type].values)[0] * int(1 / self.fs_other * self.fs_song)
+                events = x[event_indices]
+                for evt in events:
+                    self.slice_view.addItem(pg.InfiniteLine(movable=False,
+                                                            angle=90,
+                                                            pos=evt,
+                                                            pen=event_pen))
 
     def play_video(self, rate=100):  # TODO: get rate from ds (video fps attr)
         RUN = True
@@ -380,49 +438,43 @@ class PSV():
             if self.STOP:
                 RUN = False
 
-    def click(self, event):
+    def click_video(self, event):
         event.accept()
         pos = event.pos()
-        # logging.debug(f'raw pos x={int(pos.x())}, y={int(pos.y())}.')
-        self.mousex, self.mousey = int(pos.x()), int(pos.y())
-        # mousepos = self.image_view.view.mapSceneToView(pos)  # get mouse po
-        # self.mousex, self.mousey = int(mousepos.x()), int(mousepos.y())
-        logging.debug(f'mouse clicked at x={self.mousex}, y={self.mousey}.')
+        self.mouseX, self.mouseY = int(pos.x()), int(pos.y())
+        logging.debug(f'mouse clicked at x={self.mouseX}, y={self.mouseY}.')
         # find nearest fly
-        thorax_index = 8
-        index_other = int(self.t0 * self.fs_other / self.fs_song)
-        fly_pos = self.ds.pose_positions_allo[index_other, :, thorax_index, :].values
+        fly_pos = self.ds.pose_positions_allo[self.index_other, :, self.thorax_index, :].values
         if self.crop:  # transform mouse pos to coordinates of the cropped box
-            fly_pos = fly_pos - self.ds.pose_positions_allo[index_other, self.focal_fly, thorax_index].values + self.BOX_SIZE/2
-        
+            fly_pos = fly_pos - self.ds.pose_positions_allo[self.index_other, self.focal_fly, self.thorax_index].values + self.BOX_SIZE/2
+
         logging.debug(np.round(fly_pos))
-        fly_dist = np.sum((fly_pos - np.array([self.mousex, self.mousey]))**2, axis=-1)
+        fly_dist = np.sum((fly_pos - np.array([self.mouseX, self.mouseY]))**2, axis=-1)
         fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
         self.other_fly = np.argmin(fly_dist)
         logging.debug(f"Selected {self.other_fly}.")
-        # t_up = pg.TextItem(f"Selected {self.other_fly}.", (255, 255, 255), anchor=(0, 0))
-        # t_up.setPos(i + 0.5, -j + 0.5)
-        # breakpoint()
         self.update()
 
-    def synthetic_key(self, key):
-        evt = QtGui.QKeyEvent(QtGui.QKeyEvent.KeyPress, key, QtCore.Qt.NoModifier) 
-        self.app.sendEvent(self.cw, evt)
-        self.app.processEvents()
+    def click_song(self, event):
+        event.accept()
+        if self.current_event_index == -1:
+            logging.info(f'  No event type selected - see menu.')
+        else:
+            pos = event.pos()
+            self.mouseT = self.slice_view.getPlotItem().getViewBox().mapSceneToView(pos).x()
+            self.ds.song_events.sel(time=self.mouseT, method='nearest')[self.current_event_index] = True
+            logging.info(f'  Added {self.ds.event_types[self.current_event_index].values} at t={self.mouseT:1.4f} seconds.')
+            self.update()
 
-    def play_audio(self, max_amp=None, wait_done=False):
-        """Play vector as audio using the simpleaudio package.
-
-        Args:
-            max_amp ([type], optional): Maximum amplitude of the waveform. Will clip values below and above. Defaults to None (max abs value of current waveform).
-            wait_done (bool, optional): Block UI until playback is done. Defaults to False.
-        """
+    def play_audio(self):
+        """Play vector as audio using the simpleaudio package."""
         if 'song' in self.ds:
             import simpleaudio
-            time0 = int(self.t0 - self.span / 2)
-            time1 = int(self.t0 + self.span / 2)
-            x = self.ds.song[time0:time1].values
+            # time0 = int(self.t0 - self.span / 2)
+            # time1 = int(self.t0 + self.span / 2)
+            x = self.ds.song[self.time0:self.time1].values
             # normalize to 16-bit range and convert to 16-bit data
+            max_amp = self.MAX_AUDIO_AMP
             if max_amp is None:
                 max_amp = np.nanmax(np.abs(x))
             x = x * 32767 / max_amp
@@ -432,9 +484,7 @@ class PSV():
             sample_rate = min(allowed_sample_rates, key=lambda x:abs(x-int(self.fs_song)))
             # FIXME resample audio to new sample_rate to preserve sound
             # start playback in background
-            play_obj = simpleaudio.play_buffer(x, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
-            if wait_done:# block UI until playback is done
-                play_obj.wait_done()
+            simpleaudio.play_buffer(x, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
         else:
             logging.info(f'Could not play sound - no merged-channel sound data in the dataset.')
 
@@ -449,30 +499,22 @@ class PSV():
         self.spec_view.view.setXRange(0, len(t), padding=0)
         self.spec_view.view.setLimits(yMin=0, yMax=f_idx, minYRange=f_idx)
 
+    def swap_flies(self):
+        # use swap_dims to swap flies in all dataarrays in the data set?
+        # TODO make sure this does not fail for datasets w/o song
+        logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
+        if [self.index_other, self.focal_fly, self.other_fly] in self.swap_events:  # if already in there remove - swapping a second time would negate first swap
+            self.swap_events.remove([self.index_other, self.focal_fly, self.other_fly])
+        else:
+            self.swap_events.append([self.index_other, self.focal_fly, self.other_fly])
 
-def swap_flies(ds, index, swap_events, fly1=0, fly2=1):
-    # use swap_dims to swap flies in all dataarrays in the data set?
-    # TODO make sure this does not fail for datasets w/o song
-    fs_song = ds.song.attrs['sampling_rate_Hz']
-    fs_other = ds.pose_positions_allo.attrs['sampling_rate_Hz']
-    index_other = int(index * fs_other / fs_song)
-    if [index_other, fly1, fly2] in swap_events:  # if already in there remove - swapping a second time negates first swap
-        swap_events.remove([index_other, fly1, fly2])
-    else:
-        swap_events.append([index_other, fly1, fly2])
-
-    ds.pose_positions_allo.values[index_other:, [
-        fly2, fly1], ...] = ds.pose_positions_allo.values[index_other:, [fly1, fly2], ...]
-    ds.pose_positions.values[index_other:, [
-        fly2, fly1], ...] = ds.pose_positions.values[index_other:, [fly1, fly2], ...]
-    ds.body_positions.values[index_other:, [
-        fly2, fly1], ...] = ds.body_positions.values[index_other:, [fly1, fly2], ...]
-    return ds, swap_events
-
-
-def save_swap_events(savefilename, lst):
-    np.savetxt(savefilename, lst, fmt='%d', header='index fly1 fly2')
-
+        self.ds.pose_positions_allo.values[self.index_other:, [
+            self.other_fly, self.focal_fly], ...] = self.ds.pose_positions_allo.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+        self.ds.pose_positions.values[self.index_other:, [
+            self.other_fly, self.focal_fly], ...] = self.ds.pose_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+        self.ds.body_positions.values[self.index_other:, [
+            self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+        
 
 def main(datename: str = 'localhost-20181120_144618', root: str = '', cue_points: str = '[]'):
     """[summary]
@@ -492,7 +534,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '', cue_points
     # xb.save(datename + '.zarr', self.ds)
     logging.info(ds)
     filepath = ds.attrs['video_filename']
-    vr = VideoReaderNP(filepath[:-3] + 'avi')
+    vr = _ui_utils.VideoReaderNP(filepath[:-3] + 'avi')
 
     cue_points = eval(cue_points)
 
