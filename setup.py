@@ -17,7 +17,7 @@ setup(name='xarray_behave',
       license='MIT',
       packages=find_packages('src'),
       package_dir={'': 'src'},
-      install_requires=['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'pyqtgraph', 'simpleaudio'],
+      install_requires=['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'pyqtgraph', 'simpleaudio', 'scikit-image'],
       include_package_data=True,
       zip_safe=False
-      )
+     )
