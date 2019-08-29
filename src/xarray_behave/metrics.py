@@ -76,13 +76,13 @@ def yx2fwdlat(pos1, pos2, dyx):
 
 def derivative(x, dt: float = 1, degree: int = 1, axis: int = 0):
     """Calculate derivative of x with respect to axis.
-    
+
     Args:
         x ([type]): Data. At last 1D.
         dt (float, optional): Timestep. Defaults to 1.
         degree (int, optional): Number of time the gradient is taken. Defaults to 1 (velocity). degree=2 return acceleration.
         axis (int, optional): Axis along which to take the gradient. Defaults to 0.
-    
+
     Returns:
         [type]: [description]
     """
@@ -127,7 +127,7 @@ def acceleration(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 's
 
 def angle(pos1, pos2=None, degrees: bool = True, unwrap: bool = False):
     """Compute angle.
-    
+
     Args:
         pos1 ([type]): position of vector's base, center of agent. [time, agent, y/x]
         pos2 ([type], optional): position of vector's head, head of agent. [time, agent, y/x]. If provided will compute angle between pos1 and pos2. Defaults to None.
@@ -141,7 +141,7 @@ def angle(pos1, pos2=None, degrees: bool = True, unwrap: bool = False):
         ang = np.arctan2(pos1[..., 0], pos1[..., 1])
     else:
         ang = np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])
-    
+
     if unwrap:
         ang = np.unwrap(ang)
 
@@ -162,7 +162,7 @@ def relative_angle(pos1, pos2):
     d1 = pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :]  # all pairwise "distances"
 
     dot = d0[:, :, np.newaxis, 1]*d1[:, :, :, 1] + d0[:, :, np.newaxis, 0]*d1[:, :, :, 0]
-    det = d0[:, :, np.newaxis, 1]*d1[:, :, :, 0] - d0[:, :, np.newaxis, 0]*d1[:, :, :, 1]        
+    det = d0[:, :, np.newaxis, 1]*d1[:, :, :, 0] - d0[:, :, np.newaxis, 0]*d1[:, :, :, 1]
 
     rel_angles = np.arctan2(det, dot)
 
@@ -184,15 +184,41 @@ def rot_speed(pos1, pos2, timestep: float = 1):
 
 def rot_acceleration(pos1, pos2, timestep: float = 1):
     """[summary]
-    
+
     Args:
         pos1 ([type]): position of vector's base, center of agent. [time, flies, y/x]
         pos2 ([type]): position of vector's head, head of agent. [time, flies, y/x]
         timestep (float, optional): [description]. Defaults to 1.
-    
+
     Returns:
         [type]: rotational acceleration. [time, flies]
     """
     unwrapped_angles = angle(pos1, pos2, unwrap=True)
     rot_accs = derivative(unwrapped_angles, timestep, degree=2)
     return rot_accs
+
+
+def project_velocity(velx, vely, radians, option: str = 'ref'):
+    """Rotate vectors around the origin (0, 0).
+
+    Args:
+        velx ([type]): vector x component.
+        vely ([type]): vector y component.
+        radians ([type]): angles of rotation in radians.
+        option (str): output option. ref for components in reference fly frame, self for target fly frame.
+
+    Returns:
+        vel_lat ([type]): vector lateral component. Left negative.
+        vel_for ([type]): vector forward component. Backwards negative
+    """
+
+    if radians.shape != velx.shape:
+        if option == 'ref':
+            radians = np.repeat(radians[..., np.newaxis], radians.shape[1], axis=2)
+        elif option == 'self':
+            radians = np.repeat(radians[:, np.newaxis, :], radians.shape[-1], axis=1)
+
+    vel_lat = -velx * np.cos(radians) + vely * np.sin(radians)
+    vel_for = velx * np.sin(radians) + vely * np.cos(radians)
+
+    return vel_lat, vel_for

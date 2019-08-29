@@ -14,7 +14,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
              make_mask: bool = False, fix_fly_indices: bool = True) -> None:
     """[summary]
-    
+
     Args:
         datename ([type]): [description]
         root (str, optional): [description]. Defaults to ''.
@@ -28,7 +28,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         include_poses (bool, optional): [description]. Defaults to True.
         make_mask (bool, optional): ..., Defaults to False.
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
-    
+
     Returns:
         None
     """
@@ -62,7 +62,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         first_tracked_frame = int(ss.frame(0))
         last_tracked_frame = int(ss.frame(last_sample_number))
         logging.info(f'Setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
-            
+
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
     poses_from = None
@@ -89,7 +89,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # load AUTOMATIC SEGMENTATION - currently produced by matlab
     with_segmentation = False
-    with_segmentation_manual = False        
+    with_segmentation_manual = False
     with_song = False
     if include_song:
         res = dict()
@@ -242,18 +242,18 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         if resample_video_data:  # resample to common grid at target_sampling_rate.
             frame_numbers = np.arange(first_pose_frame, last_pose_frame)
             frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        
+
             interpolator = scipy.interpolate.interp1d(
                 frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
             pose_pos = interpolator(target_samples)
-        
+
             interpolator = scipy.interpolate.interp1d(
                 frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
             pose_pos_allo = interpolator(target_samples)
         else:
             time = frame_times
             nearest_frame_time = frame_numbers
-            
+
         # poses in EGOCENTRIC coordinates
         poses = xr.DataArray(data=pose_pos,
                              dims=['time', 'flies', 'poseparts', 'coords'],
@@ -305,13 +305,13 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
 def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smooth_positions: bool = True):
     """[summary]
-    
+
     Args:
         dataset ([type]): [description]
         make_abs (bool, optional): [description]. Defaults to True.
         make_rel (bool, optional): [description]. Defaults to True.
         smooth_positions (bool, optional): [description]. Defaults to True.
-    
+
     Returns:
         [type]: [description]
         xarray.Dataset: containing these features:
@@ -341,7 +341,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
     wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].values.astype(np.float32)
 
     if smooth_positions:
-        # Smoothing window should span 2 frames to get smooth acceleration traces. 
+        # Smoothing window should span 2 frames to get smooth acceleration traces.
         # Since std of Gaussian used for smoothing has std of winlen/8, winlen should span 16 frames.
         winlen = np.ceil(16 / frame_rate * sampling_rate)
         thoraces = mt.smooth(thoraces, winlen)
@@ -406,8 +406,9 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         dis = mt.distance(thoraces)
         rel_angles = mt.relative_angle(thoraces, heads)
         rel_orientation = angles[:, np.newaxis, :] - angles[:, :, np.newaxis]
-        rel_velocities_forward = chamber_vels[..., 0][:, np.newaxis, :] - chamber_vels[..., 0][:, :, np.newaxis]
-        rel_velocities_lateral = chamber_vels[..., 1][:, np.newaxis, :] - chamber_vels[..., 1][:, :, np.newaxis]
+        rel_velocities_y = chamber_vels[..., 0][:, np.newaxis, :] - chamber_vels[..., 0][:, :, np.newaxis]
+        rel_velocities_x = chamber_vels[..., 1][:, np.newaxis, :] - chamber_vels[..., 1][:, :, np.newaxis]
+        rel_velocities_lateral, rel_velocities_forward = mt.project_velocity(rel_velocities_x, rel_velocities_y, np.radians(angles), option='self')
         rel_velocities_mag = np.sqrt(rel_velocities_forward**2 + rel_velocities_lateral**2)
 
         list_relative = [
@@ -459,12 +460,12 @@ def _normalize_strings(dataset):
 
 def load(savepath, lazy: bool = False, normalize_strings: bool = True):
     """[summary]
-    
+
     Args:
         savepath ([type]): [description]
         lazy (bool, optional): [description]. Defaults to True.
         normalize_strings (bool, optional): [description]. Defaults to True.
-    
+
     Returns:
         [type]: [description]
     """
