@@ -406,7 +406,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         rel_orientation = angles[:, np.newaxis, :] - angles[:, :, np.newaxis]
         rel_velocities_y = chamber_vels[..., 0][:, np.newaxis, :] - chamber_vels[..., 0][:, :, np.newaxis]
         rel_velocities_x = chamber_vels[..., 1][:, np.newaxis, :] - chamber_vels[..., 1][:, :, np.newaxis]
-        rel_velocities_lateral, rel_velocities_forward = mt.project_velocity(rel_velocities_x, rel_velocities_y, np.radians(angles))
+        rel_velocities_lateral, rel_velocities_forward = mt.project_velocity(rel_velocities_x, rel_velocities_y, np.radians(angles), option='self')
         rel_velocities_mag = np.sqrt(rel_velocities_forward**2 + rel_velocities_lateral**2)
 
         list_relative = [

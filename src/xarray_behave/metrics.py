@@ -198,23 +198,27 @@ def rot_acceleration(pos1, pos2, timestep: float = 1):
     return rot_accs
 
 
-def project_velocity(vx, vy, radians):
+def project_velocity(velx, vely, radians, option: str = 'ref'):
     """Rotate vectors around the origin (0, 0).
 
     Args:
-        vx ([type]): vector x component.
-        vy ([type]): vector y component.
+        velx ([type]): vector x component.
+        vely ([type]): vector y component.
         radians ([type]): angles of rotation in radians.
+        option (str): output option. ref for components in reference fly frame, self for target fly frame.
 
     Returns:
-        rot_vx ([type]): vector lateral component. Left negative.
-        rot_vy ([type]): vector forward component. Backwards negative
+        vel_lat ([type]): vector lateral component. Left negative.
+        vel_for ([type]): vector forward component. Backwards negative
     """
 
-    if radians.shape != vx.shape:
-        radians = np.repeat(radians[..., np.newaxis], radians.shape[1], axis=2)
+    if radians.shape != velx.shape:
+        if option == 'ref':
+            radians = np.repeat(radians[..., np.newaxis], radians.shape[1], axis=2)
+        elif option == 'self':
+            radians = np.repeat(radians[:, np.newaxis, :], radians.shape[-1], axis=1)
 
-    rot_vx = -vx * np.cos(radians) + vy * np.sin(radians)
-    rot_vy = vx * np.sin(radians) + vy * np.cos(radians)
+    vel_lat = -velx * np.cos(radians) + vely * np.sin(radians)
+    vel_for = velx * np.sin(radians) + vely * np.cos(radians)
 
-    return rot_vx, rot_vy
+    return vel_lat, vel_for
