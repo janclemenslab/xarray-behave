@@ -310,7 +310,8 @@ class PSV():
         logging.info(f'   Saving annotations to {savefilename}.')
         # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
         xb.save(savefilename, self.ds.song_events.to_dataset())
-
+        logging.info(f'   Done.')
+        
     def toggle(self, var_name):
         self.__setattr__(var_name, not self.__getattribute__(var_name))
         if self.STOP:
