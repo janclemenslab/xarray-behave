@@ -1,23 +1,40 @@
 import cv2
 import numpy as np
 import pyqtgraph as pg
+from pyqtgraph.Qt import QtGui
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWidgets import QGraphicsPixmapItem
+
 from videoreader import VideoReader
 
 
-def make_colors(nb_flies):
-    colors = np.zeros((1, nb_flies, 3), np.uint8)
+def make_colors(nb_colors):
+    colors = np.zeros((1, nb_colors, 3), np.uint8)
     colors[0, :, 1:] = 220  # set saturation and brightness to 220
-    colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_flies)  # set range of hues
+    colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_colors)  # set range of hues
     colors = cv2.cvtColor(colors, cv2.COLOR_HSV2BGR)[0].astype(np.uint8)[..., ::-1]
     return colors
 
 
-def _autoupdate(func):
-    def call_and_update(self):
-        func(self)
-        if self.STOP:  # avoid unecessary update if playback is running
-            self.update()
-    return call_and_update
+def fast_plot(plot_widget, x, y, pen=None):
+    """[summary]
+
+    Args:
+        plot_widget ([type]): [description]
+        x ([type]): [description]
+        y ([type]): [description]
+        pen ([type], optional): [description]. Defaults to None.
+    """
+    # as per: https://stackoverflow.com/questions/17103698/plotting-large-arrays-in-pyqtgraph
+    # not worth it when plotting all channels but may speed up drawing events
+    conn = np.ones_like(x, dtype=np.bool)
+    conn[:, -1] = False  # make sure plots are disconnected
+    path = pg.arrayToQPath(x.flatten(), y.flatten(), conn.flatten())
+    item = QtGui.QGraphicsPathItem(path)
+    if pen is None:
+        pen = pg.mkPen(color=(196, 128, 128))
+    item.setPen(pen)
+    plot_widget.addItem(item)
 
 
 class VideoReaderNP(VideoReader):
@@ -57,3 +74,53 @@ class ImageViewVR(pg.ImageView):
     def quickMinMax(self, data):
         """Dummy min/max for numpy videoreader. The original function tries to read the full video!"""
         return 0, 255
+
+
+class FastImageWidget(pg.GraphicsLayoutWidget):
+
+    def __init__(self, *args, useOpenGL=True, **kwargs):
+        """[summary]
+        
+        Args:
+            useOpenGL (bool, optional): [description]. Defaults to True.
+        """
+        super(FastImageWidget, self).__init__(*args, **kwargs)
+        self.viewBox = self.addViewBox()
+        self.useOpenGL(useOpenGL)
+        self.pixmapItem = QGraphicsPixmapItem()
+        self.pixmapItem.setShapeMode(QGraphicsPixmapItem.BoundingRectShape)
+        self.viewBox.addItem(self.pixmapItem)
+        self.viewBox.setAspectLocked(lock=True, ratio=1)
+        self.viewBox.setMouseEnabled(False, False)
+        self.viewBox.disableAutoRange()
+
+    def registerMouseClickEvent(self, func):
+        """[summary]
+        
+        Args:
+            func ([type]): [description]
+        """
+        self.pixmapItem.mouseClickEvent = func
+
+    def setImage(self, image, image_format=QImage.Format_RGB888, auto_scale: bool = False):
+        """[summary]
+        
+        Args:
+            image ([type]): [description]
+            image_format ([type], optional): [description]. Defaults to QImage.Format_RGB888.
+            auto_scale (bool, optional): [description]. Defaults to False.
+        """
+        qimg = QImage(image.ctypes.data, image.shape[1], image.shape[0], image_format)
+        qpix = QPixmap(qimg)
+        self.pixmapItem.setPixmap(qpix)
+        if auto_scale:
+            self.fitImage(image.shape[1], image.shape[0])
+
+    def fitImage(self, width: int, height: int):
+        """[summary]
+        
+        Args:
+            width ([type]): [description]
+            height ([type]): [description]
+        """
+        self.viewBox.setRange(xRange=(0, width), yRange=(0, height), padding=0)
