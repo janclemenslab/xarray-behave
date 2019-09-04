@@ -10,7 +10,7 @@ pip install git+http://github.com/janclemenslab/samplestamps
 Install with GUI (requires extra dependencies):
 ```shell
 conda install pyqtgraph scikit-image
-pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[ui]
+pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[gui]
 ```
 Install without GUI (e.g. on the cluster):
 ```shell
