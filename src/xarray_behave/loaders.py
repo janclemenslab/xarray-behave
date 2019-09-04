@@ -13,8 +13,6 @@ import xarray as xr
 import zarr
 import math
 
-from typing import Sequence
-
 
 def rotate_point(pos, degrees, origin=(0, 0)):
     """Rotate point.
@@ -268,15 +266,12 @@ def load_poses_deepposekit(filepath):
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
 
 
-def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, lazy=False):
+def load_raw_song(filepath_daq, song_channels=None):
     """[summary]
 
     Args:
         filepath_daq ([type]): [description]
-        song_channels (List[int], optional): Sequence of integers as indices into 'samples' datasaet.
-                                             Defaults to [0,..., 15].
-        lazy (bool, optional): If True, will load song as dask.array, which allows lazy indexing.
-                               Otherwise, will load the full recording from disk (slow). Defaults to False.
+        song_channels ([type], optional): [description]. Defaults to None.
 
     Returns:
         [type]: [description]
@@ -284,15 +279,8 @@ def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, lazy=False)
     if song_channels is None:  # the first 16 channels in the data are the mic recordings
         song_channels = list(range(16))
 
-    if lazy:
-        f = h5py.File(filepath_daq, 'r')
-        # convert to dask array since this allows lazily evaluated indexing...
-        import dask.array as daskarray
-        da = daskarray.from_array(f['samples'], chunks=(10000, 1))
-        song = da[:, song_channels]
-    else:
-        with h5py.File(filepath_daq, 'r') as f:
-            song = f['samples'][:, song_channels]
+    with h5py.File(filepath_daq, 'r') as f:
+        song = f['samples'][:, song_channels]
 
     return song
 
@@ -313,59 +301,3 @@ def load_times(filepath_timestamps, filepath_daq):
     sampling_rate_Hz = np.round(interval * nb_samples)
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
     return ss, last_sample, sampling_rate_Hz
-
-
-def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = False, force_overwrite: bool = False) -> xr.Dataset:
-    """[summary]
-    
-    Args:
-        ds (xarray.Dataset): [description]
-        from_segmentation (bool, optional): Init manual events from automatic events with same name
-                                            If force_overwrite: will *ADD* existing manual events.
-                                            otherwise: will *ADD* auto events to existing manual events.
-                                            Defaults to False.
-        force_overwrite (bool, optional): Overwrite existing manual events. 
-                                          Defaults to False.
-    
-    Returns:
-        xarray.Dataset: [description]
-    """
-    new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
-    if 'song_events' in ds:
-        new_manual_event_types = [evt for evt in new_manual_event_types
-                                          if evt not in ds.song_events.event_types]
-        
-    if 'song_events' not in ds or new_manual_event_types:
-        new_manual_events = np.zeros((ds.song_events.shape[0], len(new_manual_event_types)), 
-                                        dtype=np.bool)
-        song_events_manual = xr.DataArray(data=new_manual_events,
-                                            dims=['time', 'event_types'],
-                                            coords={'time': ds.time,
-                                                    'event_types': new_manual_event_types,
-                                                    'nearest_frame': (('time'), ds.nearest_frame), },
-                                            attrs={'description': 'Event times as boolean arrays.',
-                                                    'sampling_rate_Hz': ds.song_events.attrs['sampling_rate_Hz'],
-                                                    'time_units': 'seconds', })
-    if 'song_events' in ds and not force_overwrite:
-        combined = xr.concat([ds.song_events, song_events_manual], dim='event_types')
-    else:
-        combined = song_events_manual
-
-    if 'song_events' in ds:
-        ds.drop('song_events')
-    new_ds = combined.to_dataset(name='song_events')
-    attrs = ds.attrs  # for some reason, attrs are not preserved during merge...
-    ds = xr.merge((ds, new_ds))
-    ds.attrs = attrs
-        
-    if from_segmentation:
-        for evt in new_manual_event_types:
-            auto_key = evt.strip('_manual')
-            if auto_key in ds.song_events.event_types:
-                if force_overwrite:  # overwrite manual events with the corresponding auto event
-                    ds.song_events.loc[:, evt] = ds.song_events.loc[:, auto_key]
-                else:  # add auto events to the corresponding manual event
-                    ds.song_events.loc[:, evt] = np.logical_or((ds.song_events.loc[:, evt], ds.song_events.loc[:, auto_key]))
-    return ds          
-           
-             

@@ -3,7 +3,6 @@ import numpy as np
 import scipy.interpolate
 import xarray as xr
 import zarr
-import h5py
 import logging
 from pathlib import Path
 from . import loaders as ld
@@ -13,7 +12,7 @@ from . import metrics as mt
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000,
              keep_multi_channel: bool = False, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
-             make_mask: bool = False, fix_fly_indices: bool = True) -> xr.Dataset:
+             make_mask: bool = False, fix_fly_indices: bool = True) -> None:
     """[summary]
 
     Args:
@@ -31,7 +30,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
 
     Returns:
-        xarray.Dataset
+        None
     """
 
     # load RECORDING and TIMING INFORMATION
@@ -92,7 +91,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     with_segmentation = False
     with_segmentation_manual = False
     with_song = False
-    with_song_raw = False
     if include_song:
         res = dict()
         filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.mat')
@@ -105,12 +103,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             logging.debug(e)
 
         # load RAW song traces
-        if keep_multi_channel:
+        if not with_song or keep_multi_channel:
             try:
                 logging.info(f'Reading recording from {filepath_daq}.')
-                song_raw = ld.load_raw_song(filepath_daq, lazy=True)
-                res['song_raw'] = song_raw
-                with_song_raw = True
+                song_raw = ld.load_raw_song(filepath_daq)
+                if not with_song:
+                    song_merged_max = ld.merge_channels(song_raw, sampling_rate)
+                    res['song'] = song_merged_max
+                if keep_multi_channel:
+                    res['song_raw'] = song_raw
+                with_song = True
             except Exception as e:
                 logging.info(f'Could not load song from {filepath_daq}.')
                 logging.debug(e)
@@ -143,7 +145,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     nearest_frame_time = interpolator(target_samples).astype(np.uintp)
 
     dataset_data = dict()
-    if with_song:  # MERGED song recording
+    if with_song:  # MERGED and RAW song recording
         song = xr.DataArray(data=res['song'][first_sample:last_sample, 0],  # cut recording to match new grid
                             dims=['sampletime'],
                             coords={'sampletime': sampletime, },
@@ -153,15 +155,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                    'amplitude_units': 'volts'})
         dataset_data['song'] = song
 
-    if with_song_raw:
-        song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
-                                dims=['sampletime', 'channels'],
-                                coords={'sampletime': sampletime, },
-                                attrs={'description': 'Raw song recording (multi channel).',
-                                       'sampling_rate_Hz': sampling_rate,
-                                       'time_units': 'seconds',
-                                       'amplitude_units': 'volts'})
-        dataset_data['song_raw'] = song_raw
+        if keep_multi_channel:
+            song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
+                                    dims=['sampletime', 'channels'],
+                                    coords={'sampletime': sampletime, },
+                                    attrs={'description': 'Raw song recording (multi channel).',
+                                           'sampling_rate_Hz': sampling_rate,
+                                           'time_units': 'seconds',
+                                           'amplitude_units': 'volts'})
+            dataset_data['song_raw'] = song_raw
 
     # SONG EVENTS
     if with_segmentation_manual:
