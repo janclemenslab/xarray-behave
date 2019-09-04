@@ -3,13 +3,13 @@
 ## Installation
 First, manually install dependencies:
 ```shell
-conda install numpy scipy pandas xarray zarr h5py opencv
-pip install git+http://github.com/postpop/videoreader
+conda install numpy scipy pandas xarray zarr h5py
 pip install git+http://github.com/janclemenslab/samplestamps
 ```
 Install with GUI (requires extra dependencies):
 ```shell
-conda install pyqtgraph scikit-image
+conda install pyqtgraph scikit-image opencv
+pip install git+http://github.com/postpop/videoreader
 pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[gui]
 ```
 Install without GUI (e.g. on the cluster):
