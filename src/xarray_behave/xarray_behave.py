@@ -194,7 +194,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             event_times = event_times[event_times < last_sample_with_frame / step]
             song_events_np[event_times, cnt] = True
         if not resample_video_data:
-            # resample song_events to frame times
+            logging.info(f'Resampling event data to match frame times.')
             interpolator = scipy.interpolate.interp1d(time, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
             frame_times = ss.frame_time(frame_numbers)
             song_events_np = interpolator(frame_times).astype(np.uintp)
@@ -209,7 +209,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         if with_poses:
             len_list.append(pose_pos.shape[0])
         min_len = min(len_list)
-        print(min_len)
+        logging.info(f'Cutting all data to {min_len} frames.')
 
     if with_segmentation_manual or with_segmentation:
         if not resample_video_data:
