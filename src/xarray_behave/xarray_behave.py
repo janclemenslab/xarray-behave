@@ -136,11 +136,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     sampletime = np.arange(first_sample, last_sample) / sampling_rate
 
     # get nearest frame for each sample in the resampled grid
-    frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
+    frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)    
     frame_samples = ss.sample(frame_numbers)
     interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
                                               kind='nearest', bounds_error=False, fill_value=np.nan)
-    nearest_frame_time = interpolator(target_samples).astype(np.uintp)
+    if resample_video_data:                              
+        nearest_frame = interpolator(target_samples).astype(np.uintp)
+    else:
+        nearest_frame = frame_numbers
 
     dataset_data = dict()
     if with_song:  # MERGED song recording
@@ -190,12 +193,35 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             event_times = np.unique((events[key] / step).astype(np.uintp))
             event_times = event_times[event_times < last_sample_with_frame / step]
             song_events_np[event_times, cnt] = True
+        if not resample_video_data:
+            # resample song_events to frame times
+            interpolator = scipy.interpolate.interp1d(time, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
+            frame_times = ss.frame_time(frame_numbers)
+            song_events_np = interpolator(frame_times).astype(np.uintp)
+            time = frame_times
+
+    if not resample_video_data:
+        len_list = [time.shape[0]]
+        if with_tracks:
+            len_list.append(body_pos.shape[0])
+        if with_segmentation_manual or with_segmentation:
+            len_list.append(song_events_np.shape[0])
+        if with_poses:
+            len_list.append(pose_pos.shape[0])
+        min_len = min(len_list)
+        print(min_len)
+
+    if with_segmentation_manual or with_segmentation:
+        if not resample_video_data:
+            time = time[:min_len]
+            song_events_np = song_events_np[:min_len]
+            nearest_frame = nearest_frame[:min_len]
 
         song_events = xr.DataArray(data=song_events_np,
                                    dims=['time', 'event_types'],
                                    coords={'time': time,
                                            'event_types': eventtypes,
-                                           'nearest_frame': (('time'), nearest_frame_time), },
+                                           'nearest_frame': (('time'), nearest_frame), },
                                    attrs={'description': 'Event times as boolean arrays.',
                                           'sampling_rate_Hz': sampling_rate / step,
                                           'time_units': 'seconds', })
@@ -215,13 +241,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             body_pos = interpolator(target_samples)
         else:
             time = frame_times
-            nearest_frame_time = frame_numbers
+            nearest_frame = frame_numbers
+            time = time[:min_len]
+            nearest_frame = nearest_frame[:min_len]
+            body_pos = body_pos[:min_len]
 
         positions = xr.DataArray(data=body_pos,
                                  dims=['time', 'flies', 'bodyparts', 'coords'],
                                  coords={'time': time,
                                          'bodyparts': body_parts,
-                                         'nearest_frame': (('time'), nearest_frame_time),
+                                         'nearest_frame': (('time'), nearest_frame),
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
@@ -250,14 +279,19 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             pose_pos_allo = interpolator(target_samples)
         else:
             time = frame_times
-            nearest_frame_time = frame_numbers
+            nearest_frame = frame_numbers
+            # ensure all is equal length            
+            time = time[:min_len]
+            nearest_frame = nearest_frame[:min_len]
+            pose_pos = pose_pos[:min_len]
+            pose_pos_allo = pose_pos_allo[:min_len]
 
         # poses in EGOCENTRIC coordinates
         poses = xr.DataArray(data=pose_pos,
                              dims=['time', 'flies', 'poseparts', 'coords'],
                              coords={'time': time,
                                      'poseparts': pose_parts,
-                                     'nearest_frame': (('time'), nearest_frame_time),
+                                     'nearest_frame': (('time'), nearest_frame),
                                      'coords': ['y', 'x']},
                              attrs={'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
@@ -272,7 +306,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                   dims=['time', 'flies', 'poseparts', 'coords'],
                                   coords={'time': time,
                                           'poseparts': pose_parts,
-                                          'nearest_frame': (('time'), nearest_frame_time),
+                                          'nearest_frame': (('time'), nearest_frame),
                                           'coords': ['y', 'x']},
                                   attrs={'description': 'coords are "allocentric" - rel. to frame',
                                          'sampling_rate_Hz': sampling_rate / step,
@@ -329,7 +363,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
     """
 
     time = dataset.time
-    nearest_frame_time = dataset.nearest_frame
+    nearest_frame = dataset.nearest_frame
     sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
     frame_rate = dataset.pose_positions.attrs['video_fps']
 
@@ -394,7 +428,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
                                                dims=['time', 'flies', 'absolute_features'],
                                                coords={'time': time,
                                                        'absolute_features': abs_feature_names,
-                                                       'nearest_frame': (('time'), nearest_frame_time)},
+                                                       'nearest_frame': (('time'), nearest_frame)},
                                                attrs={'description': 'coords are "egocentric" - rel. to box',
                                                       'sampling_rate_Hz': sampling_rate,
                                                       'time_units': 'seconds',
@@ -424,7 +458,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
                                                dims=['time', 'flies', 'relative_flies', 'relative_features'],
                                                coords={'time': time,
                                                        'relative_features': rel_feature_names,
-                                                       'nearest_frame': (('time'), nearest_frame_time)},
+                                                       'nearest_frame': (('time'), nearest_frame)},
                                                attrs={'description': 'coords are "egocentric" - rel. to box',
                                                       'sampling_rate_Hz': sampling_rate,
                                                       'time_units': 'seconds',
