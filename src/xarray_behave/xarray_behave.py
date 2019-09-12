@@ -3,7 +3,6 @@ import numpy as np
 import scipy.interpolate
 import xarray as xr
 import zarr
-import h5py
 import logging
 from pathlib import Path
 from . import loaders as ld
@@ -49,14 +48,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks)
             with_tracks = True
             with_fixed_tracks = True
-        except Exception as e:
+        except (FileNotFoundError, OSError) as e:
             logging.info(f'Could not load tracks from {filepath_tracks}.')
             logging.debug(e)
             try:
                 logging.info(f'Trying non-fixed tracks at {filepath_tracks_nonfixed}.')
                 body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks_nonfixed)
                 with_tracks = True
-            except Exception as e:
+            except (FileNotFoundError, OSError) as e:
                 logging.info(f'   This failed, too:')
                 logging.debug(e)
     if not with_tracks:
@@ -73,7 +72,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_deepposekit(filepath_poses)
             with_poses = True
             poses_from = 'DeepPoseKit'
-        except Exception as e:
+        except (FileNotFoundError, OSError) as e:
             logging.info(f'Could not load pose from {filepath_poses}.')
             logging.debug(e)
 
@@ -84,7 +83,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses)
                 with_poses = True
                 poses_from = 'LEAP'
-            except Exception as e:
+            except (FileNotFoundError, OSError) as e:
                 logging.info(f'Could not load pose from {filepath_poses}.')
                 logging.debug(e)
 
@@ -100,7 +99,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             res = ld.load_segmentation(filepath_segmentation)
             with_segmentation = True
             with_song = True
-        except Exception as e:
+        except (FileNotFoundError, OSError) as e:
             logging.info(f'Could not load segmentation from {filepath_segmentation}.')
             logging.debug(e)
 
@@ -111,7 +110,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 song_raw = ld.load_raw_song(filepath_daq, lazy=True)
                 res['song_raw'] = song_raw
                 with_song_raw = True
-            except Exception as e:
+            except (FileNotFoundError, OSError) as e:
                 logging.info(f'Could not load song from {filepath_daq}.')
                 logging.debug(e)
 
@@ -120,7 +119,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         try:
             manual_events_seconds = ld.load_manual_annotation(filepath_segmentation_manual)
             with_segmentation_manual = True
-        except Exception as e:
+        except (FileNotFoundError, OSError) as e:
             logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual}.')
             logging.debug(e)
 
@@ -328,8 +327,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             indices, flies1, flies2 = ld.load_swap_indices(filepath_swap)
             dataset = ld.swap_flies(dataset, indices, flies1=0, flies2=1)
             logging.info(f'  Fixed fly identities using info from {filepath_swap}.')
-        except Exception as e:
-            logging.debug(f'  Could not fix fly identities using info from {filepath_swap}.')
+        except (FileNotFoundError, OSError) as e:
+            logging.debug(f'  Could load fly identities using info from {filepath_swap}.')
             logging.debug(e)
 
     return dataset
