@@ -3,7 +3,7 @@
 ## Installation
 First, manually install dependencies:
 ```shell
-conda install numpy scipy pandas xarray zarr h5py
+conda install numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz numbagg
 pip install git+http://github.com/janclemenslab/samplestamps
 ```
 Install with GUI (requires extra dependencies):
