@@ -536,7 +536,7 @@ class PSV():
             self.t0 += rate
             cnt += 1
             if cnt % 10 == 0:
-                logging.debug(time.time() - dt0)
+                # logging.debug(time.time() - dt0)
                 dt0 = time.time()
             if self.STOP:
                 RUN = False
