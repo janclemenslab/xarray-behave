@@ -12,7 +12,7 @@ from samplestamps import SampStamp
 import xarray as xr
 import zarr
 import math
-
+from . import xarray_behave as xb
 from typing import Sequence
 
 
@@ -123,7 +123,13 @@ def load_segmentation(filepath):
 
 
 def load_manual_annotation(filepath):
-    """Load output produced by ManualSegmenter."""
+    """Load output produced by the python ManualSegmenter."""
+    manual_events = xb.load(filepath)
+    return manual_events
+
+
+def load_manual_annotation_annotation(filepath):
+    """Load output produced by the matlab ManualSegmenter."""
     try:
         mat_data = loadmat(filepath)
     except NotImplementedError:
