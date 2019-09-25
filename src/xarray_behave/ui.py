@@ -31,12 +31,9 @@ import numpy as np
 from pathlib import Path
 import defopt
 import skimage.draw
-from functools import partial, lru_cache
-import xarray as xr
-# from scipy.signal import spectrogram
+from functools import partial
+
 import scipy
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QGraphicsPixmapItem
 
 
 class PSV():
