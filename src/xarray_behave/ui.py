@@ -230,11 +230,11 @@ class PSV():
 
     @property
     def time0(self):
-        return int(self.t0 - self.span / 2)
+        return int(max(0, self.t0 - self.span / 2))
 
     @property
     def time1(self):
-        return int(self.t0 + self.span / 2)
+        return int(max(0, self.t0 + self.span / 2))
 
     @property
     def t0(self):
@@ -651,6 +651,8 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
     if not ignore_existing and os.path.exists(datename + '.zarr'):
         logging.info(f'Loading ds from {datename}.zarr.')
         ds = xb.load(datename + '.zarr', lazy=True)
+
+        logging.info(f'   Loading data from ds.')
         ds.song_events.load()  # non-lazy load song events so we can edit them
         
         ds.song.load()  # non-lazy load song for faster updates
