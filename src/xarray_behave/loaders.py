@@ -326,7 +326,7 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
     
     Args:
         ds (xarray.Dataset): [description]
-        from_segmentation (bool, optional): Init manual events from automatic events with same name
+        from_segmentation (bool, optional): Init manual events from automatic events with same name. Otherwise they inited as empty.
                                             If force_overwrite: will *ADD* existing manual events.
                                             otherwise: will *ADD* auto events to existing manual events.
                                             Defaults to False.
@@ -339,8 +339,9 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
     new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
     if 'song_events' in ds:
         new_manual_event_types = [evt for evt in new_manual_event_types
-                                          if evt not in ds.song_events.event_types]
+                                      if evt not in ds.song_events.event_types]
         
+    song_events_manual = None
     if 'song_events' not in ds or new_manual_event_types:
         new_manual_events = np.zeros((ds.song_events.shape[0], len(new_manual_event_types)), 
                                         dtype=np.bool)
@@ -350,20 +351,24 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
                                                     'event_types': new_manual_event_types,
                                                     'nearest_frame': (('time'), ds.nearest_frame), },
                                             attrs={'description': 'Event times as boolean arrays.',
-                                                    'sampling_rate_Hz': ds.song_events.attrs['sampling_rate_Hz'],
-                                                    'time_units': 'seconds', })
-    if 'song_events' in ds and not force_overwrite:
-        combined = xr.concat([ds.song_events, song_events_manual], dim='event_types')
-    else:
-        combined = song_events_manual
+                                                   'sampling_rate_Hz': ds.song_events.attrs['sampling_rate_Hz'],
+                                                   'time_units': 'seconds', })
 
-    if 'song_events' in ds:
-        ds.drop('song_events')
-    new_ds = combined.to_dataset(name='song_events')
-    attrs = ds.attrs  # for some reason, attrs are not preserved during merge...
-    ds = xr.merge((ds, new_ds))
-    ds.attrs = attrs
+    # if song_events_manual is not None 'song_events' in ds and not force_overwrite:
+    if song_events_manual is not None:
+        if not force_overwrite:
+            combined = xr.concat([ds.song_events, song_events_manual], dim='event_types')
+        else:
+            combined = song_events_manual
+
+        if 'song_events' in ds:
+            ds.drop('song_events')
         
+        new_ds = combined.to_dataset(name='song_events')
+        attrs = ds.attrs  # for some reason, attrs are not preserved during merge...
+        ds = xr.merge((ds, new_ds))
+        ds.attrs = attrs
+            
     if from_segmentation:
         for evt in new_manual_event_types:
             auto_key = evt.strip('_manual')
