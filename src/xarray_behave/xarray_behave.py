@@ -214,7 +214,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         # so we need to resample to align these events with the target sampling grid of the newly created dataset
         song_events_np = manual_events_ds.song_events.values
         song_event_times = manual_events_ds.time.values
-        eventtypes = [event_type.decode("utf-8") for event_type in manual_events_ds.event_types.values if isinstance(event_type, bytes)]
+        eventtypes = []
+        for index, event_type in enumerate(manual_events_ds.event_types.values):
+            eventtypes.append(event_type.decode("utf-8") if isinstance(event_type, bytes) else event_type)
 
         # HACK zarr (or xarray) cut-off long string keys in event-types
         fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
@@ -223,6 +225,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 logging.info(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
                 eventtypes[index]= fix_dict[eventtype]
         
+        # FIX - resampling reduces data size
+        breakpoint()
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
             interpolator = scipy.interpolate.interp1d(song_event_times, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
