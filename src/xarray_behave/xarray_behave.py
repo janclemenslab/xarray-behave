@@ -220,7 +220,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
         for index, eventtype in enumerate(eventtypes):
             if eventtype in fix_dict.keys():
-                print(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
+                logging(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
                 eventtypes[index]= fix_dict[eventtype]
         
         if not resample_video_data:
