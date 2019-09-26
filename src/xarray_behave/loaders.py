@@ -128,7 +128,7 @@ def load_manual_annotation(filepath):
     return manual_events
 
 
-def load_manual_annotation_annotation(filepath):
+def load_manual_annotation_matlab(filepath):
     """Load output produced by the matlab ManualSegmenter."""
     try:
         mat_data = loadmat(filepath)
