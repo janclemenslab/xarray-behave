@@ -398,7 +398,7 @@ class PSV():
         #      but could e.g. only re-draw events if they have changed,
         #      or just the spec if spec resolution was changed
         self.x = self.ds.sampletime.data[self.time0:self.time1]
-        step = int(np.ceil(len(self.x) / self.fs_song / 2))
+        step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
         self.slice_view.clear()
 
         if 'song' in self.ds and self.current_channel_name == 'Merged channels':
@@ -652,9 +652,11 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         logging.info(f'Loading ds from {datename}.zarr.')
         ds = xb.load(datename + '.zarr', lazy=True)
         ds.song_events.load()  # non-lazy load song events so we can edit them
+        
         ds.song.load()  # non-lazy load song for faster updates
         ds.pose_positions_allo.load()  # non-lazy load song for faster updates
         ds.sampletime.load()
+
         # this will take a long time:
         # ds.song_raw.load()  # non-lazy load song for faster updates
 
@@ -663,7 +665,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         import time
         t0 = time.time()
         ds = xb.assemble(datename, root=root, fix_fly_indices=False, keep_multi_channel=True)
-        print(time.time() - t0)
+        # print(time.time() - t0)
         xb.save(datename + '.zarr', ds)
 
     ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
