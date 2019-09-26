@@ -224,9 +224,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             if eventtype in fix_dict.keys():
                 logging.info(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
                 eventtypes[index]= fix_dict[eventtype]
-        
+
         # FIX - resampling reduces data size
-        breakpoint()
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
             interpolator = scipy.interpolate.interp1d(song_event_times, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
