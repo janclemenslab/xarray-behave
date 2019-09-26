@@ -317,11 +317,11 @@ class PSV():
 
     def delete_current_events(self):
         self.ds.song_events[self.time0:self.time1, self.current_event_index] = False
-        self.logging.info(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
+        logging.info(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
 
     def delete_all_events(self):
         self.ds.song_events[self.time0:self.time1, :] = False
-        self.logging.info(f'   Deleted all events in view.')
+        logging.info(f'   Deleted all events in view.')
         if self.STOP:
             self.update_xy()
 
