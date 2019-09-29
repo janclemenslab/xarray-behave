@@ -16,6 +16,7 @@ cuepoints: string evaluating to a list (e.g. '[100, 50000, 100000]' - including 
 # DONE remove autoupdate decorators
 # FIXED current_event seems to be first item in list - should be nothing
 # TODO allow moving sine song boundaries
+# TODO allow selecting save filename with filename= QFileDialog.getSaveFileName((self, 'Dialog Title', '/path/to/default/directory', selectedFilter='*.txt')
 
 import os
 import sys
@@ -102,6 +103,7 @@ class PSV():
         file = self.bar.addMenu("File")
         self.add_keyed_menuitem(file, "Save swap files", self.save_swaps)
         self.add_keyed_menuitem(file, "Save annotations", self.save_annotations)
+        self.add_keyed_menuitem(file, "Save dataset", self.save_dataset)
         file.addSeparator()
         file.addAction("Exit")
 
@@ -242,7 +244,7 @@ class PSV():
 
     @t0.setter
     def t0(self, val):
-        self._t0 = int(np.clip(val, self.span/2, self.tmax - self.span/2))
+        self._t0 = int(np.clip(val, self.span / 2, self.tmax - self.span / 2))
         self.update_xy()
         self.update_frame()
 
@@ -254,6 +256,10 @@ class PSV():
     def span(self, val):
         self._span = int(max(500, val))
         self.update_xy()
+
+    @property
+    def span_index(self):
+        return self.span / (2 * self.fs_song / self.fs_other)
 
     @property
     def current_event_index(self):
@@ -301,13 +307,21 @@ class PSV():
         logging.info(f'   Saving list of swap indices to {savefilename}.')
 
     def save_annotations(self):
-        logging.warning(f'   TEMPORARY FIX - saving only song_events to zarr - need to decide what to do here.')
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], 
                             f"{self.ds.attrs['datename']}_songmanual.zarr")
         logging.info(f'   Saving annotations to {savefilename}.')
         # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
         xb.save(savefilename, self.ds.song_events.to_dataset())
         logging.info(f'   Done.')
+        
+    def save_dataset(self):
+        # savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], 
+        #                     f"{self.ds.attrs['datename']}.zarr")
+        # logging.info(f'   Saving annotations to {savefilename}.')
+        # # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
+        # xb.save(savefilename, self.ds)
+        # logging.info(f'   Done.')
+        logging.warning(f'Saving datasets not implemented yet.')
         
     def toggle(self, var_name):
         self.__setattr__(var_name, not self.__getattribute__(var_name))
@@ -316,11 +330,18 @@ class PSV():
             self.update_xy()
 
     def delete_current_events(self):
-        self.ds.song_events[self.time0:self.time1, self.current_event_index] = False
-        logging.info(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
+        if self.current_event_index is not None:
+            self.ds.song_events.data[int(self.index_other - self.span_index):
+                            int(self.index_other + self.span_index), self.current_event_index] = False
+            logging.info(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
+        else:
+            logging.info(f'   No event type selected. Not deleting anything.')
+        if self.STOP:
+            self.update_xy()
 
     def delete_all_events(self):
-        self.ds.song_events[self.time0:self.time1, :] = False
+        self.ds.song_events.data[int(self.index_other - self.span_index):
+                                 int(self.index_other + self.span_index), :] = False
         logging.info(f'   Deleted all events in view.')
         if self.STOP:
             self.update_xy()
@@ -500,8 +521,9 @@ class PSV():
             if self.show_manualonly and 'manual' not in self.ds.event_types.values[event_type]:
                 continue
             if 'sine' in self.ds.event_types.data[event_type]:
-                event_trace = self.ds.song_events.data[int(
-                    self.index_other - self.span / 20):int(self.index_other + self.span / 20), event_type]
+                event_trace = self.ds.song_events.data[int(self.index_other - self.span_index):
+                                                       int(self.index_other + self.span_index),
+                                                       event_type]
                 d_event_trace = np.diff(event_trace.astype(np.int))
                 event_onset_indices = x[np.where(d_event_trace > 0)[0] * int(1 / self.fs_other * self.fs_song)]
                 event_offset_indices = x[np.where(d_event_trace < 0)[0] * int(1 / self.fs_other * self.fs_song)]
@@ -520,8 +542,9 @@ class PSV():
                     self.slice_view.addItem(pg.LinearRegionItem(values=(onset, offset),
                                                                 movable=False))
             else:
-                event_indices = np.where(self.ds.song_events.data[int(self.index_other - self.span / 20):int(
-                    self.index_other + self.span / 20), event_type])[0] * int(1 / self.fs_other * self.fs_song)
+                event_indices = np.where(self.ds.song_events.data[int(self.index_other - self.span_index):
+                                                                  int(self.index_other + self.span_index), 
+                                                                  event_type])[0] * int(1 / self.fs_other * self.fs_song)
                 events = x[event_indices]
                 if len(events):
                     xx = np.broadcast_to(events[np.newaxis, :], (2, len(events)))
@@ -664,10 +687,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
 
     else:
         logging.info(f'Assembling dataset for {datename}.')
-        import time
-        t0 = time.time()
         ds = xb.assemble(datename, root=root, fix_fly_indices=False, keep_multi_channel=True)
-        # print(time.time() - t0)
         xb.save(datename + '.zarr', ds)
 
     ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
