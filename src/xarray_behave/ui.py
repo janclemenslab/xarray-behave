@@ -694,7 +694,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
 
     logging.info(ds)
     filepath = ds.attrs['video_filename']
-    vr = _ui_utils.VideoReaderNP(filepath[:-3] + 'avi')
+    vr = _ui_utils.VideoReaderNP(filepath[:-3] + 'mp4')
 
     cue_points = eval(cue_points)
 
