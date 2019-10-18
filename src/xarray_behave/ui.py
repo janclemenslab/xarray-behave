@@ -319,13 +319,12 @@ class PSV():
         logging.info(f'   Done.')
 
     def save_dataset(self):
-        # savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
-        #                     f"{self.ds.attrs['datename']}.zarr")
-        # logging.info(f'   Saving annotations to {savefilename}.')
-        # # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
-        # xb.save(savefilename, self.ds)
-        # logging.info(f'   Done.')
-        logging.warning(f'Saving datasets not implemented yet.')
+        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
+                           f"{self.ds.attrs['datename']}.zarr")
+        logging.info(f'   Saving annotations to {savefilename}.')
+        # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
+        xb.save(savefilename, self.ds)
+        logging.info(f'   Done.')
 
     def toggle(self, var_name):
         self.__setattr__(var_name, not self.__getattribute__(var_name))
