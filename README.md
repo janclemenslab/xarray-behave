@@ -9,6 +9,7 @@ pip install git+http://github.com/janclemenslab/samplestamps
 Install with GUI (requires extra dependencies):
 ```shell
 conda install pyqtgraph scikit-image opencv
+pip install defopt
 pip install git+http://github.com/postpop/videoreader
 pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[gui]
 ```
