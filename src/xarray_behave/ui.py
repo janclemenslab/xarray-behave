@@ -693,7 +693,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
             ds.song_events.load()  # non-lazy load song events so we can edit them
         if 'song' in ds:
             ds.song.load()  # non-lazy load song for faster updates
-        if 'song_events' in ds:
+        if 'pose_positions_allo' in ds:
             ds.pose_positions_allo.load()  # non-lazy load song for faster updates
         if 'sampletime' in ds:
             ds.sampletime.load()
