@@ -223,7 +223,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         for index, eventtype in enumerate(eventtypes):
             if eventtype in fix_dict.keys():
                 logging.info(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
-                eventtypes[index]= fix_dict[eventtype]
+                eventtypes[index] = fix_dict[eventtype]
 
         # FIX - resampling reduces data size
         if not resample_video_data:
@@ -355,9 +355,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # MAKE THE DATASET
     dataset = xr.Dataset(dataset_data, attrs={})
+    if 'time' not in dataset:
+        dataset.coords['time'] = time
+    if 'nearest_frame' not in dataset:
+        dataset.coords['nearest_frame'] = (('time'), nearest_frame)
+
     # save command line args
     dataset.attrs = {'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
-                     'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path}
+                     'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path,
+                     'target_sampling_rate_Hz': target_sampling_rate}
 
     if fix_fly_indices:
         try:
@@ -366,7 +372,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             dataset = ld.swap_flies(dataset, indices, flies1=0, flies2=1)
             logging.info(f'  Fixed fly identities using info from {filepath_swap}.')
         except (FileNotFoundError, OSError) as e:
-            logging.debug(f'  Could load fly identities using info from {filepath_swap}.')
+            logging.debug(f'  Could not load fly identities using info from {filepath_swap}.')
             logging.debug(e)
 
     return dataset
