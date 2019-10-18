@@ -340,10 +340,13 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
     if 'song_events' in ds:
         new_manual_event_types = [evt for evt in new_manual_event_types
                                       if evt not in ds.song_events.event_types]
-        
+    # else:
+    #     # set time axis at target_sampling_rate
+    #     ds['time'] = np.arange(ds.sampletime[0], ds.sampletime[-1], 1/ds.attrs['target_sampling_rate'])
+
     song_events_manual = None
     if 'song_events' not in ds or new_manual_event_types:
-        new_manual_events = np.zeros((ds.song_events.shape[0], len(new_manual_event_types)), 
+        new_manual_events = np.zeros((ds.time.shape[0], len(new_manual_event_types)), 
                                         dtype=np.bool)
         song_events_manual = xr.DataArray(data=new_manual_events,
                                             dims=['time', 'event_types'],
@@ -351,12 +354,12 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
                                                     'event_types': new_manual_event_types,
                                                     'nearest_frame': (('time'), ds.nearest_frame), },
                                             attrs={'description': 'Event times as boolean arrays.',
-                                                   'sampling_rate_Hz': ds.song_events.attrs['sampling_rate_Hz'],
+                                                   'sampling_rate_Hz': ds.attrs['target_sampling_rate_Hz'],
                                                    'time_units': 'seconds', })
 
     # if song_events_manual is not None 'song_events' in ds and not force_overwrite:
     if song_events_manual is not None:
-        if not force_overwrite:
+        if not force_overwrite and 'song_events' in ds:
             combined = xr.concat([ds.song_events, song_events_manual], dim='event_types')
         else:
             combined = song_events_manual
