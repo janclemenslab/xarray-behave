@@ -42,7 +42,7 @@ class PSV():
     BOX_SIZE = 200
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(self, ds, vr, cue_points=[]):
+    def __init__(self, ds, vr=None, cue_points=[]):
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         self.ds = ds
         self.vr = vr
@@ -52,24 +52,26 @@ class PSV():
             self.tmax = self.ds.song.shape[0]
         elif 'song_raw' in self.ds:
             self.tmax = self.ds.song_raw.shape[0]
+        elif 'body_positions' in self.ds:
+            self.tmax = len(self.ds.body_positions) * 10  # TODO: get from  factor ds.attrs.body_positions.sampling_rate
         else:
-            self.tmax = len(self.ds.body_positions) * 10  # TODO: get factor from self.ds
+            raise ValueError('No time stamp info in dataset.')
 
         self.crop = True
-        self.thorax_index = 8
-        self.show_dot = True
-        self.dot_size = 2
-        self.circle_size = 8
+        self.thorax_index = 8        
+        self.show_dot = True if 'body_positions' in self.ds else False
         self.old_show_dot_state = self.show_dot
+        self.dot_size = 2
         self.show_poses = False
+        self.circle_size = 8
 
         self.focal_fly = 0
         self.other_fly = 1
         self.cue_index = 0
 
-        self.nb_flies = np.max(self.ds.flies).values+1
+        self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds else 1
         self.fly_colors = _ui_utils.make_colors(self.nb_flies)
-        self.nb_bodyparts = len(self.ds.poseparts)
+        self.nb_bodyparts = len(self.ds.poseparts) if 'poseparts' in self.ds else 1
         self.bodypart_colors = _ui_utils.make_colors(self.nb_bodyparts)
         self.nb_eventtypes = len(self.ds.event_types)
         self.eventype_colors = _ui_utils.make_colors(self.nb_eventtypes)
@@ -78,7 +80,7 @@ class PSV():
         self.swap_events = []
         self.frame_interval = 100  # TODO: get from self.ds
         self.show_spec = True
-        self.spec_win = 200
+        self.spec_win = 200        
         self.show_songevents = True
         self.show_manualonly = False
         self.show_all_channels = True
@@ -99,6 +101,7 @@ class PSV():
         self.win.resize(1000, 800)
         self.win.setWindowTitle("psv")
 
+        # build menu
         self.bar = self.win.menuBar()
         file = self.bar.addMenu("File")
         self.add_keyed_menuitem(file, "Save swap files", self.save_swaps)
@@ -191,7 +194,7 @@ class PSV():
         self.slice_view = pg.PlotWidget(name="song")
         self.slice_view.getPlotItem().mouseClickEvent = self.click_song
         self.slice_view.disableAutoRange()
-        
+
         self.cw = pg.GraphicsLayoutWidget()
 
         self.ly = pg.QtGui.QVBoxLayout()
@@ -206,9 +209,9 @@ class PSV():
         self.win.show()
 
         self._span = 100_000
-        self._t0 = int(self.span/2)
+        self._t0 = int(self.span / 2)
         self.span = 100_000
-        self.t0 = int(self.span/2)
+        self.t0 = int(self.span / 2)
 
         self.update_xy()
         self.update_frame()
@@ -225,7 +228,7 @@ class PSV():
         # self.update_xy()
         # self.play_video()
         # time.sleep(2)
-        
+
         print('close')
         event.accept()
         return 0
@@ -263,7 +266,7 @@ class PSV():
 
     @property
     def current_event_index(self):
-        if self.cb.currentIndex() - 1 <0:
+        if self.cb.currentIndex() - 1 < 0:
             return None
         else:
             return self.eventList[self.cb.currentIndex() - 1][0]
@@ -307,22 +310,22 @@ class PSV():
         logging.info(f'   Saving list of swap indices to {savefilename}.')
 
     def save_annotations(self):
-        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], 
+        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}_songmanual.zarr")
         logging.info(f'   Saving annotations to {savefilename}.')
         # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
         xb.save(savefilename, self.ds.song_events.to_dataset())
         logging.info(f'   Done.')
-        
+
     def save_dataset(self):
-        # savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], 
+        # savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
         #                     f"{self.ds.attrs['datename']}.zarr")
         # logging.info(f'   Saving annotations to {savefilename}.')
         # # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
         # xb.save(savefilename, self.ds)
         # logging.info(f'   Done.')
         logging.warning(f'Saving datasets not implemented yet.')
-        
+
     def toggle(self, var_name):
         self.__setattr__(var_name, not self.__getattribute__(var_name))
         if self.STOP:
@@ -332,7 +335,7 @@ class PSV():
     def delete_current_events(self):
         if self.current_event_index is not None:
             self.ds.song_events.data[int(self.index_other - self.span_index):
-                            int(self.index_other + self.span_index), self.current_event_index] = False
+                                     int(self.index_other + self.span_index), self.current_event_index] = False
             logging.info(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
         else:
             logging.info(f'   No event type selected. Not deleting anything.')
@@ -376,7 +379,7 @@ class PSV():
             self.update_frame()
 
     def change_focal_fly(self):
-        tmp = (self.focal_fly+1) % self.nb_flies
+        tmp = (self.focal_fly + 1) % self.nb_flies
         if tmp == self.other_fly:  # swap focal and other fly if same
             self.other_fly, self.focal_fly = self.focal_fly, self.other_fly
         else:
@@ -386,13 +389,13 @@ class PSV():
 
     def set_prev_cuepoint(self):
         if self.cue_points:
-            self.cue_index = max(0, self.cue_index-1)
+            self.cue_index = max(0, self.cue_index - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
 
     def set_next_cuepoint(self):
         if self.cue_points:
-            self.cue_index = min(self.cue_index+1, len(self.cue_points)-1)
+            self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
 
@@ -432,7 +435,7 @@ class PSV():
                 self.y_other = self.ds.song_raw[self.time0:self.time1].values[:, channel_list]
                 # self.x_other = np.broadcast_to(self.x[:, np.newaxis], self.y_other.shape)  # broadcast_to replicates data w/o copying
                 # self.fast_plot(self.x_other[::step], self.y_other[::step])
-                for chan in range(nb_channels-1):
+                for chan in range(nb_channels - 1):
                     self.slice_view.addItem(pg.PlotCurveItem(self.x[::step], self.y_other[::step, chan]))
 
         # plot selected trace
@@ -455,30 +458,34 @@ class PSV():
         self.app.processEvents()
 
     def update_frame(self):
-        fn = self.ds.body_positions.nearest_frame[self.index_other]
-        self.frame = self.vr[fn]
+        if self.vr is not None:
 
-        # FIXME the annotations potentially waste time annotating outside of the cropped frame
-        if self.show_poses:
-            self.frame = self.annotate_poses(self.frame)
-        if self.show_dot:
-            self.frame = self.annotate_dot(self.frame)
+            # fn = self.ds.body_positions.nearest_frame[self.index_other]
+            fn = self.ds.coords['nearest_frame'][self.index_other]
+            
+            self.frame = self.vr[fn]
 
-        if self.crop:
-            self.frame = np.ascontiguousarray(self.crop_frame(self.frame))
+            # FIXME the annotations potentially waste time annotating outside of the cropped frame
+            if 'pose_positions_allo' in self.ds:
+                if self.show_poses:
+                    self.frame = self.annotate_poses(self.frame)
+                if self.show_dot:
+                    self.frame = self.annotate_dot(self.frame)
+                if self.crop:
+                    self.frame = np.ascontiguousarray(self.crop_frame(self.frame))
 
-        self.image_view.setImage(self.frame, auto_scale=True)
+            self.image_view.setImage(self.frame, auto_scale=True)
 
-        self.app.processEvents()
+            self.app.processEvents()
 
     # TODO move the next three methods out of the class: self.vr.width/height to frame.shape,  box_size as args
     def annotate_poses(self, frame):
         for dot_fly in range(self.nb_flies):
             fly_pos = self.ds.pose_positions_allo.data[self.index_other, dot_fly, ...]
-            x_dot = np.clip((fly_pos[..., 0]-self.dot_size, fly_pos[..., 0]+self.dot_size),
-                            0, self.vr.frame_width-1).astype(np.uintp)
-            y_dot = np.clip((fly_pos[..., 1]-self.dot_size, fly_pos[..., 1]+self.dot_size),
-                            0, self.vr.frame_height-1).astype(np.uintp)
+            x_dot = np.clip((fly_pos[..., 0] - self.dot_size, fly_pos[..., 0] + self.dot_size),
+                            0, self.vr.frame_width - 1).astype(np.uintp)
+            y_dot = np.clip((fly_pos[..., 1] - self.dot_size, fly_pos[..., 1] + self.dot_size),
+                            0, self.vr.frame_height - 1).astype(np.uintp)
             for bodypart_color, x_pos, y_pos in zip(self.bodypart_colors, x_dot.T, y_dot.T):
                 frame[slice(*x_pos), slice(*y_pos), :] = bodypart_color
         return frame
@@ -487,10 +494,10 @@ class PSV():
         # mark each fly with uniquely colored dots
         for dot_fly in range(self.nb_flies):
             fly_pos = self.ds.pose_positions_allo.data[self.index_other, dot_fly, self.thorax_index]
-            x_dot = np.clip((fly_pos[0]-self.dot_size, fly_pos[0]+self.dot_size),
-                            0, self.vr.frame_width-1).astype(np.uintp)
-            y_dot = np.clip((fly_pos[1]-self.dot_size, fly_pos[1]+self.dot_size),
-                            0, self.vr.frame_height-1).astype(np.uintp)
+            x_dot = np.clip((fly_pos[0] - self.dot_size, fly_pos[0] + self.dot_size),
+                            0, self.vr.frame_width - 1).astype(np.uintp)
+            y_dot = np.clip((fly_pos[1] - self.dot_size, fly_pos[1] + self.dot_size),
+                            0, self.vr.frame_height - 1).astype(np.uintp)
             frame[slice(*x_dot), slice(*y_dot), :] = self.fly_colors[dot_fly]  # set pixels around
 
         # FIXME what if there is only one fly?
@@ -506,10 +513,10 @@ class PSV():
     def crop_frame(self, frame):
         fly_pos = self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.thorax_index].astype(np.uintp)
         # makes sure crop does not exceed frame bounds
-        fly_pos[0] = np.clip(fly_pos[0], self.BOX_SIZE, self.vr.frame_width-1-self.BOX_SIZE)
-        fly_pos[1] = np.clip(fly_pos[1], self.BOX_SIZE, self.vr.frame_height-1-self.BOX_SIZE)
-        x_range = (int(fly_pos[0]-self.BOX_SIZE), int(fly_pos[0]+self.BOX_SIZE))
-        y_range = (int(fly_pos[1]-self.BOX_SIZE), int(fly_pos[1]+self.BOX_SIZE))
+        fly_pos[0] = np.clip(fly_pos[0], self.BOX_SIZE, self.vr.frame_width - 1 - self.BOX_SIZE)
+        fly_pos[1] = np.clip(fly_pos[1], self.BOX_SIZE, self.vr.frame_height - 1 - self.BOX_SIZE)
+        x_range = (int(fly_pos[0] - self.BOX_SIZE), int(fly_pos[0] + self.BOX_SIZE))
+        y_range = (int(fly_pos[1] - self.BOX_SIZE), int(fly_pos[1] + self.BOX_SIZE))
         frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
         return frame
 
@@ -543,7 +550,7 @@ class PSV():
                                                                 movable=False))
             else:
                 event_indices = np.where(self.ds.song_events.data[int(self.index_other - self.span_index):
-                                                                  int(self.index_other + self.span_index), 
+                                                                  int(self.index_other + self.span_index),
                                                                   event_type])[0] * int(1 / self.fs_other * self.fs_song)
                 events = x[event_indices]
                 if len(events):
@@ -566,19 +573,20 @@ class PSV():
                 logging.debug('   Stopped playback.')
 
     def click_video(self, event):
-        event.accept()
-        pos = event.pos()
-        mouseX, mouseY = int(pos.x()), int(pos.y())
-        fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
-        if self.crop:  # transform fly pos to coordinates of the cropped box
-            box_center = self.ds.pose_positions_allo.data[self.index_other,
-                                                          self.focal_fly, self.thorax_index] + self.BOX_SIZE/2
-            fly_pos = fly_pos - box_center
-        fly_dist = np.sum((fly_pos - np.array([mouseX, mouseY]))**2, axis=-1)
-        fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
-        self.other_fly = np.argmin(fly_dist)
-        logging.debug(f"Selected {self.other_fly}.")
-        self.update_frame()
+        if self.vr is not None:
+            event.accept()
+            pos = event.pos()
+            mouseX, mouseY = int(pos.x()), int(pos.y())
+            fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
+            if self.crop:  # transform fly pos to coordinates of the cropped box
+                box_center = self.ds.pose_positions_allo.data[self.index_other,
+                                                              self.focal_fly, self.thorax_index] + self.BOX_SIZE / 2
+                fly_pos = fly_pos - box_center
+            fly_dist = np.sum((fly_pos - np.array([mouseX, mouseY]))**2, axis=-1)
+            fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
+            self.other_fly = np.argmin(fly_dist)
+            logging.debug(f"Selected {self.other_fly}.")
+            self.update_frame()
 
     def click_song(self, event):
         event.accept()
@@ -617,7 +625,7 @@ class PSV():
             y = y.astype(np.int16)
             # simpleaudio can only play at these rates - choose the one nearest to our rate
             allowed_sample_rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 192000]  # Hz
-            sample_rate = min(allowed_sample_rates, key=lambda x: abs(x-int(self.fs_song)))
+            sample_rate = min(allowed_sample_rates, key=lambda x: abs(x - int(self.fs_song)))
             # FIXME resample audio to new sample_rate to preserve sound
             # start playback in background
             simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
@@ -636,28 +644,29 @@ class PSV():
         # and will throw error since noverlap will then be too big
         self.spec_win = min(len(y), self.spec_win)
         f, t, psd = scipy.signal.spectrogram(y, self.fs_song, nperseg=self.spec_win,
-                                             noverlap=self.spec_win//2, nfft=self.spec_win*4, mode='magnitude')
+                                             noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
         f_idx = np.argmax(f > fmax)
         S = np.log2(1 + psd[:f_idx, :])
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f, t
 
     def swap_flies(self):
-        # use swap_dims to swap flies in all dataarrays in the data set?
-        # TODO make sure this does not fail for datasets w/o song
-        logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
-        # if already in there remove - swapping a second time would negate first swap
-        if [self.index_other, self.focal_fly, self.other_fly] in self.swap_events:
-            self.swap_events.remove([self.index_other, self.focal_fly, self.other_fly])
-        else:
-            self.swap_events.append([self.index_other, self.focal_fly, self.other_fly])
+        if self.vr is not None:
+            # use swap_dims to swap flies in all dataarrays in the data set?
+            # TODO make sure this does not fail for datasets w/o song
+            logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
+            # if already in there remove - swapping a second time would negate first swap
+            if [self.index_other, self.focal_fly, self.other_fly] in self.swap_events:
+                self.swap_events.remove([self.index_other, self.focal_fly, self.other_fly])
+            else:
+                self.swap_events.append([self.index_other, self.focal_fly, self.other_fly])
 
-        self.ds.pose_positions_allo.values[self.index_other:, [
-            self.other_fly, self.focal_fly], ...] = self.ds.pose_positions_allo.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
-        self.ds.pose_positions.values[self.index_other:, [
-            self.other_fly, self.focal_fly], ...] = self.ds.pose_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
-        self.ds.body_positions.values[self.index_other:, [
-            self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+            self.ds.pose_positions_allo.values[self.index_other:, [
+                self.other_fly, self.focal_fly], ...] = self.ds.pose_positions_allo.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+            self.ds.pose_positions.values[self.index_other:, [
+                self.other_fly, self.focal_fly], ...] = self.ds.pose_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+            self.ds.body_positions.values[self.index_other:, [
+                self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
 
 
 def main(datename: str = 'localhost-20181120_144618', root: str = '',
@@ -676,14 +685,17 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         ds = xb.load(datename + '.zarr', lazy=True)
 
         logging.info(f'   Loading data from ds.')
-        ds.song_events.load()  # non-lazy load song events so we can edit them
-        
-        ds.song.load()  # non-lazy load song for faster updates
-        ds.pose_positions_allo.load()  # non-lazy load song for faster updates
-        ds.sampletime.load()
+        if 'song_events' in ds:
+            ds.song_events.load()  # non-lazy load song events so we can edit them
+        if 'song' in ds:
+            ds.song.load()  # non-lazy load song for faster updates
+        if 'song_events' in ds:
+            ds.pose_positions_allo.load()  # non-lazy load song for faster updates
+        if 'sampletime' in ds:
+            ds.sampletime.load()
 
         # this will take a long time:
-        # ds.song_raw.load()  # non-lazy load song for faster updates
+        ds.song_raw.load()  # non-lazy load song for faster updates
 
     else:
         logging.info(f'Assembling dataset for {datename}.')
@@ -694,11 +706,22 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
 
     logging.info(ds)
     filepath = ds.attrs['video_filename']
-    vr = _ui_utils.VideoReaderNP(filepath[:-3] + 'mp4')
+    vr = None
+    try:
+        try: 
+            video_filename = filepath[:-3] + 'mp4'
+            vr = _ui_utils.VideoReaderNP(video_filename)
+        except:
+            video_filename = filepath[:-3] + 'avi'
+            vr = _ui_utils.VideoReaderNP(video_filename)
+        print(vr)
+    except FileNotFoundError:
+        print(f'Video "{video_filename}" not found. Continuing without.')
+    except:
+        print(f'Something went wrong when loading the video. Continuing without.')
 
     cue_points = eval(cue_points)
-
-    psv = PSV(ds, vr, cue_points)
+    PSV(ds, vr, cue_points)
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
