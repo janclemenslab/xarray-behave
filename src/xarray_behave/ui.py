@@ -181,9 +181,9 @@ class PSV():
         self.cb2.currentIndexChanged.connect(self.update_xy)
         self.cb2.setCurrentIndex(0)
         self.hl.addWidget(self.cb2)
-
-        self.image_view = _ui_utils.FastImageWidget()
-        self.image_view.registerMouseClickEvent(self.click_video)
+        if self.vr is not None:
+            self.image_view = _ui_utils.FastImageWidget()
+            self.image_view.registerMouseClickEvent(self.click_video)
 
         self.spec_view = pg.ImageView(name="spec_view", view=pg.PlotItem())
         self.spec_view.view.disableAutoRange()
@@ -199,7 +199,8 @@ class PSV():
 
         self.ly = pg.QtGui.QVBoxLayout()
         self.ly.addLayout(self.hl)
-        self.ly.addWidget(self.image_view, stretch=4)
+        if self.vr is not None:
+            self.ly.addWidget(self.image_view, stretch=4)
         self.ly.addWidget(self.slice_view, stretch=1)
         self.ly.addWidget(self.spec_view, stretch=1)
 
@@ -428,13 +429,17 @@ class PSV():
         if 'song' in self.ds and self.current_channel_name == 'Merged channels':
             self.y = self.ds.song.data[self.time0:self.time1]
         else:
-            self.y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index].compute()
+            # load song for current channel
+            try:            
+                self.y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index].compute()
+            except AttributeError:
+                self.y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]
+
             if self.show_all_channels:
                 nb_channels = self.ds.song_raw.shape[-1]
                 channel_list = np.delete(np.arange(nb_channels), self.current_channel_index)
                 self.y_other = self.ds.song_raw[self.time0:self.time1].values[:, channel_list]
-                # self.x_other = np.broadcast_to(self.x[:, np.newaxis], self.y_other.shape)  # broadcast_to replicates data w/o copying
-                # self.fast_plot(self.x_other[::step], self.y_other[::step])
+
                 for chan in range(nb_channels - 1):
                     self.slice_view.addItem(pg.PlotCurveItem(self.x[::step], self.y_other[::step, chan]))
 
