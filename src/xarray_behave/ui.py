@@ -622,7 +622,8 @@ class PSV():
 
     def play_audio(self):
         """Play vector as audio using the simpleaudio package."""
-        if 'song' in self.ds:
+        
+        if 'song' in self.ds or 'song_raw' in self.ds:
             import simpleaudio
             if 'song' in self.ds and self.current_channel_name == 'Merged channels':
                 y = self.ds.song.data[self.time0:self.time1]
