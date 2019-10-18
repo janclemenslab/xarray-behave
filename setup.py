@@ -18,7 +18,7 @@ setup(name='xarray_behave',
       packages=find_packages('src'),
       package_dir={'': 'src'},
       install_requires=['numpy', 'scipy', 'xarray', 'h5py', 'zarr', ],
-      extras_require={'gui': ['pyqtgraph', 'simpleaudio', 'scikit-image', 'opencv']},
+      extras_require={'gui': ['pyqtgraph', 'simpleaudio', 'scikit-image', 'opencv-python']},
       include_package_data=True,
       zip_safe=False
      )
