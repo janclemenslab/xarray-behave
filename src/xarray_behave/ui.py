@@ -309,29 +309,32 @@ class PSV():
                             self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save swaps to', str(savefilename),
                                                                 filter="txt files (*.txt);;all files (*)")
-        logging.info(f'   Saving list of swap indices to {savefilename}.')
-        np.savetxt(savefilename, self.swap_events, fmt='%d', header='index fly1 fly2')
-        logging.info(f'   Done.')
+        if len(savefilename):
+            logging.info(f'   Saving list of swap indices to {savefilename}.')
+            np.savetxt(savefilename, self.swap_events, fmt='%d', header='index fly1 fly2')
+            logging.info(f'   Done.')
 
     def save_annotations(self):
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}_songmanual.zarr")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save annotations to', str(savefilename),
                                                                 filter="zarr files (*.zarr);;all files (*)")
-        logging.info(f'   Saving annotations to {savefilename}.')
-        # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
-        xb.save(savefilename, self.ds.song_events.to_dataset())
-        logging.info(f'   Done.')
+        if len(savefilename):
+            logging.info(f'   Saving annotations to {savefilename}.')
+            # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
+            xb.save(savefilename, self.ds.song_events.to_dataset())
+            logging.info(f'   Done.')
 
     def save_dataset(self):
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}.zarr")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save dataset to', str(savefilename),
                                                                 filter="zarr files (*.zarr);;all files (*)")
-        logging.info(f'   Saving dataset to {savefilename}.')
-        # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
-        xb.save(savefilename, self.ds)
-        logging.info(f'   Done.')
+        if len(savefilename):
+            logging.info(f'   Saving dataset to {savefilename}.')
+            # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
+            xb.save(savefilename, self.ds)
+            logging.info(f'   Done.')
 
     def toggle(self, var_name):
         self.__setattr__(var_name, not self.__getattribute__(var_name))
