@@ -258,7 +258,7 @@ class PSV():
 
     @span.setter
     def span(self, val):
-        self._span = int(max(500, val))
+        self._span = int(min(max(250, val), self.tmax))
         self.update_xy()
 
     @property
