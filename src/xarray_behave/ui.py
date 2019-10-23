@@ -354,7 +354,7 @@ class PSV():
             xb.save(savefilename, self.ds)
             logging.info(f'   Done.')
 
-    def toggle(self, var_name):
+    def toggle(self, var_name, qt_keycode):
         self.__setattr__(var_name, not self.__getattribute__(var_name))
         if self.STOP:
             self.update_frame()
@@ -641,7 +641,7 @@ class PSV():
         else:
             self.sinet0 = None
 
-    def play_audio(self):
+    def play_audio(self, qt_keycode):
         """Play vector as audio using the simpleaudio package."""
         
         if 'song' in self.ds or 'song_raw' in self.ds:
@@ -683,7 +683,7 @@ class PSV():
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f, t
 
-    def swap_flies(self):
+    def swap_flies(self, qt_keycode):
         if self.vr is not None:
             # use swap_dims to swap flies in all dataarrays in the data set?
             # TODO make sure this does not fail for datasets w/o song
