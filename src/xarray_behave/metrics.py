@@ -26,6 +26,20 @@ def remove_nan(x):
     return x
 
 
+def remove_multi_nan(x):
+    """Replace any nan value with nearest valid value."""
+    if x.ndim < 2:
+        mask = np.isnan(x)
+        x[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x[~mask])
+    elif x.ndim == 2:
+        for x_feature in x.T:
+            mask = np.isnan(x_feature)
+            x_feature[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x_feature[~mask])
+    else:
+        raise ValueError(f'Invalid arguments: x can only be one or two dimensional. Has {x.ndim} dimensions.')
+    return x
+
+
 def distance(pos1, pos2=None, set_self_to_nan: bool = False, exclude_cross_terms: bool = False):
     """Compute pairwise euclidean distances.
 
