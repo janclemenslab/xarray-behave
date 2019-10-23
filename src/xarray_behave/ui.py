@@ -26,6 +26,7 @@ import pyqtgraph as pg
 from . import xarray_behave as xb
 from . import loaders as ld
 from . import _ui_utils
+from . import colormaps
 import time
 
 import numpy as np
@@ -42,7 +43,7 @@ class PSV():
     BOX_SIZE = 200
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(self, ds, vr=None, cue_points=[]):
+    def __init__(self, ds, vr=None, cue_points=[], cmap_name: str = 'turbo'):
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         self.ds = ds
         self.vr = vr
@@ -196,10 +197,18 @@ class PSV():
             self.image_view.registerMouseClickEvent(self.click_video)
 
         self.spec_view = pg.ImageView(name="spec_view", view=pg.PlotItem())
+
         self.spec_view.view.disableAutoRange()
         self.spec_view.ui.histogram.hide()
         self.spec_view.ui.roiBtn.hide()
         self.spec_view.ui.menuBtn.hide()
+
+        if cmap_name in colormaps.cmaps:
+            colormap = colormaps.cmaps[cmap_name]
+            colormap._init()
+            lut = (colormap._lut * 255).view(np.ndarray)  # convert matplotlib colormap from 0-1 to 0 -255 for Qt
+            self.spec_view.getImageItem().setLookupTable(lut)  # apply the colormap        
+
 
         self.slice_view = pg.PlotWidget(name="song")
         self.slice_view.getPlotItem().mouseClickEvent = self.click_song
@@ -705,14 +714,17 @@ class PSV():
 def main(datename: str = 'localhost-20181120_144618', root: str = '',
          cue_points: str = '[]',
          *,
-         ignore_existing: bool = False):
-    """[summary]
-
+         ignore_existing: bool = False,
+         cmap_name: str = 'turbo'):
+    """    
     Args:
-        datename (str): experiment id. Defaults to 'localhost-20181120_144618'.
-        root (str): path containing the `dat` and `res` folders for the experiment. Defaults to ''.
-        cue_points (str): Should evaluate to a list of indices. Defaults to '[]'.
+        datename (str): Experiment id. Defaults to 'localhost-20181120_144618'.
+        root (str): Path containing the `dat` and `res` folders for the experiment. Defaults to '' (current directory).
+        cue_points (str): List of cue points (indices) for quickly jumping around time. Defaults to '[]'.
+        ignore_existing (bool): Ignore existing song annotations. Defaults to False.
+        cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). Defaults to 'turbo'.
     """
+
     if not ignore_existing and os.path.exists(datename + '.zarr'):
         logging.info(f'Loading ds from {datename}.zarr.')
         ds = xb.load(datename + '.zarr', lazy=True)
@@ -754,7 +766,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         print(f'Something went wrong when loading the video. Continuing without.')
 
     cue_points = eval(cue_points)
-    PSV(ds, vr, cue_points)
+    PSV(ds, vr, cue_points, cmap_name)
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
