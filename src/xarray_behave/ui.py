@@ -156,7 +156,7 @@ class PSV():
         self.add_keyed_menuitem(view_audio, "Delete events of selected type in view",
                                 self.delete_current_events, QtCore.Qt.Key_U)
         self.add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, QtCore.Qt.Key_Y)
-
+        
         self.bar.addMenu("View")
 
         self.hl = pg.QtGui.QHBoxLayout()
@@ -170,6 +170,16 @@ class PSV():
         self.cb.currentIndexChanged.connect(self.update_xy)
         self.cb.setCurrentIndex(0)
         self.hl.addWidget(self.cb)
+
+        # populate menu with event types so we can catch keys for them - allows changing event type for annotation using numeric keys
+        view_audio.addSeparator()
+        for ii in range(self.cb.count()):
+            self.cb.itemText(ii)
+            self.add_keyed_menuitem(view_audio,
+                                    self.cb.itemText(ii),
+                                    self.change_event_type,
+                                    eval(f'QtCore.Qt.Key_{ii}'))
+
 
         # CHANNEL selector
         self.cb2 = pg.QtGui.QComboBox()
@@ -301,10 +311,18 @@ class PSV():
         menuitem.setChecked(checked)
         if qt_keycode is not None:
             menuitem.setShortcut(qt_keycode)
-        menuitem.triggered.connect(callback)
+        menuitem.triggered.connect(lambda: callback(qt_keycode))
         return menuitem
 
-    def save_swaps(self):
+    def change_event_type(self, qt_keycode):
+        """Select event to annotate using key presses (0-nb_events)."""
+        key_pressed = QtGui.QKeySequence(qt_keycode).toString()  # numeric key code to actual char pressed
+        try:
+            self.cb.setCurrentIndex(int(key_pressed))
+        except ValueError:  # if non-int pressed or int too large for index
+            pass
+
+    def save_swaps(self, qt_keycode):
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'],
                             self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save swaps to', str(savefilename),
@@ -314,7 +332,7 @@ class PSV():
             np.savetxt(savefilename, self.swap_events, fmt='%d', header='index fly1 fly2')
             logging.info(f'   Done.')
 
-    def save_annotations(self):
+    def save_annotations(self, qt_keycode):
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}_songmanual.zarr")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save annotations to', str(savefilename),
@@ -325,7 +343,7 @@ class PSV():
             xb.save(savefilename, self.ds.song_events.to_dataset())
             logging.info(f'   Done.')
 
-    def save_dataset(self):
+    def save_dataset(self, qt_keycode):
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}.zarr")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save dataset to', str(savefilename),
@@ -342,7 +360,7 @@ class PSV():
             self.update_frame()
             self.update_xy()
 
-    def delete_current_events(self):
+    def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
             self.ds.song_events.data[int(self.index_other - self.span_index):
                                      int(self.index_other + self.span_index), self.current_event_index] = False
@@ -352,33 +370,33 @@ class PSV():
         if self.STOP:
             self.update_xy()
 
-    def delete_all_events(self):
+    def delete_all_events(self, qt_keycode):
         self.ds.song_events.data[int(self.index_other - self.span_index):
                                  int(self.index_other + self.span_index), :] = False
         logging.info(f'   Deleted all events in view.')
         if self.STOP:
             self.update_xy()
 
-    def inc_freq_res(self):
+    def inc_freq_res(self, qt_keycode):
         self.spec_win = int(self.spec_win * 2)
         if self.STOP:
             # need to update twice to fix axis limits for some reason
             self.update_xy()
             self.update_xy()
 
-    def dec_freq_res(self):
+    def dec_freq_res(self, qt_keycode):
         self.spec_win = int(max(2, self.spec_win // 2))
         if self.STOP:
             # need to update twice to fix axis limits for some reason
             self.update_xy()
             self.update_xy()
 
-    def toggle_playvideo(self):
+    def toggle_playvideo(self, qt_keycode):
         self.STOP = not self.STOP
         if not self.STOP:
             self.play_video()
 
-    def toggle_show_poses(self):
+    def toggle_show_poses(self, qt_keycode):
         self.show_poses = not self.show_poses
         if self.show_poses:
             self.old_show_dot_state = self.show_dot
@@ -388,7 +406,7 @@ class PSV():
         if self.STOP:
             self.update_frame()
 
-    def change_focal_fly(self):
+    def change_focal_fly(self, qt_keycode):
         tmp = (self.focal_fly + 1) % self.nb_flies
         if tmp == self.other_fly:  # swap focal and other fly if same
             self.other_fly, self.focal_fly = self.focal_fly, self.other_fly
@@ -397,34 +415,34 @@ class PSV():
         if self.STOP:
             self.update_frame()
 
-    def set_prev_cuepoint(self):
+    def set_prev_cuepoint(self, qt_keycode):
         if self.cue_points:
             self.cue_index = max(0, self.cue_index - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
 
-    def set_next_cuepoint(self):
+    def set_next_cuepoint(self, qt_keycode):
         if self.cue_points:
             self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
 
-    def zoom_in_song(self):
+    def zoom_in_song(self, qt_keycode):
         self.span /= 2
 
-    def zoom_out_song(self):
+    def zoom_out_song(self, qt_keycode):
         self.span *= 2
 
-    def single_frame_reverse(self):
+    def single_frame_reverse(self, qt_keycode):
         self.t0 -= self.frame_interval
 
-    def single_frame_advance(self):
+    def single_frame_advance(self, qt_keycode):
         self.t0 += self.frame_interval
 
-    def jump_reverse(self):
+    def jump_reverse(self, qt_keycode):
         self.t0 -= self.span / 2
 
-    def jump_forward(self):
+    def jump_forward(self, qt_keycode):
         self.t0 += self.span / 2
 
     def update_xy(self):
