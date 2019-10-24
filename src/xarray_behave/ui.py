@@ -276,7 +276,8 @@ class PSV():
 
     @span.setter
     def span(self, val):
-        self._span = int(min(max(250, val), self.tmax))
+        # HACK fixes weird offset/jump error - then probably arise from self.fs_song / self.fs_other
+        self._span = int(min(max(250, val), self.tmax) / 10) * 10
         self.update_xy()
 
     @property
