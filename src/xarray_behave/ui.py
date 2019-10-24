@@ -197,7 +197,6 @@ class PSV():
             self.image_view.registerMouseClickEvent(self.click_video)
 
         self.spec_view = pg.ImageView(name="spec_view", view=pg.PlotItem())
-
         self.spec_view.view.disableAutoRange()
         self.spec_view.ui.histogram.hide()
         self.spec_view.ui.roiBtn.hide()
@@ -679,6 +678,10 @@ class PSV():
         S, f, t = self._calc_spec(y)
         self.spec_view.setImage(S.T[:, ::-1])
         self.spec_view.view.setLimits(xMin=0, xMax=S.shape[1], yMin=0, yMax=S.shape[0])
+        y_axis = self.spec_view.getView().getAxis('left')
+        f = f[::-1]
+        ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
+        y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
 
     # @lru_cache(maxsize=2, typed=False)
     def _calc_spec(self, y, fmax=1000):
@@ -690,7 +693,7 @@ class PSV():
         f_idx = np.argmax(f > fmax)
         S = np.log2(1 + psd[:f_idx, :])
         S = S / np.max(S) * 255  # normalize to 0...255
-        return S, f, t
+        return S, f[:f_idx], t
 
     def swap_flies(self, qt_keycode):
         if self.vr is not None:
