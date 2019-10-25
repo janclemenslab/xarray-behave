@@ -315,7 +315,7 @@ class PSV():
 
     @property
     def index_other(self):
-        return self.t0 * self.fs_other / self.fs_song
+        return int(self.t0 * self.fs_other / self.fs_song)
 
     def add_keyed_menuitem(self, parent, label: str, callback, qt_keycode=None, checkable=False, checked=True):
         """Add new action to menu and register key press."""
