@@ -509,17 +509,17 @@ class PSV():
             fn = self.ds.coords['nearest_frame'][self.index_other]
             
             self.frame = self.vr[fn]
+            if self.frame is not None:  # frame is None when at end of video
+                # FIXME the annotations potentially waste time annotating outside of the cropped frame
+                if 'pose_positions_allo' in self.ds:
+                    if self.show_poses:
+                        self.frame = self.annotate_poses(self.frame)
+                    if self.show_dot:
+                        self.frame = self.annotate_dot(self.frame)
+                    if self.crop:
+                        self.frame = np.ascontiguousarray(self.crop_frame(self.frame))
 
-            # FIXME the annotations potentially waste time annotating outside of the cropped frame
-            if 'pose_positions_allo' in self.ds:
-                if self.show_poses:
-                    self.frame = self.annotate_poses(self.frame)
-                if self.show_dot:
-                    self.frame = self.annotate_dot(self.frame)
-                if self.crop:
-                    self.frame = np.ascontiguousarray(self.crop_frame(self.frame))
-
-            self.image_view.setImage(self.frame, auto_scale=True)
+                self.image_view.setImage(self.frame, auto_scale=True)
 
             self.app.processEvents()
 
