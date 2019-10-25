@@ -253,12 +253,16 @@ class PSV():
         return 0
 
     @property
+    def fs_ratio(self):
+        return self.fs_song / self.fs_other
+
+    @property
     def time0(self):
-        return int(max(0, self.t0 - self.span / 2))
+        return int(int(max(0, self.t0 - self.span / 2) / self.fs_ratio) * self.fs_ratio)
 
     @property
     def time1(self):
-        return int(max(0, self.t0 + self.span / 2))
+        return int(int(max(0, self.t0 + self.span / 2) / self.fs_ratio) * self.fs_ratio)
 
     @property
     def t0(self):
@@ -266,7 +270,7 @@ class PSV():
 
     @t0.setter
     def t0(self, val):
-        self._t0 = int(np.clip(val, self.span / 2, self.tmax - self.span / 2))
+        self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)
         self.update_xy()
         self.update_frame()
 
@@ -277,7 +281,7 @@ class PSV():
     @span.setter
     def span(self, val):
         # HACK fixes weird offset/jump error - then probably arise from self.fs_song / self.fs_other
-        self._span = int(min(max(250, val), self.tmax) / 10) * 10
+        self._span = min(max(200, val), self.tmax)
         self.update_xy()
 
     @property
@@ -311,7 +315,7 @@ class PSV():
 
     @property
     def index_other(self):
-        return int(self.t0 * self.fs_other / self.fs_song)
+        return self.t0 * self.fs_other / self.fs_song
 
     def add_keyed_menuitem(self, parent, label: str, callback, qt_keycode=None, checkable=False, checked=True):
         """Add new action to menu and register key press."""
