@@ -662,7 +662,9 @@ class PSV():
             if 'song' in self.ds and self.current_channel_name == 'Merged channels':
                 y = self.ds.song.data[self.time0:self.time1]
             else:
-                y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]
+                y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]            
+            y = np.array(y)  # if y is a dask.array (lazy loaded)
+
             # normalize to 16-bit range and convert to 16-bit data
             max_amp = self.MAX_AUDIO_AMP
             if max_amp is None:
