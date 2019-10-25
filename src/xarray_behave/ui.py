@@ -28,14 +28,14 @@ from . import loaders as ld
 from . import _ui_utils
 from . import colormaps
 import time
-
 import numpy as np
+import scipy
 from pathlib import Path
 import defopt
 import skimage.draw
 from functools import partial
 
-import scipy
+sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 
 
 class PSV():
