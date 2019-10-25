@@ -595,7 +595,7 @@ class PSV():
                                                                 movable=False))
             else:
                 event_indices = np.where(self.ds.song_events.data[int(self.index_other - self.span_index):
-                                                                  int(self.index_other + self.span_index),
+                                                                  int(self.index_other + self.span_index)-1,
                                                                   event_type])[0] * int(1 / self.fs_other * self.fs_song)
                 events = x[event_indices]
                 if len(events):
