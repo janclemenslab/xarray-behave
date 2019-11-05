@@ -6,7 +6,7 @@ First, manually install dependencies:
 conda install numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz
 pip install git+http://github.com/janclemenslab/samplestamps
 ```
-Install with GUI (requires extra dependencies):
+Install with GUI (requires extra dependencies):)
 ```shell
 conda install pyqtgraph scikit-image opencv
 pip install defopt
