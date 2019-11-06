@@ -59,7 +59,7 @@ class PSV():
             raise ValueError('No time stamp info in dataset.')
 
         self.crop = True
-        self.thorax_index = 8        
+        self.thorax_index = 8
         self.show_dot = True if 'body_positions' in self.ds else False
         self.old_show_dot_state = self.show_dot
         self.dot_size = 2
@@ -81,7 +81,7 @@ class PSV():
         self.swap_events = []
         self.frame_interval = 100  # TODO: get from self.ds
         self.show_spec = True
-        self.spec_win = 200        
+        self.spec_win = 200
         self.show_songevents = True
         self.show_manualonly = False
         self.show_all_channels = True
@@ -157,7 +157,7 @@ class PSV():
         self.add_keyed_menuitem(view_audio, "Delete events of selected type in view",
                                 self.delete_current_events, QtCore.Qt.Key_U)
         self.add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, QtCore.Qt.Key_Y)
-        
+
         self.bar.addMenu("View")
 
         self.hl = pg.QtGui.QHBoxLayout()
@@ -206,7 +206,7 @@ class PSV():
             colormap = colormaps.cmaps[cmap_name]
             colormap._init()
             lut = (colormap._lut * 255).view(np.ndarray)  # convert matplotlib colormap from 0-1 to 0 -255 for Qt
-            self.spec_view.getImageItem().setLookupTable(lut)  # apply the colormap        
+            self.spec_view.getImageItem().setLookupTable(lut)  # apply the colormap
 
 
         self.slice_view = pg.PlotWidget(name="song")
@@ -470,7 +470,7 @@ class PSV():
             self.y = self.ds.song.data[self.time0:self.time1]
         else:
             # load song for current channel
-            try:            
+            try:
                 self.y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index].compute()
             except AttributeError:
                 self.y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]
@@ -507,7 +507,7 @@ class PSV():
 
             # fn = self.ds.body_positions.nearest_frame[self.index_other]
             fn = self.ds.coords['nearest_frame'][self.index_other]
-            
+
             self.frame = self.vr[fn]
             if self.frame is not None:  # frame is None when at end of video
                 # FIXME the annotations potentially waste time annotating outside of the cropped frame
@@ -656,13 +656,19 @@ class PSV():
 
     def play_audio(self, qt_keycode):
         """Play vector as audio using the simpleaudio package."""
-        
+
         if 'song' in self.ds or 'song_raw' in self.ds:
-            import simpleaudio
+            try:
+                import simpleaudio
+            except (ImportError, ModuleNotFoundError):
+                logging.info('Could not import simpleaudio. Maybe you need to install it.\
+                              See https://simpleaudio.readthedocs.io/en/latest/installation.html for instructions.')
+                return
+
             if 'song' in self.ds and self.current_channel_name == 'Merged channels':
                 y = self.ds.song.data[self.time0:self.time1]
             else:
-                y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]            
+                y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]
             y = np.array(y)  # if y is a dask.array (lazy loaded)
 
             # normalize to 16-bit range and convert to 16-bit data
@@ -678,7 +684,7 @@ class PSV():
             # start playback in background
             simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
         else:
-            logging.info(f'Could not play sound - no merged-channel sound data in the dataset.')
+            logging.info(f'Could not play sound - no sound data in the dataset.')
 
     def plot_spec(self, x, y):
         # hash x to avoid re-calculation? only useful when annotating
@@ -726,7 +732,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
          *,
          ignore_existing: bool = False,
          cmap_name: str = 'turbo'):
-    """    
+    """
     Args:
         datename (str): Experiment id. Defaults to 'localhost-20181120_144618'.
         root (str): Path containing the `dat` and `res` folders for the experiment. Defaults to '' (current directory).
@@ -763,7 +769,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
     filepath = ds.attrs['video_filename']
     vr = None
     try:
-        try: 
+        try:
             video_filename = filepath[:-3] + 'mp4'
             vr = _ui_utils.VideoReaderNP(video_filename)
         except:
