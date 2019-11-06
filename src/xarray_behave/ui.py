@@ -720,14 +720,17 @@ class PSV():
         # y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
 
     # @lru_cache(maxsize=2, typed=False)
-    def _calc_spec(self, y, fmax=125_000):
+    def _calc_spec(self, y, fmax=None):
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
         self.spec_win = min(len(y), self.spec_win)
         f, t, psd = scipy.signal.spectrogram(y, self.fs_song, nperseg=self.spec_win,
                                              noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
         self.spec_t = t
-        f_idx = np.argmax(f > fmax)
+        if fmax is not None:
+            f_idx = np.argmax(f > fmax)
+        else:
+            f_idx = -1
         S = np.log2(1 + psd[:f_idx, :])
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f[:f_idx], t
