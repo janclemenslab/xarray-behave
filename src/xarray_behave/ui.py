@@ -201,6 +201,7 @@ class PSV():
         self.spec_view.ui.histogram.hide()
         self.spec_view.ui.roiBtn.hide()
         self.spec_view.ui.menuBtn.hide()
+        self.spec_view.getImageItem().mouseClickEvent = self.click_spec
 
         if cmap_name in colormaps.cmaps:
             colormap = colormaps.cmaps[cmap_name]
@@ -654,6 +655,28 @@ class PSV():
         else:
             self.sinet0 = None
 
+    def click_spec(self, event):
+        event.accept()
+        pos = event.pos()
+        if self.current_event_index is not None:
+            mouseT = self.spec_t[int(pos[0])] + float(self.ds.time[self.time0])
+
+            if 'sine' in self.current_event_name:
+                if self.sinet0 is None:
+                    self.sinet0 = mouseT
+                else:
+                    self.ds.song_events.sel(time=slice(
+                        *sorted([self.sinet0, mouseT])))[:, self.current_event_index] = True
+                    logging.info(f'  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.')
+                    self.sinet0 = None
+            else:  # pulse-like event
+                self.sinet0 = None
+                self.ds.song_events.sel(time=mouseT, method='nearest')[self.current_event_index] = True
+                logging.info(f'  Added {self.current_event_name} at t={mouseT:1.4f} seconds.')
+            self.update_xy()
+        else:
+            self.sinet0 = None
+
     def play_audio(self, qt_keycode):
         """Play vector as audio using the simpleaudio package."""
 
@@ -691,18 +714,19 @@ class PSV():
         S, f, t = self._calc_spec(y)
         self.spec_view.setImage(S.T[:, ::-1])
         self.spec_view.view.setLimits(xMin=0, xMax=S.shape[1], yMin=0, yMax=S.shape[0])
-        y_axis = self.spec_view.getView().getAxis('left')
-        f = f[::-1]
-        ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
-        y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
+        # f = f[::-1]
+        # y_axis = self.spec_view.getView().getAxis('left')
+        # ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
+        # y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
 
     # @lru_cache(maxsize=2, typed=False)
-    def _calc_spec(self, y, fmax=1000):
+    def _calc_spec(self, y, fmax=125_000):
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
         self.spec_win = min(len(y), self.spec_win)
         f, t, psd = scipy.signal.spectrogram(y, self.fs_song, nperseg=self.spec_win,
                                              noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
+        self.spec_t = t
         f_idx = np.argmax(f > fmax)
         S = np.log2(1 + psd[:f_idx, :])
         S = S / np.max(S) * 255  # normalize to 0...255
