@@ -145,11 +145,11 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     sampletime = np.arange(first_sample, last_sample) / sampling_rate
 
     # get nearest frame for each sample in the resampled grid
-    frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)    
+    frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
     interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
                                               kind='nearest', bounds_error=False, fill_value=np.nan)
-    if resample_video_data:                 
+    if resample_video_data:
         nearest_frame = interpolator(target_samples).astype(np.uintp)
     else:
         nearest_frame = frame_numbers
@@ -187,7 +187,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         events = manual_events_samples
     else:
         events = dict()
-    
+
     if not with_segmentation_manual:
         if with_segmentation:
             events['song_pulse_any'] = res['pulse_times_samples']
@@ -205,9 +205,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 song_events_np[event_times, cnt] = True
             if not resample_video_data:
                 logging.info(f'Resampling event data to match frame times.')
-                interpolator = scipy.interpolate.interp1d(time, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
+                # interpolator = scipy.interpolate.interp1d(time, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
                 frame_times = ss.frame_time(frame_numbers)
-                song_events_np = interpolator(frame_times).astype(np.uintp)
+                # song_events_np = interpolator(frame_times).astype(np.uintp)
+                song_events_np = ld.interpolate_binary(time, song_events_np, frame_times)
                 time = frame_times
     else:
         # manual events loaded from the python segmenter may live on their own sampling grid
@@ -228,14 +229,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         # FIX - resampling reduces data size
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
-            interpolator = scipy.interpolate.interp1d(song_event_times, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
+            # interpolator = scipy.interpolate.interp1d(song_event_times, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
             frame_times = ss.frame_time(frame_numbers)
-            song_events_np = interpolator(frame_times).astype(np.uintp)
+            # song_events_np = interpolator(frame_times).astype(np.uintp)
+            song_events_np = ld.interpolate_binary(time, song_events_np, frame_times)
             time = frame_times
         else:
             logging.info(f'Resampling manual event data to match target sampling grid of the dataset.')
-            interpolator = scipy.interpolate.interp1d(song_event_times, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
-            song_events_np = interpolator(time).astype(np.uintp)
+            # interpolator = scipy.interpolate.interp1d(song_event_times, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
+            # song_events_np = interpolator(time).astype(np.uintp)
+            song_events_np = ld.interpolate_binary(song_event_times, song_events_np, time)
 
     if not resample_video_data:
         len_list = [time.shape[0]]
@@ -317,7 +320,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         else:
             time = frame_times
             nearest_frame = frame_numbers
-            # ensure all is equal length            
+            # ensure all is equal length
             time = time[:min_len]
             nearest_frame = nearest_frame[:min_len]
             pose_pos = pose_pos[:min_len]

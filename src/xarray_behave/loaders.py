@@ -39,6 +39,55 @@ def rotate_point(pos, degrees, origin=(0, 0)):
     return qx, qy
 
 
+def find_nearest(array, values):
+    """Find nearest occurrence of each item of values in array.
+
+    Args:
+        array: find nearest in this list
+        values: queries
+
+    Returns:
+        val: nearest val in array to each item in values
+        idx: index of nearest val in array to each item in values
+        dist: distance to nearest val in array for each item in values
+        NOTE: Returns nan-arrays of the same size as values if `array` is empty.
+    """
+    if len(values) and len(array):  # only do this if boh inputs are non-empty lists
+        values = np.atleast_1d(values)
+        abs_dist = np.abs(np.int64(np.subtract.outer(array, values)))
+        idx = abs_dist.argmin(0)
+        dist = abs_dist.min(0)
+        val = array[idx]
+    else:
+        idx = np.full_like(values, fill_value=np.nan)
+        dist = np.full_like(values, fill_value=np.nan)
+        val = np.full_like(values, fill_value=np.nan)
+    return val, idx, dist
+
+
+def interpolate_binary(x0, y0, x1):
+    """Interpolate a binary trace, preserving all True/1 events.
+
+    Args:
+        x0 ([type]): sample times for each point in y0
+        y0 ([type]): binary sequence (True, False) or 0, 1
+        x1 ([type]): new sample times
+
+    Returns:
+        y1: y0 values at x1
+    """
+    if y0.ndim == 1:
+        y0 = y0[..., np.newaxis]
+
+    y1 = np.zeros((len(x1), y0.shape[1]))
+    for idx in range(y0.shape[1]):
+        tt = x0[np.where(y0[:, idx])[0]]
+        _, ii, _ = find_nearest(x1, tt)
+        y1[ii.astype(np.uintp), idx] = 1
+
+    return y1
+
+
 def merge_channels(data, sampling_rate):
     """Merge channels based on a running maximum.
 
@@ -87,7 +136,7 @@ def swap_flies(dataset, indices, flies1=0, flies2=1):
     Returns:
         dataset with swapped indices ()
     """
-    for cnt, index in enumerate(indices):        
+    for cnt, index in enumerate(indices):
         if isinstance(flies1, (list, tuple)) and isinstance(flies2, (list, tuple)):
             fly1, fly2 = flies1[cnt], flies2[cnt]
         else:
@@ -156,7 +205,7 @@ def load_tracks(filepath):
             box_centers = data['centers'][:, 0, :, :]   # nframe, fly id, coordinates
             background = data['background'][:]
             first_tracked_frame = data['start_frame']
-            last_tracked_frame = data['frame_count']                       
+            last_tracked_frame = data['frame_count']
         else:
             chbb = f['chambers_bounding_box'][:]
             heads = f['lines'][:, 0, :, 0, :]   # nframe, fly id, coordinates
@@ -323,16 +372,16 @@ def load_times(filepath_timestamps, filepath_daq):
 
 def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = False, force_overwrite: bool = False) -> xr.Dataset:
     """[summary]
-    
+
     Args:
         ds (xarray.Dataset): [description]
         from_segmentation (bool, optional): Init manual events from automatic events with same name. Otherwise they inited as empty.
                                             If force_overwrite: will *ADD* existing manual events.
                                             otherwise: will *ADD* auto events to existing manual events.
                                             Defaults to False.
-        force_overwrite (bool, optional): Overwrite existing manual events. 
+        force_overwrite (bool, optional): Overwrite existing manual events.
                                           Defaults to False.
-    
+
     Returns:
         xarray.Dataset: [description]
     """
@@ -346,7 +395,7 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
 
     song_events_manual = None
     if 'song_events' not in ds or new_manual_event_types:
-        new_manual_events = np.zeros((ds.time.shape[0], len(new_manual_event_types)), 
+        new_manual_events = np.zeros((ds.time.shape[0], len(new_manual_event_types)),
                                         dtype=np.bool)
         song_events_manual = xr.DataArray(data=new_manual_events,
                                             dims=['time', 'event_types'],
@@ -366,12 +415,12 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
 
         if 'song_events' in ds:
             ds.drop('song_events')
-        
+
         new_ds = combined.to_dataset(name='song_events')
         attrs = ds.attrs  # for some reason, attrs are not preserved during merge...
         ds = xr.merge((ds, new_ds))
         ds.attrs = attrs
-            
+
     if from_segmentation:
         for evt in new_manual_event_types:
             auto_key = evt.strip('_manual')
@@ -380,6 +429,4 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
                     ds.song_events.loc[:, evt] = ds.song_events.loc[:, auto_key]
                 else:  # add auto events to the corresponding manual event
                     ds.song_events.loc[:, evt] = np.logical_or((ds.song_events.loc[:, evt], ds.song_events.loc[:, auto_key]))
-    return ds          
-           
-             
+    return ds
