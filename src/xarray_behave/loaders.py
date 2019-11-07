@@ -54,7 +54,7 @@ def find_nearest(array, values):
     """
     if len(values) and len(array):  # only do this if boh inputs are non-empty lists
         values = np.atleast_1d(values)
-        abs_dist = np.abs(np.int64(np.subtract.outer(array, values)))
+        abs_dist = np.abs(np.subtract.outer(array, values))
         idx = abs_dist.argmin(0)
         dist = abs_dist.min(0)
         val = array[idx]
