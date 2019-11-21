@@ -366,7 +366,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['pose_positions_allo'] = poses_allo
 
     # MAKE THE DATASET
-    breakpoint()
     dataset = xr.Dataset(dataset_data, attrs={})
     if 'time' not in dataset:
         dataset.coords['time'] = time
