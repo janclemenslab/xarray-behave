@@ -108,8 +108,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         if keep_multi_channel:
             try:
                 logging.info(f'Reading recording from {filepath_daq}.')
-                song_raw = ld.load_raw_song(filepath_daq, lazy=True)
+                song_raw, non_song_raw = ld.load_raw_song(filepath_daq, return_nonsong_channels=True, lazy=True)
                 res['song_raw'] = song_raw
+                res['non_song_raw'] = non_song_raw
                 with_song_raw = True
             except (FileNotFoundError, OSError) as e:
                 logging.info(f'Could not load song from {filepath_daq}.')
@@ -174,6 +175,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                        'time_units': 'seconds',
                                        'amplitude_units': 'volts'})
         dataset_data['song_raw'] = song_raw
+        non_song_raw = xr.DataArray(data=res['non_song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
+                                    dims=['sampletime', 'no_song_channels'],
+                                    coords={'sampletime': sampletime, },
+                                    attrs={'description': 'Non song (stimulus) data.',
+                                           'sampling_rate_Hz': sampling_rate,
+                                           'time_units': 'seconds',
+                                           'amplitude_units': 'volts'})
+        dataset_data['non_song_raw'] = non_song_raw
 
     # SONG EVENTS
     if with_segmentation_manual_matlab:
@@ -357,6 +366,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['pose_positions_allo'] = poses_allo
 
     # MAKE THE DATASET
+    breakpoint()
     dataset = xr.Dataset(dataset_data, attrs={})
     if 'time' not in dataset:
         dataset.coords['time'] = time

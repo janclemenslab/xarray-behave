@@ -349,13 +349,14 @@ def load_poses_deepposekit(filepath):
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
 
 
-def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, lazy=False):
+def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, return_nonsong_channels: bool = False, lazy=False):
     """[summary]
 
     Args:
         filepath_daq ([type]): [description]
         song_channels (List[int], optional): Sequence of integers as indices into 'samples' datasaet.
                                              Defaults to [0,..., 15].
+        return_nonsong_channels (bool, optional): will return the data not in song_channels as separate array. Defaults to False
         lazy (bool, optional): If True, will load song as dask.array, which allows lazy indexing.
                                Otherwise, will load the full recording from disk (slow). Defaults to False.
 
@@ -370,12 +371,23 @@ def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, lazy=False)
         # convert to dask array since this allows lazily evaluated indexing...
         import dask.array as daskarray
         da = daskarray.from_array(f['samples'], chunks=(10000, 1))
+        nb_channels = f['samples'].shape[1]
         song = da[:, song_channels]
+        if return_nonsong_channels:
+            non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
+            non_song = da[:, non_song_channels]
     else:
         with h5py.File(filepath_daq, 'r') as f:
+            nb_channels = f['samples'].shape[1]
             song = f['samples'][:, song_channels]
+            if return_nonsong_channels:
+                non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
+                non_song = f['samples'][:, non_song_channels]
 
-    return song
+    if return_nonsong_channels:
+        return song, non_song
+    else:
+        return song
 
 
 def load_times(filepath_timestamps, filepath_daq):
