@@ -434,7 +434,8 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
 
     Args:
         ds (xarray.Dataset): [description]
-        from_segmentation (bool, optional): Init manual events from automatic events with same name. Otherwise they inited as empty.
+        from_segmentation (bool, optional): Init manual events from automatic events with same name.
+                                            Otherwise they initialized as empty.
                                             If force_overwrite: will *ADD* existing manual events.
                                             otherwise: will *ADD* auto events to existing manual events.
                                             Defaults to False.
