@@ -66,11 +66,12 @@ class PSV():
         self.show_poses = False
         self.circle_size = 8
 
-        self.focal_fly = 0
-        self.other_fly = 1
         self.cue_index = 0
 
         self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds else 1
+        self.focal_fly = 0
+        self.other_fly = 1 if self.nb_flies > 1 else 0
+
         self.fly_colors = _ui_utils.make_colors(self.nb_flies)
         self.nb_bodyparts = len(self.ds.poseparts) if 'poseparts' in self.ds else 1
         self.bodypart_colors = _ui_utils.make_colors(self.nb_bodyparts)
@@ -546,7 +547,6 @@ class PSV():
                             0, self.vr.frame_height - 1).astype(np.uintp)
             frame[slice(*x_dot), slice(*y_dot), :] = self.fly_colors[dot_fly]  # set pixels around
 
-        # FIXME what if there is only one fly?
         # mark *focal* and *other* fly with circle
         for this_fly, color in zip((self.focal_fly, self.other_fly), self.bodypart_colors[[2, 6]]):
             fly_pos = self.ds.pose_positions_allo.data[self.index_other,
