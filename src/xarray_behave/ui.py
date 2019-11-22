@@ -68,7 +68,7 @@ class PSV():
 
         self.cue_index = 0
 
-        self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds else 1
+        self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds.dims else 1
         self.focal_fly = 0
         self.other_fly = 1 if self.nb_flies > 1 else 0
 
