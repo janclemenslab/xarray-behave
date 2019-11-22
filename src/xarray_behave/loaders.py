@@ -124,9 +124,8 @@ def merge_channels(data, sampling_rate):
     Returns:
         ndarray: merged across
     """
-
-    # remove all nan/inf data
-    mask = ~np.isfinite(data)
+    data = np.array(data)  # ensure data is an np.array (and not dask) - otherwise np.interp will fail
+    mask = ~np.isfinite(data)  # remove all nan/inf data
     data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
     # band-pass filter out noise on each channel
     b, a = scipy.signal.butter(6, (25, 1500), btype='bandpass', fs=sampling_rate)
