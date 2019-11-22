@@ -177,7 +177,7 @@ def swap_flies(dataset, indices, flies1=0, flies2=1):
     return dataset
 
 
-def load_segmentation(filepath):
+def load_segmentation_matlab(filepath):
     """Load output produced by FlySongSegmenter."""
     res = dict()
     try:
@@ -193,6 +193,28 @@ def load_segmentation(filepath):
             res['song_mask'] = f['bInf/Mask'][:]
             res['song'] = f['Song'][:]
     res['song'] = res['song'].astype(np.float32) / 1000
+
+    # events['song_pulse_any'] = res['pulse_times_samples']
+    # events['song_pulse_slow'] = res['pulse_times_samples'][res['pulse_labels'] == 1]
+    # events['song_pulse_fast'] = res['pulse_times_samples'][res['pulse_labels'] == 0]
+    # sine_song = res['song_mask'][first_sample:last_sample:step, 0] == 2
+    # events['sine'] = np.where(sine_song == 2)[0]
+    res['event_names'] = ['song_pulse_any', 'song_pulse_slow', 'song_pulse_fast', 'sine']
+    res['event_indices'] = [res['pulse_times_samples'],
+                            res['pulse_times_samples'][res['pulse_labels'] == 1],
+                            res['pulse_times_samples'][res['pulse_labels'] == 0],
+                            np.where(sine_song == 2)[0]]
+    return res
+
+
+def load_segmentation(filepath):
+    """Load output produced by DeepSongSegmenter.
+
+    File should have at least 'event_names' and 'event_indices' datasets."""
+    res = dd.io.load(filepath)
+    # with h5py.File(filepath, 'r') as f:
+    #     for key, val in f.items():
+    #         res[key] = val
     return res
 
 
