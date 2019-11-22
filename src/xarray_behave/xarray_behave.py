@@ -280,7 +280,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             song_events_np_p = ld.interpolate_binary(song_event_times_p, song_events_np_p, time)
 
     if with_segmentation_manual and (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):  #else:
-        logging.info('Merging segementations.')
+        logging.info('Merging segmentations.')
         song_events_np = np.concatenate((song_events_np, song_events_np_p), axis=-1)  # ensure that time grids are identical!!!
         del song_events_np_p
         del song_event_times_p
@@ -297,6 +297,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         min_len = min(len_list)
         logging.info(f'Cutting all data to {min_len} frames.')
 
+    logging.info('Making all datasets.')
     if with_segmentation_manual or with_segmentation_manual_matlab or with_segmentation:
         if not resample_video_data:
             time = time[:min_len]
