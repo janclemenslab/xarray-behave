@@ -113,8 +113,7 @@ def interpolate_binary(x0, y0, x1):
     return y1
 
 
-
-def merge_channels(data, sampling_rate):
+def merge_channels(data, sampling_rate, filter_data: bool = True):
     """Merge channels based on a running maximum.
 
     Args:
@@ -131,8 +130,9 @@ def merge_channels(data, sampling_rate):
     b, a = scipy.signal.butter(6, (25, 1500), btype='bandpass', fs=sampling_rate)
     data = scipy.signal.filtfilt(b, a, data, axis=0, method='pad')
     # find loudest channel in 101-sample windows
-    sng_max = maximum_filter1d(np.abs(data), size=101, axis=0)
-    loudest_channel = np.argmax(sng_max, axis=-1)
+    if filter_data:
+        sng_max = maximum_filter1d(np.abs(data), size=101, axis=0)
+        loudest_channel = np.argmax(sng_max, axis=-1)
     # get linear index and merge channels
     idx = np.ravel_multi_index((np.arange(sng_max.shape[0]), loudest_channel), data.shape)
     data_merged_max = data.ravel()[idx]
