@@ -241,6 +241,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             event_times = np.unique((events[key] / step).astype(np.uintp))
             event_times = event_times[event_times < last_sample_with_frame / step]
             song_events_np[event_times, cnt] = True
+
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
             # interpolator = scipy.interpolate.interp1d(time, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
@@ -281,10 +282,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     if with_segmentation_manual and (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):  #else:
         logging.info('Merging segmentations.')
-        song_events_np = np.concatenate((song_events_np, song_events_np_p), axis=-1)  # ensure that time grids are identical!!!
+        song_events_np = np.concatenate((song_events_np, song_events_np_p), axis=-1)  # TODO: ensure that time grids are identical!!!
         del song_events_np_p
         del song_event_times_p
         eventtypes.extend(eventtypes_p)
+    elif with_segmentation_manual and not (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):
+        song_events_np = song_events_np_p
+        eventtypes = eventtypes_p
+
 
     if not resample_video_data:
         len_list = [time.shape[0]]
@@ -352,7 +357,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # POSES
     if with_poses:
-        logging.info('   poses')        
+        logging.info('   poses')
         frame_times = ss.frame_time(frame_numbers)
         fps = 1/np.nanmean(np.diff(frame_times))
 
@@ -430,7 +435,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             logging.debug(f'  Could not load fly identities using info from {filepath_swap}.')
             logging.debug(e)
     logging.info('Done.')
-            
+
     return dataset
 
 
