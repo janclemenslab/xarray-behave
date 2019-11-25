@@ -198,7 +198,7 @@ def load_segmentation_matlab(filepath):
     # events['song_pulse_slow'] = res['pulse_times_samples'][res['pulse_labels'] == 1]
     # events['song_pulse_fast'] = res['pulse_times_samples'][res['pulse_labels'] == 0]
     # sine_song = res['song_mask'][first_sample:last_sample:step, 0] == 2
-    sine_song = res['song_mask'][:, 0] == 2
+    sine_song = res['song_mask'] == 2
     # events['sine'] = np.where(sine_song == 2)[0]
     res['event_names'] = ['song_pulse_any', 'song_pulse_slow', 'song_pulse_fast', 'sine']
     res['event_indices'] = [res['pulse_times_samples'],
