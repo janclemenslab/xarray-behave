@@ -34,6 +34,7 @@ from pathlib import Path
 import defopt
 import skimage.draw
 from functools import partial
+import warnings
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 
@@ -817,5 +818,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
 
 
 if __name__ == '__main__':
+    import warnings
+    warnings.filterwarnings("ignore")
     logging.basicConfig(level=logging.DEBUG)
     defopt.run(main)
