@@ -297,8 +297,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         min_len = min(len_list)
         logging.info(f'Cutting all data to {min_len} frames.')
 
-    logging.info('Making all datasets.')
+    logging.info('Making all datasets:')
     if with_segmentation_manual or with_segmentation_manual_matlab or with_segmentation:
+        logging.info('   segmentations')
         if not resample_video_data:
             time = time[:min_len]
             song_events_np = song_events_np[:min_len]
@@ -316,6 +317,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # BODY POSITION
     if with_tracks:
+        logging.info('   tracking')
         frame_times = ss.frame_time(frame_numbers)
         fps = 1/np.nanmean(np.diff(frame_times))
 
@@ -350,6 +352,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # POSES
     if with_poses:
+        logging.info('   poses')        
         frame_times = ss.frame_time(frame_numbers)
         fps = 1/np.nanmean(np.diff(frame_times))
 
@@ -404,6 +407,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['pose_positions_allo'] = poses_allo
 
     # MAKE THE DATASET
+    logging.info('   assembling')
     dataset = xr.Dataset(dataset_data, attrs={})
     if 'time' not in dataset:
         dataset.coords['time'] = time
@@ -416,6 +420,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                      'target_sampling_rate_Hz': target_sampling_rate}
 
     if fix_fly_indices:
+        logging.info('   applying fly identity fixes')
         try:
             filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
             indices, flies1, flies2 = ld.load_swap_indices(filepath_swap)
@@ -424,7 +429,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         except (FileNotFoundError, OSError) as e:
             logging.debug(f'  Could not load fly identities using info from {filepath_swap}.')
             logging.debug(e)
-
+    logging.info('Done.')
+            
     return dataset
 
 
