@@ -427,7 +427,7 @@ def load_times(filepath_timestamps, filepath_daq):
     interval, _ = scipy.stats.mode(np.diff(daq_stamps[:np.argmax(daq_stamps <= 0), 0]))  # seconds - using mode here to be more robust
     interval = interval[0]
     nb_samples = np.mean(np.diff(daq_samplenumber[:np.argmax(daq_stamps <= 0), 0]))
-    sampling_rate_Hz = np.round(interval * nb_samples)
+    sampling_rate_Hz = np.round(interval * nb_samples / 1000) * 1000  # round to 1000s of Hz
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
     return ss, last_sample, sampling_rate_Hz
 
