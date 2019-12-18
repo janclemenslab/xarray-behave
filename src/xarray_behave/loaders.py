@@ -8,6 +8,7 @@ import scipy.ndimage
 
 from scipy.io import loadmat
 import scipy.signal
+import scipy.stats
 from scipy.ndimage import maximum_filter1d
 
 from samplestamps import SampStamp
@@ -423,7 +424,7 @@ def load_times(filepath_timestamps, filepath_daq):
         daq_sampleinterval = f['samplenumber'][:]
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
-    interval = np.mean(np.diff(daq_stamps[:np.argmax(daq_stamps <= 0), 0]))  # seconds
+    interval, _ = scipy.stats.mode(np.diff(daq_stamps[:np.argmax(daq_stamps <= 0), 0]))  # seconds - using mode here to be more robust
     nb_samples = np.mean(np.diff(daq_samplenumber[:np.argmax(daq_stamps <= 0), 0]))
     sampling_rate_Hz = np.round(interval * nb_samples)
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
