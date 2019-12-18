@@ -721,7 +721,7 @@ class PSV():
         # y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
 
     # @lru_cache(maxsize=2, typed=False)
-    def _calc_spec(self, y, fmax=None):
+    def _calc_spec(self, y, fmax=1000):
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
         self.spec_win = min(len(y), self.spec_win)
