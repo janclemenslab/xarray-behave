@@ -87,7 +87,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             logging.debug(f'  {filepath_poses} loaded.')
         elif os.path.exists(filepath_poses_leap):
             logging.debug(f'  {filepath_poses} not found.')
-            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses)
+            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses_leap)
             with_poses = True
             poses_from = 'LEAP'
         else:
