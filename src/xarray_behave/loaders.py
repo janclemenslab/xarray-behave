@@ -422,12 +422,19 @@ def load_times(filepath_timestamps, filepath_daq):
     with h5py.File(filepath_daq, 'r') as f:
         daq_stamps = f['systemtime'][:]
         daq_sampleinterval = f['samplenumber'][:]
+
+    # remove trailing zeros - may be left over if recording didn't finish properly
+    last_valid_idx = np.argmax(daq_stamps == 0)
+    daq_stamps = daq_stamps[:last_valid_idx]
+    daq_sampleinterval = daq_sampleinterval[:last_valid_idx]
+
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
-    interval, _ = scipy.stats.mode(np.diff(daq_stamps[:np.argmax(daq_stamps <= 0), 0]))  # seconds - using mode here to be more robust
-    interval = interval[0]
-    nb_samples = np.mean(np.diff(daq_samplenumber[:np.argmax(daq_stamps <= 0), 0]))
-    sampling_rate_Hz = np.around(interval * nb_samples, -3)  # round to 1000s of Hz
+
+    nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:, 0]))  # seconds - using mode here to be more robust
+    nb_seconds_per_interval = nb_seconds_per_interval[0]
+    nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:, 0]))
+    sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
     return ss, last_sample, sampling_rate_Hz
 
