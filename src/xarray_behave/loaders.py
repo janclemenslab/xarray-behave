@@ -432,7 +432,6 @@ def load_times(filepath_timestamps, filepath_daq):
     nb_seconds_per_interval = nb_seconds_per_interval[0]
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
-    breakpoint()
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
     return ss, last_sample, sampling_rate_Hz
 
