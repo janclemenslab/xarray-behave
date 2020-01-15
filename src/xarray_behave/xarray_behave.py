@@ -508,9 +508,12 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         rotational_speed = mt.rot_speed(thoraces, heads)
         rotational_acc = mt.rot_acceleration(thoraces, heads)
 
-        wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
-        wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
-        wing_angle_sum = wing_angle_left + wing_angle_right
+        # wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
+        # wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
+        # wing_angle_sum = wing_angle_left + wing_angle_right
+        wing_angle_left = mt.internal_angle(wing_left,thoraces,heads)
+        wing_angle_right = mt.internal_angle(wing_right,thoraces,heads)
+        wing_angle_sum = mt.internal_angle(wing_left,thoraces,wing_right)
 
         list_absolute = [
             angles, rotational_speed, rotational_acc,

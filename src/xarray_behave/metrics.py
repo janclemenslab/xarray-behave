@@ -232,3 +232,45 @@ def project_velocity(vx, vy, radians):
     rot_vy = vx * np.sin(radians) + vy * np.cos(radians)
 
     return rot_vx, rot_vy
+
+
+def internal_angle(A: np.array, B: np.array, C: np.array, deg:bool=True, array_logic: str='tfc'):
+    """Calculates internal angle (∠ABC) between three points. If A,B,C are lists or arrays, calculation happens element-wise.
+    
+    Args:
+        A, B, C ([type]): position of points between which the angle is calculated.
+        deg ([type]): Return angle in degrees if True, radians if False (default).
+
+    Returns:
+        angles ([type]): internal angle between lines AB and BC.
+    """
+
+    v1s = B-A
+    v2s = C-A
+
+    # reshape vector arrays to be [time, coordinates, ...]
+    if A.ndim == 3:
+        if array_logic == 'tfc':
+            v1s = np.swapaxes(v1s,1,2)
+            v2s = np.swapaxes(v2s,1,2)
+        elif array_logic == 'ftc':
+            v1s = np.swapaxes(v1s,1,2)
+            v1s = np.swapaxes(v1s,0,2)
+            v2s = np.swapaxes(v2s,1,2)
+            v2s = np.swapaxes(v2s,0,2)
+        elif array_logic == 'fct':
+            v1s = np.swapaxes(v1s,0,2)
+            v2s = np.swapaxes(v2s,0,2)
+    elif A.ndim > 3:
+        print('Result might not be correct, only tested for arrays with 2 or 3 dimensions. Contact Adrian for help, if required.')
+
+    dot_v1_v2 = np.einsum('ij...,ij...->i...', v1s, v2s)
+    dot_v1_v1 = np.einsum('ij...,ij...->i...', v1s, v1s)
+    dot_v2_v2 = np.einsum('ij...,ij...->i...', v2s, v2s)
+
+    angles = np.arccos(dot_v1_v2/np.sqrt(dot_v1_v1*dot_v2_v2))
+
+    if deg:
+        angles *= 180/np.pi
+
+    return angles
