@@ -759,7 +759,9 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
          cue_points: str = '[]',
          *,
          ignore_existing: bool = False,
-         cmap_name: str = 'turbo'):
+         cmap_name: str = 'turbo',
+         include_song: bool = True,
+         save: bool = False):
     """
     Args:
         datename (str): Experiment id. Defaults to 'localhost-20181120_144618'.
@@ -767,6 +769,8 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         cue_points (str): List of cue points (indices) for quickly jumping around time. Defaults to '[]'.
         ignore_existing (bool): Ignore existing song annotations. Defaults to False.
         cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). Defaults to 'turbo'.
+        include_song (bool): whether or not to include song data
+        save (bool): save to zarr.ZipStore (may be slow)
     """
 
     if not ignore_existing and os.path.exists(datename + '.zarr'):
@@ -782,13 +786,14 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
             ds.pose_positions_allo.load()  # non-lazy load song for faster updates
         if 'sampletime' in ds:
             ds.sampletime.load()
-
-        # this will take a long time:
+        if 'song_raw' in ds:  # this will take a long time:    
         ds.song_raw.load()  # non-lazy load song for faster updates
 
     else:
         logging.info(f'Assembling dataset for {datename}.')
-        ds = xb.assemble(datename, root=root, fix_fly_indices=False, keep_multi_channel=True)
+        ds = xb.assemble(datename, root=root, fix_fly_indices=False, include_song=include_song, keep_multi_channel=True)
+        if save:
+            logging.info('   saving dataset.')
         xb.save(datename + '.zarr', ds)
 
     ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
