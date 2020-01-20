@@ -783,7 +783,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
          *,
          ignore_existing: bool = False,
          cmap_name: str = 'turbo',
-         include_song: bool = True,
+         with_song: bool = True,
          save: bool = False):
     """
     Args:
@@ -792,7 +792,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         cue_points (str): List of cue points (indices) for quickly jumping around time. Defaults to '[]'.
         ignore_existing (bool): Ignore existing song annotations. Defaults to False.
         cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). Defaults to 'turbo'.
-        include_song (bool): whether or not to include song data
+        with_song (bool): whether or not to include song data
         save (bool): save to zarr.ZipStore (may be slow)
     """
 
@@ -814,7 +814,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
 
     else:
         logging.info(f'Assembling dataset for {datename}.')
-        ds = xb.assemble(datename, root=root, fix_fly_indices=False, include_song=include_song, keep_multi_channel=True)
+        ds = xb.assemble(datename, root=root, fix_fly_indices=False, include_song=with_song, keep_multi_channel=True)
         if save:
             logging.info('   saving dataset.')
         xb.save(datename + '.zarr', ds)
