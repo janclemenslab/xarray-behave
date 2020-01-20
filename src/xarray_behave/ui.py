@@ -810,7 +810,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         if 'sampletime' in ds:
             ds.sampletime.load()
         if 'song_raw' in ds:  # this will take a long time:    
-        ds.song_raw.load()  # non-lazy load song for faster updates
+            ds.song_raw.load()  # non-lazy load song for faster updates
 
     else:
         logging.info(f'Assembling dataset for {datename}.')
