@@ -754,6 +754,25 @@ class PSV():
             self.ds.body_positions.values[self.index_other:, [
                 self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
 
+    def dss_train(self, qt_keycode):
+        logging.info('Training not implemented yet.')
+
+        # export dataset as training/testing files
+
+        # call dss.train
+
+
+    def dss_predict(self, qt_keycode):
+        logging.info('Prediction not implemented yet.')
+
+        # load model
+
+        # predict
+
+        # update ds
+
+        # load new ds
+
 
 def main(datename: str = 'localhost-20181120_144618', root: str = '',
          cue_points: str = '[]',
