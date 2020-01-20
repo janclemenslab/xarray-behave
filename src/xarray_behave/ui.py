@@ -817,7 +817,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         ds = xb.assemble(datename, root=root, fix_fly_indices=False, include_song=with_song, keep_multi_channel=True)
         if save:
             logging.info('   saving dataset.')
-        xb.save(datename + '.zarr', ds)
+            xb.save(datename + '.zarr', ds)
 
     ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
 
