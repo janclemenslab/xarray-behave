@@ -160,6 +160,10 @@ class PSV():
                                 self.delete_current_events, QtCore.Qt.Key_U)
         self.add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, QtCore.Qt.Key_Y)
 
+        view_train = self.bar.addMenu("Training/Inference")
+        self.add_keyed_menuitem(view_train, "Train", self.dss_train, None)
+        self.add_keyed_menuitem(view_train, "Predict", self.dss_predict, None)
+        
         self.bar.addMenu("View")
 
         self.hl = pg.QtGui.QHBoxLayout()
