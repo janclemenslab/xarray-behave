@@ -370,7 +370,7 @@ def load_poses_deepposekit(filepath):
             poses_ego.data[cnt, fly, ...] = [rotate_point(pt, -a[fly]) for pt in p_ego[fly]]
 
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
-
+    
 
 def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, return_nonsong_channels: bool = False, lazy=False):
     """[summary]
@@ -387,7 +387,7 @@ def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, return_nons
         [type]: [description]
     """
     if song_channels is None:  # the first 16 channels in the data are the mic recordings
-        song_channels = list(range(16))
+        song_channels = np.arange(16)
 
     if lazy:
         f = h5py.File(filepath_daq, 'r')
@@ -395,6 +395,7 @@ def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, return_nons
         import dask.array as daskarray
         da = daskarray.from_array(f['samples'], chunks=(10000, 1))
         nb_channels = f['samples'].shape[1]
+        song_channels = song_channels[song_channels < nb_channels]
         song = da[:, song_channels]
         if return_nonsong_channels:
             non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
