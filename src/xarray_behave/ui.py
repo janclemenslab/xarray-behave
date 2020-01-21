@@ -41,15 +41,18 @@ sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when ke
 
 class PSV():
 
-    BOX_SIZE = 200
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(self, ds, vr=None, cue_points=[], cmap_name: str = 'turbo'):
+    def __init__(self, ds, vr=None, cue_points=[], cmap_name: str = 'turbo', box_size: int = 200,
+                 fmin=None, fmax=None):
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         self.ds = ds
         self.vr = vr
         self.cue_points = cue_points
 
+        self.box_size = box_size
+        self.fmin = fmin
+        self.fmax = fmax
         if 'song' in self.ds:
             self.tmax = self.ds.song.shape[0]
         elif 'song_raw' in self.ds:
@@ -564,10 +567,10 @@ class PSV():
     def crop_frame(self, frame):
         fly_pos = self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.thorax_index].astype(np.uintp)
         # makes sure crop does not exceed frame bounds
-        fly_pos[0] = np.clip(fly_pos[0], self.BOX_SIZE, self.vr.frame_width - 1 - self.BOX_SIZE)
-        fly_pos[1] = np.clip(fly_pos[1], self.BOX_SIZE, self.vr.frame_height - 1 - self.BOX_SIZE)
-        x_range = (int(fly_pos[0] - self.BOX_SIZE), int(fly_pos[0] + self.BOX_SIZE))
-        y_range = (int(fly_pos[1] - self.BOX_SIZE), int(fly_pos[1] + self.BOX_SIZE))
+        fly_pos[0] = np.clip(fly_pos[0], self.box_size, self.vr.frame_width - 1 - self.box_size)
+        fly_pos[1] = np.clip(fly_pos[1], self.box_size, self.vr.frame_height - 1 - self.box_size)
+        x_range = (int(fly_pos[0] - self.box_size), int(fly_pos[0] + self.box_size))
+        y_range = (int(fly_pos[1] - self.box_size), int(fly_pos[1] + self.box_size))
         frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
         return frame
 
