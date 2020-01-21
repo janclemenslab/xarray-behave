@@ -85,7 +85,6 @@ class PSV():
 
         self.STOP = True
         self.swap_events = []
-        self.frame_interval = 100  # TODO: get from self.ds
         self.show_spec = True
         self.spec_win = 200
         self.show_songevents = True
@@ -93,14 +92,19 @@ class PSV():
         self.show_all_channels = True
         self.sinet0 = None
         # FIXME: will fail for datasets w/o song
+        self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
         if 'song' in self.ds:
             self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
         elif 'song_raw' in self.ds:
             self.fs_song = self.ds.song_raw.attrs['sampling_rate_Hz']
         else:
-            self.fs_song = 10_000
-        self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            self.fs_song = self.fs_other  # not sure this would work? 
 
+        if self.vr is not None:
+            self.frame_interval = self.fs_song / self.vr.frame_rate  # song samples? TODO: get from self.ds
+        else:
+            self.frame_interval = self.fs_song / 1_000
+        
         self.app = pg.QtGui.QApplication([])
         self.win = pg.QtGui.QMainWindow()
 
