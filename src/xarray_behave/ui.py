@@ -53,6 +53,7 @@ class PSV():
         self.box_size = box_size
         self.fmin = fmin
         self.fmax = fmax
+
         if 'song' in self.ds:
             self.tmax = self.ds.song.shape[0]
         elif 'song_raw' in self.ds:
@@ -634,7 +635,7 @@ class PSV():
             fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
             if self.crop:  # transform fly pos to coordinates of the cropped box
                 box_center = self.ds.pose_positions_allo.data[self.index_other,
-                                                              self.focal_fly, self.thorax_index] + self.BOX_SIZE / 2
+                                                              self.focal_fly, self.thorax_index] + self.box_size / 2
                 fly_pos = fly_pos - box_center
             fly_dist = np.sum((fly_pos - np.array([mouseX, mouseY]))**2, axis=-1)
             fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
@@ -728,20 +729,27 @@ class PSV():
         # y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
 
     # @lru_cache(maxsize=2, typed=False)
-    def _calc_spec(self, y, fmax=1000):
+    def _calc_spec(self, y):
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
         self.spec_win = min(len(y), self.spec_win)
         f, t, psd = scipy.signal.spectrogram(y, self.fs_song, nperseg=self.spec_win,
                                              noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
         self.spec_t = t
-        if fmax is not None:
-            f_idx = np.argmax(f > fmax)
+
+        if self.fmax is not None:
+            f_idx1 = np.argmax(f > self.fmax)
         else:
-            f_idx = -1
-        S = np.log2(1 + psd[:f_idx, :])
+            f_idx1 = -1
+        
+        if self.fmin is not None:
+            f_idx0 = np.argmax(f > self.fmax)
+        else:
+            f_idx0 = 0
+            
+        S = np.log2(1 + psd[f_idx0:f_idx1, :])
         S = S / np.max(S) * 255  # normalize to 0...255
-        return S, f[:f_idx], t
+        return S, f[f_idx0:f_idx1], t
 
     def swap_flies(self, qt_keycode):
         if self.vr is not None:
@@ -787,7 +795,13 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
          ignore_existing: bool = False,
          cmap_name: str = 'turbo',
          with_song: bool = True,
-         save: bool = False):
+         save: bool = False,
+         lazy: bool = False,
+         target_sampling_rate: int = 10_000,
+         resample_video_data: bool = True,
+         box_size: int = 200,
+         spec_freq_min = None,
+         spec_freq_max = None):
     """
     Args:
         datename (str): Experiment id. Defaults to 'localhost-20181120_144618'.
@@ -797,27 +811,34 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). Defaults to 'turbo'.
         with_song (bool): whether or not to include song data
         save (bool): save to zarr.ZipStore (may be slow)
+        lazy (bool): whether to load full dataset into memory or read on demand from disk (only applicable if opening an existing dataset)
+        target_sampling_rate (int): 10_000
+        resample_video_data (bool) if False, will keep the all tracking data in original framenumber coordinates, overrides target_sampling_rate. Defaults to True.
+        box_size (int): size of the crop box around flies, in pixels
+        spec_freq_min (int):        
+        spec_freq_max (int):        
     """
 
     if not ignore_existing and os.path.exists(datename + '.zarr'):
         logging.info(f'Loading ds from {datename}.zarr.')
         ds = xb.load(datename + '.zarr', lazy=True)
-
-        logging.info(f'   Loading data from ds.')
-        if 'song_events' in ds:
-            ds.song_events.load()  # non-lazy load song events so we can edit them
-        if 'song' in ds:
-            ds.song.load()  # non-lazy load song for faster updates
-        if 'pose_positions_allo' in ds:
-            ds.pose_positions_allo.load()  # non-lazy load song for faster updates
-        if 'sampletime' in ds:
-            ds.sampletime.load()
-        if 'song_raw' in ds:  # this will take a long time:    
-            ds.song_raw.load()  # non-lazy load song for faster updates
-
+        if not lazy:
+            logging.info(f'   Loading data from ds.')
+            if 'song_events' in ds:
+                ds.song_events.load()  # non-lazy load song events so we can edit them
+            if 'song' in ds:
+                ds.song.load()  # non-lazy load song for faster updates
+            if 'pose_positions_allo' in ds:
+                ds.pose_positions_allo.load()  # non-lazy load song for faster updates
+            if 'sampletime' in ds:
+                ds.sampletime.load()
+            if 'song_raw' in ds:  # this will take a long time:    
+                ds.song_raw.load()  # non-lazy load song for faster updates
     else:
         logging.info(f'Assembling dataset for {datename}.')
-        ds = xb.assemble(datename, root=root, fix_fly_indices=False, include_song=with_song, keep_multi_channel=True)
+        ds = xb.assemble(datename, root=root, fix_fly_indices=False, include_song=with_song,
+                         keep_multi_channel=True, target_sampling_rate=target_sampling_rate,
+                         resample_video_data=resample_video_data)
         if save:
             logging.info('   saving dataset.')
             xb.save(datename + '.zarr', ds)
@@ -841,7 +862,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         print(f'Something went wrong when loading the video. Continuing without.')
 
     cue_points = eval(cue_points)
-    PSV(ds, vr, cue_points, cmap_name)
+    PSV(ds, vr, cue_points, cmap_name, box_size=box_size, fmin=spec_freq_min, fmax=spec_freq_min)
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
