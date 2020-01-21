@@ -285,7 +285,7 @@ class PSV():
 
     @t0.setter
     def t0(self, val):
-        self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)
+        self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)  # ensure t0 stays within bounds
         self.update_xy()
         self.update_frame()
 
