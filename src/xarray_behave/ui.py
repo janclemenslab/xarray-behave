@@ -617,12 +617,12 @@ class PSV():
                     yy = np.zeros_like(xx) + yrange[:, np.newaxis]
                     _ui_utils.fast_plot(self.slice_view, xx.T, yy.T, event_pen)
 
-    def play_video(self, rate=100):  # TODO: get rate from ds (video fps attr)
+    def play_video(self):  # TODO: get rate from ds (video fps attr)
         RUN = True
         cnt = 0
         dt0 = time.time()
         while RUN:
-            self.t0 += rate
+            self.t0 += self.frame_interval
             cnt += 1
             if cnt % 10 == 0:
                 # logging.debug(time.time() - dt0)
@@ -796,19 +796,13 @@ class PSV():
         # load new ds
 
 
-def main(datename: str = 'localhost-20181120_144618', root: str = '',
-         cue_points: str = '[]',
-         *,
-         ignore_existing: bool = False,
-         cmap_name: str = 'turbo',
+def main(datename: str, root: str = '', cue_points: str = '[]', *,
+         ignore_existing: bool = False, lazy: bool = False,
+         save: bool = False, savefolder: str = '',
+         resample_video_data: bool = True, target_sampling_rate: int = 10_000,
          with_song: bool = True,
-         save: bool = False,
-         lazy: bool = False,
-         target_sampling_rate: int = 10_000,
-         resample_video_data: bool = True,
-         box_size: int = 200,
-         spec_freq_min = None,
-         spec_freq_max = None):
+         spec_freq_min = None, spec_freq_max = None,
+         box_size: int = 200, cmap_name: str = 'turbo'):
     """
     Args:
         datename (str): Experiment id. Defaults to 'localhost-20181120_144618'.
@@ -818,6 +812,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
         cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). Defaults to 'turbo'.
         with_song (bool): whether or not to include song data
         save (bool): save to zarr.ZipStore (may be slow)
+        savefolder (str): Folder in which created dataset to save to. Defaults to ''.
         lazy (bool): whether to load full dataset into memory or read on demand from disk (only applicable if opening an existing dataset)
         target_sampling_rate (int): 10_000
         resample_video_data (bool) if False, will keep the all tracking data in original framenumber coordinates, overrides target_sampling_rate. Defaults to True.
@@ -848,7 +843,7 @@ def main(datename: str = 'localhost-20181120_144618', root: str = '',
                          resample_video_data=resample_video_data)
         if save:
             logging.info('   saving dataset.')
-            xb.save(datename + '.zarr', ds)
+            xb.save(savefolder + datename + '.zarr', ds)
 
     ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
 
