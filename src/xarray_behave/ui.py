@@ -242,10 +242,10 @@ class PSV():
         self.win.setCentralWidget(self.cw)
         self.win.show()
 
-        self._span = 100_000
+        self._span = int(self.fs_song)
         self._t0 = int(self.span / 2)
-        self.span = 100_000
-        self.t0 = int(self.span / 2)
+        # self.span = 100_000
+        # self.t0 = int(self.span / 2)
 
         self.update_xy()
         self.update_frame()
