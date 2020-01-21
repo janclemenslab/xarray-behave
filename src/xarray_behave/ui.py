@@ -675,7 +675,7 @@ class PSV():
         event.accept()
         pos = event.pos()
         if self.current_event_index is not None:
-            mouseT = self.spec_t[int(pos[0])] + float(self.ds.time[self.time0])
+            mouseT = self.spec_t[int(pos[0])] + float(self.ds.sampletime[self.time0])
 
             if 'sine' in self.current_event_name:
                 if self.sinet0 is None:
