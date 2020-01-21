@@ -189,24 +189,24 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['song'] = song
 
     if with_song_raw:
-        if 0 not in res['non_song_raw'].shape:  # xr fails saving zarr files with 0-size along in any dim
-        song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
-                                dims=['sampletime', 'channels'],
-                                coords={'sampletime': sampletime, },
-                                attrs={'description': 'Raw song recording (multi channel).',
-                                       'sampling_rate_Hz': sampling_rate,
-                                       'time_units': 'seconds',
-                                       'amplitude_units': 'volts'})
-        dataset_data['song_raw'] = song_raw
-        if 0 not in res['non_song_raw'].shape:  # xr fails saving zarr files with 0-size along in any dim
-        non_song_raw = xr.DataArray(data=res['non_song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
-                                    dims=['sampletime', 'no_song_channels'],
+        if 0 not in res['song_raw'].shape:  # xr fails saving zarr files with 0-size along in any dim
+            song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
+                                    dims=['sampletime', 'channels'],
                                     coords={'sampletime': sampletime, },
-                                    attrs={'description': 'Non song (stimulus) data.',
-                                           'sampling_rate_Hz': sampling_rate,
-                                           'time_units': 'seconds',
-                                           'amplitude_units': 'volts'})
-        dataset_data['non_song_raw'] = non_song_raw
+                                    attrs={'description': 'Raw song recording (multi channel).',
+                                        'sampling_rate_Hz': sampling_rate,
+                                        'time_units': 'seconds',
+                                        'amplitude_units': 'volts'})
+            dataset_data['song_raw'] = song_raw
+        if 0 not in res['non_song_raw'].shape:  # xr fails saving zarr files with 0-size along in any dim
+            non_song_raw = xr.DataArray(data=res['non_song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
+                                        dims=['sampletime', 'no_song_channels'],
+                                        coords={'sampletime': sampletime, },
+                                        attrs={'description': 'Non song (stimulus) data.',
+                                            'sampling_rate_Hz': sampling_rate,
+                                            'time_units': 'seconds',
+                                            'amplitude_units': 'volts'})
+            dataset_data['non_song_raw'] = non_song_raw
 
     # SONG EVENTS
     events = dict()
