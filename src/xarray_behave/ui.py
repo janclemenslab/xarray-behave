@@ -563,12 +563,14 @@ class PSV():
             fly_pos = self.ds.pose_positions_allo.data[self.index_other,
                                                        this_fly,
                                                        self.thorax_index].astype(np.uintp)
+            fly_pos = np.array(fly_pos)  # in case this is a dask.array
             xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.circle_size, method='bresenham')
             frame[xx, yy, :] = color
         return frame
 
     def crop_frame(self, frame):
         fly_pos = self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.thorax_index].astype(np.uintp)
+        fly_pos = np.array(fly_pos)  # in case this is a dask.array
         # makes sure crop does not exceed frame bounds
         fly_pos[0] = np.clip(fly_pos[0], self.box_size, self.vr.frame_width - 1 - self.box_size)
         fly_pos[1] = np.clip(fly_pos[1], self.box_size, self.vr.frame_height - 1 - self.box_size)
@@ -635,9 +637,12 @@ class PSV():
             pos = event.pos()
             mouseX, mouseY = int(pos.x()), int(pos.y())
             fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
+            fly_pos = np.array(fly_pos)  # in case this is a dask.array
             if self.crop:  # transform fly pos to coordinates of the cropped box
                 box_center = self.ds.pose_positions_allo.data[self.index_other,
                                                               self.focal_fly, self.thorax_index] + self.box_size / 2
+                box_center = np.array(box_center)  # in case this is a dask.array
+                                                            
                 fly_pos = fly_pos - box_center
             fly_dist = np.sum((fly_pos - np.array([mouseX, mouseY]))**2, axis=-1)
             fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
