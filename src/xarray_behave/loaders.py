@@ -1,7 +1,7 @@
 """Load files created by various analysis programs created."""
 import numpy as np
 import h5py
-import deepdish as dd
+import flammkuchen as dd_io
 
 import scipy.interpolate
 import scipy.ndimage
@@ -213,7 +213,7 @@ def load_segmentation(filepath):
     """Load output produced by DeepSongSegmenter.
 
     File should have at least 'event_names' and 'event_indices' datasets."""
-    res = dd.io.load(filepath)
+    res = dd_io.load(filepath)
     # with h5py.File(filepath, 'r') as f:
     #     for key, val in f.items():
     #         res[key] = val
@@ -247,7 +247,7 @@ def load_tracks(filepath):
     """Load tracker data"""
     with h5py.File(filepath, 'r') as f:
         if 'data' in f.keys():  # in old-style or unfixes tracks, everything is in the 'data' group
-            data = dd.io.load(filepath)
+            data = dd_io.load(filepath)
             chbb = data['chambers_bounding_box'][:]
             heads = data['lines'][:, 0, :, 0, :]   # nframe, fly id, coordinates
             tails = data['lines'][:, 0, :, 1, :]   # nframe, fly id, coordinates
