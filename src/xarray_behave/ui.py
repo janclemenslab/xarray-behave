@@ -519,11 +519,9 @@ class PSV():
 
     def update_frame(self):
         if self.vr is not None:
+            self.fn = self.ds.coords['nearest_frame'][self.index_other].data
 
-            # fn = self.ds.body_positions.nearest_frame[self.index_other]
-            fn = self.ds.coords['nearest_frame'][self.index_other]
-
-            self.frame = self.vr[fn]
+            self.frame = self.vr[self.fn]
             if self.frame is not None:  # frame is None when at end of video
                 # FIXME the annotations potentially waste time annotating outside of the cropped frame
                 if 'pose_positions_allo' in self.ds:
