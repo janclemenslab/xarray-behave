@@ -733,10 +733,16 @@ class PSV():
         S, f, t = self._calc_spec(y)
         self.spec_view.setImage(S.T[:, ::-1])
         self.spec_view.view.setLimits(xMin=0, xMax=S.shape[1], yMin=0, yMax=S.shape[0])
+        # FIXME: long yticklabels (e.g "5000") lead to misalignment between spec and trace plots
         # f = f[::-1]
         # y_axis = self.spec_view.getView().getAxis('left')
         # ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
         # y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
+
+        # x_axis = self.spec_view.getView().getAxis('bottom')
+        # ticks = np.linspace(0, len(t)-1, 10, dtype=np.uintp)
+        # t_offset = float(self.ds.sampletime[self.time0])
+        # x_axis.setTicks([[(ii, str(int((t_offset + t[ii])*self.fs_song)/self.fs_song)) for ii in ticks]])
 
     # @lru_cache(maxsize=2, typed=False)
     def _calc_spec(self, y):
@@ -753,7 +759,7 @@ class PSV():
             f_idx1 = -1
         
         if self.fmin is not None:
-            f_idx0 = np.argmax(f > self.fmax)
+            f_idx0 = np.argmax(f > self.fmin)
         else:
             f_idx0 = 0
             
