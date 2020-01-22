@@ -99,7 +99,7 @@ class PSV():
             self.fs_song = self.ds.song_raw.attrs['sampling_rate_Hz']
         else:
             self.fs_song = self.fs_other  # not sure this would work? 
-
+        
         if self.vr is not None:
             self.frame_interval = self.fs_song / self.vr.frame_rate  # song samples? TODO: get from self.ds
         else:
@@ -194,7 +194,6 @@ class PSV():
                                     self.cb.itemText(ii),
                                     self.change_event_type,
                                     eval(f'QtCore.Qt.Key_{ii}'))
-
 
         # CHANNEL selector
         self.cb2 = pg.QtGui.QComboBox()
@@ -762,7 +761,7 @@ class PSV():
             f_idx0 = np.argmax(f > self.fmin)
         else:
             f_idx0 = 0
-            
+
         S = np.log2(1 + psd[f_idx0:f_idx1, :])
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f[f_idx0:f_idx1], t
@@ -900,7 +899,7 @@ def main(datename: str, *,
         print(f'Something went wrong when loading the video. Continuing without.')
 
     cue_points = eval(cue_points)
-    PSV(ds, vr, cue_points, cmap_name, box_size=box_size, fmin=spec_freq_min, fmax=spec_freq_min)
+    PSV(ds, vr, cue_points, cmap_name, box_size=box_size, fmin=spec_freq_min, fmax=spec_freq_max)
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
