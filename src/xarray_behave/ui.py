@@ -675,7 +675,10 @@ class PSV():
         event.accept()
         pos = event.pos()
         if self.current_event_index is not None:
-            mouseT = self.spec_t[int(pos[0])] + float(self.ds.sampletime[self.time0])
+            # interp so annotations are not restricted so temporal resolution of the spectrogram
+            mouse_spec_pos = np.interp(pos[0], np.arange(len(self.spec_t)), self.spec_t)
+            # mouse_spec_pos = self.spec_t[int(pos[0])]
+            mouseT = mouse_spec_pos + float(self.ds.sampletime[self.time0])
 
             if 'sine' in self.current_event_name:
                 if self.sinet0 is None:
