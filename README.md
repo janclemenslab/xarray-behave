@@ -3,21 +3,21 @@
 ## Installation
 First, manually install dependencies:
 ```shell
-conda install numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz
+conda install numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz pytables
 pip install git+http://github.com/janclemenslab/samplestamps
+pip install flammkuchen
 ```
 Install with GUI (requires extra dependencies):
 ```shell
 conda install pyqtgraph scikit-image opencv
 pip install defopt
-pip install git+http://github.com/postpop/videoreader
+pip install pyvideoreader --no-deps
 pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[gui]
 ```
 Install without GUI (e.g. on the cluster):
 ```shell
 pip install git+http://github.com/janclemenslab/xarray-behave
 ```
-
 
 ## Usage
 See `demo.ipynb`.
