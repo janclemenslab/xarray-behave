@@ -38,6 +38,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
     filepath_daq = Path(root, dat_path, datename, f'{datename}_daq.h5')
     ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
+    if not resample_video_data:
+        logging.info(f'  setting targetsamplingrate to avg. fps.')
+        target_sampling_rate = 1 / np.mean(np.diff(ss.frames2times.y))
 
     # LOAD TRACKS
     with_tracks = False
@@ -323,6 +326,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['song_events'] = song_events
 
     # BODY POSITION
+    fps = None
     if with_tracks:
         logging.info('   tracking')
         frame_times = ss.frame_time(frame_numbers)
@@ -421,6 +425,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     if 'nearest_frame' not in dataset:
         dataset.coords['nearest_frame'] = (('time'), nearest_frame)
 
+    if target_sampling_rate is None:
+        target_sampling_rate = fps
     # save command line args
     dataset.attrs = {'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
                      'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path,
@@ -620,3 +626,36 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True):
         dataset = _normalize_strings(dataset)
 
     return dataset
+
+
+def from_wav(filepath, target_sampling_rate=1_000):
+    import scipy.io.wavfile as wav
+    sampling_rate, data = wav.read(filepath)
+
+    data = data[:, np.newaxis]
+    sampletime = np.arange(len(data)) / sampling_rate
+    dataset_data = {}
+    song_raw = xr.DataArray(data=data,  # cut recording to match new grid
+                        dims=['sampletime', 'channels'],
+                        coords={'sampletime': sampletime, },
+                        attrs={'description': 'Song signal merged across all recording channels.',
+                               'sampling_rate_Hz': sampling_rate,
+                               'time_units': 'seconds',
+                               'amplitude_units': 'volts'})
+    dataset_data['song_raw'] = song_raw
+
+    # MAKE THE DATASET
+    ds = xr.Dataset(dataset_data, attrs={})
+
+    ds.coords['time'] = np.arange(sampletime[0], sampletime[-1], 1 / target_sampling_rate)
+    # dataset.coords['sampletime'] = np.arange(sampletime[0], sampletime[-1], 1 / target_sampling_rate)
+    ds.coords['nearest_frame'] = ('time', (ds.coords['time']/100).astype(np.uint))
+
+    datename = filepath.split('/')[-1][:-4]
+    # save command line args
+    ds.attrs = {'video_filename': '',
+                     'datename': datename,
+                     'root': '', 'dat_path': '', 'res_path': '',
+                     'sampling_rate_Hz': sampling_rate,                               
+                     'target_sampling_rate_Hz': target_sampling_rate}
+    return ds
