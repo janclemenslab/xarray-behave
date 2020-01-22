@@ -19,6 +19,8 @@ Install without GUI (e.g. on the cluster):
 pip install git+http://github.com/janclemenslab/xarray-behave
 ```
 
+For playback of sound you need a working installation of [pysimpleaudio](https://simpleaudio.readthedocs.io). See the [docs](https://simpleaudio.readthedocs.io/en/stable/installation.html) if you have trouble installing.
+
 ## Usage
 See `demo.ipynb`.
 
