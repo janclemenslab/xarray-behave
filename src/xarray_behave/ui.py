@@ -805,29 +805,55 @@ class PSV():
         # load new ds
 
 
-def main(datename: str, root: str = '', cue_points: str = '[]', *,
+def main(datename: str, *,
+         root: str = '', dat_path='dat', res_path='res',
          ignore_existing: bool = False, lazy: bool = False,
          save: bool = False, savefolder: str = '',
          resample_video_data: bool = True, target_sampling_rate: int = 10_000,
-         with_song: bool = True,
+         with_song: bool = True, cue_points: str = '[]',
          spec_freq_min = None, spec_freq_max = None,
          box_size: int = 200, cmap_name: str = 'turbo'):
     """
     Args:
-        datename (str): Experiment id. Defaults to 'localhost-20181120_144618'.
-        root (str): Path containing the `dat` and `res` folders for the experiment. Defaults to '' (current directory).
-        cue_points (str): List of cue points (indices) for quickly jumping around time. Defaults to '[]'.
-        ignore_existing (bool): Ignore existing song annotations. Defaults to False.
-        cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). Defaults to 'turbo'.
-        with_song (bool): whether or not to include song data
-        save (bool): save to zarr.ZipStore (may be slow)
+        datename (str): Experiment id.
+                        If "datename.zarr" exists: Name of the dataset file - will open "datename.zarr".
+                        Otherwise: Experiment id - will assemble new dataset from files in 
+                        root/dat_path/datename and root/res_path/datename.
+        root (str): Path containing the `dat` and `res` folders for the experiment. 
+                    Defaults to '' (current directory).
+        dat_path (str): Subdirectory in root holding the experiment data. 
+                        Defaults to 'dat'.
+        res_path (str): Subdirectory in root holding the tracking etc results. 
+                        Defaults to 'res'.        
+        ignore_existing (bool): Ignore existing dataset file. 
+                                Forces assembly of dataset even if "datename.zarr" exists. 
+                                Defaults to False.
+        lazy (bool): Whether to load full dataset into memory or read on demand from disk 
+                     (only applicable if opening an existing dataset).
+                     This can greatly speeds up loading - the dataset opens much more quickly
+                     but this comes at the price of slower access to the data
+                     while using the GUI. Use if you only want to quickly check things, 
+                     but not if you plan to annotate the full data set.
+                     Defaults to False.
+        save (bool): Save to the newly assembled dataset as a zarr.ZipStore. 
+                     Slows down assembly but useful if you plan to work with the dataset again 
+                     since loading is faster than assembly (and can be done lazily).
+                     Use judiciously to avoid cluttering and filling up the data storage.
         savefolder (str): Folder in which created dataset to save to. Defaults to ''.
-        lazy (bool): whether to load full dataset into memory or read on demand from disk (only applicable if opening an existing dataset)
-        target_sampling_rate (int): 10_000
-        resample_video_data (bool) if False, will keep the all tracking data in original framenumber coordinates, overrides target_sampling_rate. Defaults to True.
-        box_size (int): size of the crop box around flies, in pixels
-        spec_freq_min (int):        
-        spec_freq_max (int):        
+        with_song (bool): whether or not to include song data
+        cue_points (str): List of cue points (indices) for quickly jumping around time. Defaults to '[]'.
+        target_sampling_rate (int): Sampling rate for the pose data and sound annotations. Defaults to 10_000 Hz.
+        resample_video_data (bool): Whether to resample the video data to the target_sampling_rate 
+                                    or to the sample grid defined by each frame.
+                                    Useful for checking poses, since this will preserve accurate frame-by-frame positions.
+                                    Defaults to True. 
+        box_size (int): Size of the crop box around flies, in pixels Defaults to 200px.
+        spec_freq_min (int): Smallest frequency to display in the spectrogram view. 
+                             Defaults to None (smallest possible frequency in the spectrogram).
+        spec_freq_max (int): Greatest frequency to display in the spectrogram view. 
+                             Defaults to None (greatest possible frequency in the spectrogram).
+        cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). 
+                         Defaults to 'turbo'.
     """
 
     if not ignore_existing and os.path.exists(datename + '.zarr'):
@@ -847,7 +873,8 @@ def main(datename: str, root: str = '', cue_points: str = '[]', *,
                 ds.song_raw.load()  # non-lazy load song for faster updates
     else:
         logging.info(f'Assembling dataset for {datename}.')
-        ds = xb.assemble(datename, root=root, fix_fly_indices=False, include_song=with_song,
+        ds = xb.assemble(datename, root=root, dat_path='dat', res_path='res', 
+                         fix_fly_indices=False, include_song=with_song,
                          keep_multi_channel=True, target_sampling_rate=target_sampling_rate,
                          resample_video_data=resample_video_data)
         if save:
