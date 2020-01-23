@@ -882,6 +882,9 @@ def main(datename: str, *,
         ignore_existing (bool): Ignore existing dataset file. 
                                 Forces assembly of dataset even if "datename.zarr" exists. 
                                 Defaults to False.
+        create_manual_segmentation (bool): Create empty segmentation data structure for annotating song.
+                                    Song types currently default to ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
+                                    Defaults to False.
         lazy (bool): Whether to load full dataset into memory or read on demand from disk 
                      (only applicable if opening an existing dataset).
                      This can greatly speeds up loading - the dataset opens much more quickly
@@ -935,6 +938,7 @@ def main(datename: str, *,
             logging.info('   saving dataset.')
             xb.save(savefolder + datename + '.zarr', ds)
 
+    if create_manual_segmentation or 'song_events' not in ds:
     ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
 
     logging.info(ds)
