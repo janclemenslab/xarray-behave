@@ -719,7 +719,7 @@ class PSV():
                     self.sinet0 = None
             else:  # pulse-like event
                 self.sinet0 = None
-                self.ds.song_events.sel(time=mouseT, method='nearest')[self.current_event_index] = True
+                self.ds.song_events.sel(time=mouseT, method='nearest').values[self.current_event_index] = True
                 logging.info(f'  Added {self.current_event_name} at t={mouseT:1.4f} seconds.')
             self.update_xy()
         else:
