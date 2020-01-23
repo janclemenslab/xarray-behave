@@ -70,6 +70,7 @@ class PSV():
         self.dot_size = 2
         self.show_poses = False
         self.circle_size = 8
+        self.show_framenumber = False
 
         self.cue_index = 0
 
@@ -148,6 +149,8 @@ class PSV():
                                 checkable=True, checked=self.show_dot)
         self.add_keyed_menuitem(view_video, "Show poses", partial(self.toggle, 'show_poses'), QtCore.Qt.Key_P,
                                 checkable=True, checked=self.show_poses)
+        self.add_keyed_menuitem(view_video, "Show framenumber", partial(self.toggle, 'show_framenumber'), None,
+                                checkable=True, checked=self.show_framenumber)
 
         view_audio = self.bar.addMenu("Audio")
         self.add_keyed_menuitem(view_audio, "Play waveform as audio", self.play_audio, QtCore.Qt.Key_E)
@@ -535,7 +538,10 @@ class PSV():
                         self.frame = np.ascontiguousarray(self.crop_frame(self.frame))
 
                 self.image_view.setImage(self.frame, auto_scale=True)
+                if self.show_framenumber:
                 self.image_view_framenumber_text.setPlainText(f'frame {self.fn}')
+                else:
+                    self.image_view_framenumber_text.setPlainText('')
 
             self.app.processEvents()
 
