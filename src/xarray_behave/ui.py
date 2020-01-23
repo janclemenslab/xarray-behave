@@ -770,7 +770,7 @@ class PSV():
             # normalize to 16-bit range and convert to 16-bit data
             max_amp = self.MAX_AUDIO_AMP
             if max_amp is None:
-                max_amp = np.nanmax(np.abs(x))
+                max_amp = np.nanmax(np.abs(y))
             y = y * 32767 / max_amp
             y = y.astype(np.int16)
             # simpleaudio can only play at these rates - choose the one nearest to our rate
