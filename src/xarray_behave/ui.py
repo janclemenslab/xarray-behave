@@ -209,6 +209,9 @@ class PSV():
             self.image_view = _ui_utils.FastImageWidget()
             self.image_view.registerMouseClickEvent(self.click_video)
 
+            self.image_view_framenumber_text = pg.TextItem(color=(200, 0, 0), anchor=(-2, 1))
+            self.image_view.viewBox.addItem(self.image_view_framenumber_text)
+
         self.spec_view = pg.ImageView(name="spec_view", view=pg.PlotItem())
         self.spec_view.view.disableAutoRange()
         self.spec_view.ui.histogram.hide()
@@ -532,6 +535,7 @@ class PSV():
                         self.frame = np.ascontiguousarray(self.crop_frame(self.frame))
 
                 self.image_view.setImage(self.frame, auto_scale=True)
+                self.image_view_framenumber_text.setPlainText(f'frame {self.fn}')
 
             self.app.processEvents()
 
