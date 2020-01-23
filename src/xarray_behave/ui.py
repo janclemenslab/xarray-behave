@@ -15,8 +15,8 @@ cuepoints: string evaluating to a list (e.g. '[100, 50000, 100000]' - including 
 # DONE implement saving annotations
 # DONE remove autoupdate decorators
 # FIXED current_event seems to be first item in list - should be nothing
-# TODO allow moving sine song boundaries
-# TODO allow selecting save filename with filename= QFileDialog.getSaveFileName((self, 'Dialog Title', '/path/to/default/directory', selectedFilter='*.txt')
+# DONE allow moving sine song boundaries
+# DONE allow selecting save filename with filename= QFileDialog.getSaveFileName((self, 'Dialog Title', '/path/to/default/directory', selectedFilter='*.txt')
 
 import os
 import sys
@@ -33,6 +33,7 @@ import scipy
 from pathlib import Path
 import defopt
 import skimage.draw
+import scipy.interpolate
 from functools import partial
 import warnings
 
@@ -251,7 +252,7 @@ class PSV():
         self._t0 = int(self.span / 2)
         # self.span = 100_000
         # self.t0 = int(self.span / 2)
-
+        self.oldItems = []  # holds old items for annotating spec_view so we can remove them manually
         self.update_xy()
         self.update_frame()
 
@@ -504,13 +505,19 @@ class PSV():
                     self.slice_view.addItem(pg.PlotCurveItem(self.x[::step], self.y_other[::step, chan]))
 
         # plot selected trace
-        self.slice_view.addItem(pg.PlotCurveItem(self.x[::step], self.y[::step]))
+        self.slice_view.addItem(pg.PlotCurveItem(self.x[::step], np.array(self.y[::step])))
         self.slice_view.autoRange(padding=0)
+
+        if self.show_spec:
+            [self.spec_view.removeItem(item) for item in self.oldItems]  # remove annotations
+            self.plot_spec(self.x, self.y)
+        else:
+            self.spec_view.clear()
 
         if self.show_songevents:
             self.plot_song_events(self.x)
 
-        # time of current frame in trace
+        # time of current frame in tracec
         self.slice_view.addItem(pg.InfiniteLine(movable=False, angle=90,
                                                 pos=self.x[int(self.span / 2)],
                                                 pen=pg.mkPen(color='r', width=1)))
@@ -589,13 +596,19 @@ class PSV():
         return frame
 
     def plot_song_events(self, x):
-        _, yrange = self.slice_view.getPlotItem().getViewBox().viewRange()
+        xrange, yrange = self.slice_view.getPlotItem().getViewBox().viewRange()
         yrange = np.array(yrange)
+        xrange_spec, yrange_spec = self.spec_view.view.viewRange()
+        yrange_spec = np.array(yrange_spec)
+        self.oldItems = []  # clear items list
         for event_type in range(self.nb_eventtypes):
             event_pen = pg.mkPen(color=self.eventype_colors[event_type], width=1)
+            event_brush = pg.mkBrush(color=[*self.eventype_colors[event_type], 25])
             if self.show_manualonly and 'manual' not in self.ds.event_types.values[event_type]:
                 continue
-            if 'sine' in self.ds.event_types.data[event_type]:
+            # TODO: annotate events with event/segment!!
+            if 'sine' in self.ds.event_types.data[event_type]:# or 'song' in self.ds.event_types.data[event_type]:
+                # TODO: pre-compute all on and offsets...
                 event_trace = self.ds.song_events.data[int(self.index_other - self.span_index):
                                                        int(self.index_other + self.span_index),
                                                        event_type]
@@ -614,8 +627,21 @@ class PSV():
                     event_offset_indices = np.pad(event_offset_indices, (0, 1), mode='constant', constant_values=x[-1])
 
                 for onset, offset in zip(event_onset_indices, event_offset_indices):
-                    self.slice_view.addItem(pg.LinearRegionItem(values=(onset, offset),
-                                                                movable=False))
+                    region = pg.LinearRegionItem(values=(onset, offset), movable=True, brush=event_brush)
+                    region.original_region = (onset, offset)
+                    region.original_region_axis = (onset, offset)  # used to map region coords back time
+                    self.slice_view.addItem(region)
+                    region.sigRegionChangeFinished.connect(self.on_region_change_finished)
+                    
+                    # convert onset/offset to spec x-coords
+                    onset_spec, offset_spec = np.interp((onset, offset), xrange, xrange_spec) 
+                    region = pg.LinearRegionItem(values=(onset_spec, offset_spec), movable=True, brush=event_brush)
+                    region.original_region = (onset, offset)
+                    region.original_region_axis = (onset_spec, offset_spec)   # used to map region coords back time
+                    self.spec_view.addItem(region)
+                    region.sigRegionChangeFinished.connect(self.on_region_change_finished)
+                    self.oldItems.append(region)
+        
             else:
                 event_indices = np.where(self.ds.song_events.data[int(self.index_other - self.span_index):
                                                                   int(self.index_other + self.span_index)-1,
@@ -626,6 +652,25 @@ class PSV():
                     yy = np.zeros_like(xx) + yrange[:, np.newaxis]
                     _ui_utils.fast_plot(self.slice_view, xx.T, yy.T, event_pen)
 
+                    xx_spec = np.interp(xx, xrange, xrange_spec) 
+                    yy_spec = np.zeros_like(xx_spec) + yrange_spec[:, np.newaxis]
+                    self.oldItems.append(_ui_utils.fast_plot(self.spec_view, xx_spec.T, yy_spec.T, event_pen))
+
+    def on_region_change_finished(self, region):        
+        # delete original region in ds
+        self.ds.song_events.sel(time=slice(*region.original_region))[:, self.current_event_index] = False
+
+        # convert region to time coordinates (important for spec_view since x-axis does not correspond to time)
+        f = scipy.interpolate.interp1d(region.original_region_axis, region.original_region, 
+                                       bounds_error=False, fill_value='extrapolate')
+        new_region = f(region.getRegion())
+
+        # set new region in ds
+        self.ds.song_events.sel(time=slice(*new_region))[:, self.current_event_index] = True
+        logging.info(f'  Moved {self.current_event_name} from t=[{region.original_region[0]:1.4f}:{region.original_region[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
+        region.original_region = new_region
+        self.update_xy()
+        
     def play_video(self):  # TODO: get rate from ds (video fps attr)
         RUN = True
         cnt = 0
