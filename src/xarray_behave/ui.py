@@ -913,10 +913,10 @@ def main(datename: str, *,
     if not ignore_existing and os.path.exists(datename + '.zarr'):
         logging.info(f'Loading ds from {datename}.zarr.')
         ds = xb.load(datename + '.zarr', lazy=True)
+        if 'song_events' in ds:
+            ds.song_events.load()  # never lazy load song events so we can edit them
         if not lazy:
             logging.info(f'   Loading data from ds.')
-            if 'song_events' in ds:
-                ds.song_events.load()  # non-lazy load song events so we can edit them
             if 'song' in ds:
                 ds.song.load()  # non-lazy load song for faster updates
             if 'pose_positions_allo' in ds:
