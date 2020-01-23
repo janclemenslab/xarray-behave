@@ -862,6 +862,7 @@ class PSV():
 def main(datename: str, *,
          root: str = '', dat_path='dat', res_path='res',
          ignore_existing: bool = False, lazy: bool = False,
+         create_manual_segmentation: bool = False,        
          save: bool = False, savefolder: str = '',
          resample_video_data: bool = True, target_sampling_rate: int = 10_000,
          with_song: bool = True, cue_points: str = '[]',
