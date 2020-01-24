@@ -233,6 +233,7 @@ class PSV():
         self.slice_view = pg.PlotWidget(name="song")
         self.slice_view.getPlotItem().mouseClickEvent = self.click_song
         self.slice_view.disableAutoRange()
+        # self.slice_view.setXLink(self.spec_view.view)
 
         self.cw = pg.GraphicsLayoutWidget()
 
@@ -516,17 +517,11 @@ class PSV():
 
         if self.show_songevents:
             self.plot_song_events(self.x)
-
+        
         # time of current frame in tracec
         self.slice_view.addItem(pg.InfiniteLine(movable=False, angle=90,
                                                 pos=self.x[int(self.span / 2)],
                                                 pen=pg.mkPen(color='r', width=1)))
-
-        if self.show_spec:
-            self.plot_spec(self.x, self.y)
-        else:
-            self.spec_view.clear()
-
         self.app.processEvents()
 
     def update_frame(self):
@@ -545,11 +540,12 @@ class PSV():
                         self.frame = np.ascontiguousarray(self.crop_frame(self.frame))
 
                 self.image_view.setImage(self.frame, auto_scale=True)
-                if self.show_framenumber:
-                self.image_view_framenumber_text.setPlainText(f'frame {self.fn}')
+
+                if self.show_framenumber:                    
+                    self.image_view_framenumber_text.setPlainText(f'frame {self.fn}')
                 else:
                     self.image_view_framenumber_text.setPlainText('')
-
+            
             self.app.processEvents()
 
     # TODO move the next three methods out of the class: self.vr.width/height to frame.shape,  box_size as args
@@ -607,7 +603,7 @@ class PSV():
             if self.show_manualonly and 'manual' not in self.ds.event_types.values[event_type]:
                 continue
             # TODO: annotate events with event/segment!!
-            if 'sine' in self.ds.event_types.data[event_type]:# or 'song' in self.ds.event_types.data[event_type]:
+            if 'sine' in self.ds.event_types.data[event_type] or 'syllable' in self.ds.event_types.data[event_type]:
                 # TODO: pre-compute all on and offsets...
                 event_trace = self.ds.song_events.data[int(self.index_other - self.span_index):
                                                        int(self.index_other + self.span_index),
@@ -640,8 +636,7 @@ class PSV():
                     region.original_region_axis = (onset_spec, offset_spec)   # used to map region coords back time
                     self.spec_view.addItem(region)
                     region.sigRegionChangeFinished.connect(self.on_region_change_finished)
-                    self.oldItems.append(region)
-        
+                    self.oldItems.append(region)        
             else:
                 event_indices = np.where(self.ds.song_events.data[int(self.index_other - self.span_index):
                                                                   int(self.index_other + self.span_index)-1,
@@ -658,19 +653,20 @@ class PSV():
 
     def on_region_change_finished(self, region):        
         # delete original region in ds
-        self.ds.song_events.sel(time=slice(*region.original_region))[:, self.current_event_index] = False
+        if self.current_event_index is not None:
+            self.ds.song_events.sel(time=slice(*region.original_region))[:, self.current_event_index] = False
 
-        # convert region to time coordinates (important for spec_view since x-axis does not correspond to time)
-        f = scipy.interpolate.interp1d(region.original_region_axis, region.original_region, 
-                                       bounds_error=False, fill_value='extrapolate')
-        new_region = f(region.getRegion())
+            # convert region to time coordinates (important for spec_view since x-axis does not correspond to time)
+            f = scipy.interpolate.interp1d(region.original_region_axis, region.original_region, 
+                                        bounds_error=False, fill_value='extrapolate')
+            new_region = f(region.getRegion())
 
-        # set new region in ds
-        self.ds.song_events.sel(time=slice(*new_region))[:, self.current_event_index] = True
-        logging.info(f'  Moved {self.current_event_name} from t=[{region.original_region[0]:1.4f}:{region.original_region[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
-        region.original_region = new_region
-        self.update_xy()
-        
+            # set new region in ds
+            self.ds.song_events.sel(time=slice(*new_region))[:, self.current_event_index] = True
+            logging.info(f'  Moved {self.current_event_name} from t=[{region.original_region[0]:1.4f}:{region.original_region[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
+            region.original_region = new_region
+            self.update_xy()
+            
     def play_video(self):  # TODO: get rate from ds (video fps attr)
         RUN = True
         cnt = 0
@@ -709,7 +705,7 @@ class PSV():
         pos = event.pos()
         if self.current_event_index is not None:
             mouseT = self.slice_view.getPlotItem().getViewBox().mapSceneToView(pos).x()
-            if 'sine' in self.current_event_name:
+            if 'sine' in self.current_event_name or 'syllable' in self.current_event_name:
                 if self.sinet0 is None:
                     self.sinet0 = mouseT
                 else:
@@ -734,7 +730,7 @@ class PSV():
             # mouse_spec_pos = self.spec_t[int(pos[0])]
             mouseT = mouse_spec_pos + float(self.ds.sampletime[self.time0])
 
-            if 'sine' in self.current_event_name:
+            if 'sine' in self.current_event_name or 'syllable' in self.current_event_name:
                 if self.sinet0 is None:
                     self.sinet0 = mouseT
                 else:
@@ -787,7 +783,8 @@ class PSV():
         S, f, t = self._calc_spec(y)
         self.spec_view.setImage(S.T[:, ::-1])
         self.spec_view.view.setLimits(xMin=0, xMax=S.shape[1], yMin=0, yMax=S.shape[0])
-        # FIXME: long yticklabels (e.g "5000") lead to misalignment between spec and trace plots
+
+        # # FIXME: long yticklabels (e.g "5000") lead to misalignment between spec and trace plots
         # f = f[::-1]
         # y_axis = self.spec_view.getView().getAxis('left')
         # ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
@@ -796,7 +793,9 @@ class PSV():
         # x_axis = self.spec_view.getView().getAxis('bottom')
         # ticks = np.linspace(0, len(t)-1, 10, dtype=np.uintp)
         # t_offset = float(self.ds.sampletime[self.time0])
-        # x_axis.setTicks([[(ii, str(int((t_offset + t[ii])*self.fs_song)/self.fs_song)) for ii in ticks]])
+        # x_axis.setTicks([[(ii, str(int((t_offset + t[ii])*self.fs_song)/self.fs_song)) for ii in ticks]])# or get ticks from slice_view?
+        # x_axis.setScale(len(t) / ((self.time1 - self.time0) / self.fs_song))  # fix scale - only update when things change?
+        
 
     # @lru_cache(maxsize=2, typed=False)
     def _calc_spec(self, y):
@@ -940,7 +939,7 @@ def main(datename: str, *,
             xb.save(savefolder + datename + '.zarr', ds)
 
     if create_manual_segmentation or 'song_events' not in ds:
-    ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
+        ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
 
     logging.info(ds)
     filepath = ds.attrs['video_filename']
