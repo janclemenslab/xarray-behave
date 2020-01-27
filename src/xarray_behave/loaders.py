@@ -109,6 +109,7 @@ def interpolate_binary(x0, y0, x1):
 
     if ratio > 1:
         y0 = scipy.ndimage.maximum_filter(y0, size=(ratio, 1))
+    # FIXME: if ratio < 1, individual events will spread over 1/ratio samples     
     interpolator = scipy.interpolate.interp1d(x0, y0, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
     y1 = interpolator(x1).astype(np.uintp)
     return y1
@@ -202,6 +203,7 @@ def load_segmentation_matlab(filepath):
     sine_song = res['song_mask'] == 2
     # events['sine'] = np.where(sine_song == 2)[0]
     res['event_names'] = ['song_pulse_any', 'song_pulse_slow', 'song_pulse_fast', 'sine']
+    res['event_categories'] = ['event', 'event', 'event', 'segment']
     res['event_indices'] = [res['pulse_times_samples'],
                             res['pulse_times_samples'][res['pulse_labels'] == 1],
                             res['pulse_times_samples'][res['pulse_labels'] == 0],
@@ -209,20 +211,43 @@ def load_segmentation_matlab(filepath):
     return res
 
 
+def infer_event_categories(data):
+    """Infer event type (event/segment) based on median interval between
+    event times.
+    
+    Args:
+        data ([type]): binary matrix [samples x events]
+    """
+    event_categories = []
+    for evt in range(data.shape[1]):
+        dt = np.median(np.diff(np.where(data[:, evt])[0]))
+        if dt > 1:
+            event_categories.append('event')
+        else:
+            event_categories.append('segment')
+    return event_categories
+
+
 def load_segmentation(filepath):
     """Load output produced by DeepSongSegmenter.
 
     File should have at least 'event_names' and 'event_indices' datasets."""
     res = dd_io.load(filepath)
-    # with h5py.File(filepath, 'r') as f:
-    #     for key, val in f.items():
-    #         res[key] = val
+    breakpoint()
+    if 'event_categories' not in res:
+        pass # res['event_categories'] = infer_event_categories(manual_events.song_events.data)
     return res
 
 
 def load_manual_annotation(filepath):
     """Load output produced by the python ManualSegmenter."""
     manual_events = xb.load(filepath)
+
+    if 'event_categories' not in manual_events:
+        event_categories = infer_event_categories(manual_events.song_events.data)
+        manual_events = manual_events.assign_coords({'event_categories':
+                              (('event_types'),
+                              event_categories)})
     return manual_events
 
 
@@ -237,10 +262,15 @@ def load_manual_annotation_matlab(filepath):
                 mat_data[key.lower()] = val[:].T
 
     manual_events_seconds = dict()
+    event_types = []
     for key, val in mat_data.items():
         if len(val) and hasattr(val, 'ndim') and val.ndim == 2 and not key.startswith('_'):  # ignore matfile metadata
             manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
-    return manual_events_seconds
+            if val.shape[1] == 2:  # pulse times
+               event_categories.append('event') 
+            else:  # sine on and offset
+               event_categories.append('segment') 
+    return manual_events_seconds, event_categories
 
 
 def load_tracks(filepath):
