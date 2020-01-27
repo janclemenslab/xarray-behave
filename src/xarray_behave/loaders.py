@@ -70,7 +70,7 @@ def find_nearest(array, values):
 
 def interpolate_binary_old(x0, y0, x1):
     """Interpolate a binary trace, preserving all True/1 events.
-    More accurate for irregularly spaced samples but uses too much memory.
+    More accurate than `interpolate_binary` for irregularly spaced samples but uses too much memory.
 
     Args:
         x0 ([type]): sample times for each point in y0
@@ -107,10 +107,14 @@ def interpolate_binary(x0, y0, x1):
     fs1 = 1/np.mean(np.diff(x1))
     ratio = fs0/fs1
 
-    if ratio > 1:
-        y0 = scipy.ndimage.maximum_filter(y0, size=(ratio, 1))
-    # FIXME: if ratio < 1, individual events will spread over 1/ratio samples     
-    interpolator = scipy.interpolate.interp1d(x0, y0, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
+    if ratio > 1:  #  we are downsampling
+        # if we downsample - spread out events so we catch all of them
+        y0 = scipy.ndimage.maximum_filter(y0, size=(ratio, 1), axis=1)
+        # use 'nearest' here - why? could we just use linear, too?
+        interpolator = scipy.interpolate.interp1d(x0, y0, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
+    else:  # we are upsampling
+        # using linear here prevents spreading out of events when upsampling
+        interpolator = scipy.interpolate.interp1d(x0, y0, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
     y1 = interpolator(x1).astype(np.uintp)
     return y1
 
