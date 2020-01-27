@@ -1,6 +1,7 @@
 """Create self-documenting xarray dataset from behavioral recordings and annotations."""
 import numpy as np
 import scipy.interpolate
+import scipy.stats
 import xarray as xr
 import zarr
 import logging
@@ -10,7 +11,7 @@ from . import loaders as ld
 from . import metrics as mt
 
 
-def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1000,
+def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
              keep_multi_channel: bool = False, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
              make_mask: bool = False, fix_fly_indices: bool = True) -> xr.Dataset:
@@ -213,6 +214,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # SONG EVENTS
     events = dict()
+    event_classes = dict()
     if with_segmentation_manual_matlab:
         manual_events_samples = {key: (val * sampling_rate).astype(np.uintp)
                                  for key, val in manual_events_seconds.items()}
@@ -221,24 +223,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             if val.shape[1] == 2:  # val contains start/end points of each event
                 mask = [np.arange(t0, t1+1, dtype=np.uintp) for (t0, t1) in val]
                 manual_events_samples[key] = np.concatenate(mask)
+                event_classes[key] = 'segment'
+            else:
+                event_classes[key] = 'event'
         events = manual_events_samples
 
     if with_segmentation or with_segmentation_matlab:
         for event_name, event_indices in zip(res['event_names'], res['event_indices']):
             events[event_name + '_auto'] = event_indices
-
-    # if not with_segmentation_manual:
-        # if with_segmentation_matlab:  # FSS
-        #     # change output of load_segmentation_matlab to conform to the output produced by load_segmentation (dict with event_names and indices)
-        #     events['song_pulse_any'] = res['pulse_times_samples']
-        #     events['song_pulse_slow'] = res['pulse_times_samples'][res['pulse_labels'] == 1]
-        #     events['song_pulse_fast'] = res['pulse_times_samples'][res['pulse_labels'] == 0]
-        #     sine_song = res['song_mask'][first_sample:last_sample:step, 0] == 2
-        #     events['sine'] = np.where(sine_song == 2)[0]
-        # if with_segmentation or with_segmentation_matlab:
-        #     for event_name, event_indices in zip(res['event_names'], res['event_indices']):
-        #         events[event_name] = event_indices
-
+                
     if with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab:
         eventtypes = [*events.keys()]
         song_events_np = np.full((len(time), len(eventtypes)), False, dtype=np.bool)  # pre-allocate grid holding event data
@@ -249,9 +242,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
-            # interpolator = scipy.interpolate.interp1d(time, song_events_np, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
             frame_times = ss.frame_time(frame_numbers)
-            # song_events_np = interpolator(frame_times).astype(np.uintp)
             song_events_np = ld.interpolate_binary(time, song_events_np, frame_times)
             time = frame_times
 
@@ -263,7 +254,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         eventtypes_p = []
         for index, event_type in enumerate(manual_events_ds.event_types.values):
             eventtypes_p.append(event_type.decode("utf-8") if isinstance(event_type, bytes) else event_type)
-
+            
         # HACK zarr (or xarray) cuts off long string keys in event-types
         fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
         for index, eventtype in enumerate(eventtypes_p):
@@ -271,18 +262,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 logging.info(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
                 eventtypes_p[index] = fix_dict[eventtype]
 
-        # FIX - resampling reduces data size
+        # FIXME - resampling reduces data size (?)
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
-            # interpolator = scipy.interpolate.interp1d(song_event_times_p, song_events_np_p, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
             frame_times = ss.frame_time(frame_numbers)
-            # song_events_np_p = interpolator(frame_times).astype(np.uintp)
             song_events_np_p = ld.interpolate_binary(time, song_events_np_p, frame_times)
             time = frame_times
         else:
             logging.info(f'Resampling manual event data to match target sampling grid of the dataset.')
-            # interpolator = scipy.interpolate.interp1d(song_event_times_p, song_events_np_p, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
-            # song_events_np_p = interpolator(time).astype(np.uintp)
+            # FIXME: events are spread out over if diff(song_event_times_p) < diff(time)
             song_events_np_p = ld.interpolate_binary(song_event_times_p, song_events_np_p, time)
 
     if with_segmentation_manual and (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):  #else:
@@ -294,7 +282,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     elif with_segmentation_manual and not (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):
         song_events_np = song_events_np_p
         eventtypes = eventtypes_p
-
 
     if not resample_video_data:
         len_list = [time.shape[0]]
@@ -314,11 +301,11 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             time = time[:min_len]
             song_events_np = song_events_np[:min_len]
             nearest_frame = nearest_frame[:min_len]
-
         song_events = xr.DataArray(data=song_events_np,
                                    dims=['time', 'event_types'],
                                    coords={'time': time,
                                            'event_types': eventtypes,
+                                        #    'event_classes': (('event_types'), list(event_classes.values())),
                                            'nearest_frame': (('time'), nearest_frame), },
                                    attrs={'description': 'Event times as boolean arrays.',
                                           'sampling_rate_Hz': sampling_rate / step,
