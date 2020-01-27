@@ -863,7 +863,7 @@ def main(datename: str, *,
          ignore_existing: bool = False, lazy: bool = False,
          create_manual_segmentation: bool = False,        
          save: bool = False, savefolder: str = '',
-         resample_video_data: bool = True, target_sampling_rate: int = 10_000,
+         resample_video_data: bool = True, target_sampling_rate: int = 1_000,
          with_song: bool = True, cue_points: str = '[]',
          spec_freq_min = None, spec_freq_max = None,
          box_size: int = 200, cmap_name: str = 'turbo'):
