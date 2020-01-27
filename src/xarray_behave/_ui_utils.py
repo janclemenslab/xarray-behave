@@ -35,6 +35,7 @@ def fast_plot(plot_widget, x, y, pen=None):
         pen = pg.mkPen(color=(196, 128, 128))
     item.setPen(pen)
     plot_widget.addItem(item)
+    return item
 
 
 class VideoReaderNP(VideoReader):
