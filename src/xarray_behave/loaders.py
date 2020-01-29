@@ -109,7 +109,7 @@ def interpolate_binary(x0, y0, x1):
 
     if ratio > 1:  #  we are downsampling
         # if we downsample - spread out events so we catch all of them
-        y0 = scipy.ndimage.maximum_filter(y0, size=(ratio, 1), axis=1)
+        y0 = scipy.ndimage.maximum_filter(y0, size=(ratio, 1))
         # use 'nearest' here - why? could we just use linear, too?
         interpolator = scipy.interpolate.interp1d(x0, y0, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
     else:  # we are upsampling
@@ -237,7 +237,6 @@ def load_segmentation(filepath):
 
     File should have at least 'event_names' and 'event_indices' datasets."""
     res = dd_io.load(filepath)
-    # breakpoint()
     if 'event_categories' not in res:
         pass # res['event_categories'] = infer_event_categories(manual_events.song_events.data)
     return res
