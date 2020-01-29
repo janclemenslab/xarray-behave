@@ -607,7 +607,7 @@ class PSV():
 
     def on_trace_clicked(self, mouseT):
         if self.current_event_index is not None:
-            if 'sine' in self.current_event_name:
+            if self.ds.event_categories.data[self.current_event_index] == 'segment':
                 if self.sinet0 is None:
                     self.sinet0 = mouseT
                 else:
