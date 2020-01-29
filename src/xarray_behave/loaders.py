@@ -218,7 +218,7 @@ def load_segmentation_matlab(filepath):
 def infer_event_categories(data):
     """Infer event type (event/segment) based on median interval between
     event times.
-    
+
     Args:
         data ([type]): binary matrix [samples x events]
     """
@@ -237,7 +237,7 @@ def load_segmentation(filepath):
 
     File should have at least 'event_names' and 'event_indices' datasets."""
     res = dd_io.load(filepath)
-    breakpoint()
+    # breakpoint()
     if 'event_categories' not in res:
         pass # res['event_categories'] = infer_event_categories(manual_events.song_events.data)
     return res
@@ -271,9 +271,9 @@ def load_manual_annotation_matlab(filepath):
         if len(val) and hasattr(val, 'ndim') and val.ndim == 2 and not key.startswith('_'):  # ignore matfile metadata
             manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
             if val.shape[1] == 2:  # pulse times
-               event_categories.append('event') 
+               event_categories.append('event')
             else:  # sine on and offset
-               event_categories.append('segment') 
+               event_categories.append('segment')
     return manual_events_seconds, event_categories
 
 
@@ -404,7 +404,7 @@ def load_poses_deepposekit(filepath):
             poses_ego.data[cnt, fly, ...] = [rotate_point(pt, -a[fly]) for pt in p_ego[fly]]
 
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
-    
+
 
 def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, return_nonsong_channels: bool = False, lazy=False):
     """[summary]
