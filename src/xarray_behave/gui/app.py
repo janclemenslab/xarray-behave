@@ -84,6 +84,7 @@ class PSV():
         self.show_songevents = True
         self.show_manualonly = False
         self.movable_events = True
+        self.move_only_current_events = True
         self.show_all_channels = True
         self.nb_channels = self.ds.song_raw.shape[-1]
         self.sinet0 = None
@@ -103,7 +104,6 @@ class PSV():
         
         self._span = int(self.fs_song)
         self._t0 = int(self.span / 2)
-
 
         # build UI/controller
         self.app = pg.QtGui.QApplication([])
@@ -138,6 +138,9 @@ class PSV():
         view_play.addSeparator()
         self.add_keyed_menuitem(view_play, "Zoom in song", self.zoom_in_song, QtCore.Qt.Key_W)
         self.add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, QtCore.Qt.Key_S)
+        view_play.addSeparator()
+        self.add_keyed_menuitem(view_play, "Go to frame", self.go_to_frame, None)
+        self.add_keyed_menuitem(view_play, "Go to time", self.go_to_time, None)
 
         view_video = self.bar.addMenu("Video")
         self.add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), QtCore.Qt.Key_C,
@@ -168,6 +171,8 @@ class PSV():
         view_audio.addSeparator()
         self.add_keyed_menuitem(view_audio, "Move events", partial(self.toggle, 'movable_events'), QtCore.Qt.Key_M,
                                 checkable=True, checked=self.movable_events)
+        self.add_keyed_menuitem(view_audio, "Move only selected events", partial(self.toggle, 'move_only_current_events'), None,
+                                checkable=True, checked=self.move_only_current_events)
         self.add_keyed_menuitem(view_audio, "Delete events of selected type in view",
                                 self.delete_current_events, QtCore.Qt.Key_U)
         self.add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, QtCore.Qt.Key_Y)
@@ -212,7 +217,6 @@ class PSV():
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
 
-        
         if cmap_name in colormaps.cmaps:
             colormap = colormaps.cmaps[cmap_name]
             colormap._init()
@@ -237,7 +241,6 @@ class PSV():
         self.win.setCentralWidget(self.cw)
         self.win.show()
 
-        # update
         self.update_xy()
         self.update_frame()
 
@@ -266,6 +269,10 @@ class PSV():
         self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)  # ensure t0 stays within bounds
         self.update_xy()
         self.update_frame()
+
+    @property
+    def framenumber(self):
+        return self.ds.coords['nearest_frame'][self.index_other].data
 
     @property
     def span(self):
@@ -327,38 +334,6 @@ class PSV():
             self.cb.setCurrentIndex(int(key_pressed))
         except ValueError:  # if non-int pressed or int too large for index
             pass
-
-    def save_swaps(self, qt_keycode):
-        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'],
-                            self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save swaps to', str(savefilename),
-                                                                filter="txt files (*.txt);;all files (*)")
-        if len(savefilename):
-            logging.info(f'   Saving list of swap indices to {savefilename}.')
-            np.savetxt(savefilename, self.swap_events, fmt='%d', header='index fly1 fly2')
-            logging.info(f'   Done.')
-
-    def save_annotations(self, qt_keycode):
-        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
-                            f"{self.ds.attrs['datename']}_songmanual.zarr")
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save annotations to', str(savefilename),
-                                                                filter="zarr files (*.zarr);;all files (*)")
-        if len(savefilename):
-            logging.info(f'   Saving annotations to {savefilename}.')
-            # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
-            xb.save(savefilename, self.ds.song_events.to_dataset())
-            logging.info(f'   Done.')
-
-    def save_dataset(self, qt_keycode):
-        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
-                            f"{self.ds.attrs['datename']}.zarr")
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save dataset to', str(savefilename),
-                                                                filter="zarr files (*.zarr);;all files (*)")
-        if len(savefilename):
-            logging.info(f'   Saving dataset to {savefilename}.')
-            # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
-            xb.save(savefilename, self.ds)
-            logging.info(f'   Done.')
 
     def toggle(self, var_name, qt_keycode):
         self.__setattr__(var_name, not self.__getattribute__(var_name))
@@ -451,6 +426,30 @@ class PSV():
     def jump_forward(self, qt_keycode):
         self.t0 += self.span / 2
 
+    def go_to_frame(self, qt_keycode):
+        try:
+            fn = int(input(f"Enter frame number between 0 and {np.max(self.ds.nearest_frame.data)}: "))
+            if fn < 0 or fn > np.max(self.ds.nearest_frame.data):
+                    raise ValueError
+            idx = np.argmax(self.ds.nearest_frame>=fn) 
+            self.t0 = self.ds.time.data[idx] * self.fs_song
+            self.update_frame()
+            self.update_xy()
+        except ValueError:
+            logging.warning(f"Enter numeric value between 0 and {np.max(self.ds.nearest_frame.data)} frames.")
+        
+    def go_to_time(self, qt_keycode):
+        try:
+            print('') 
+            time = float(input(f"Enter time in seconds between 0 and {self.tmax /self.fs_song} seconds: "))
+            if time < 0 or time > self.tmax /self.fs_song:
+                raise ValueError
+            self.t0 = time * self.fs_song
+            self.update_frame()
+            self.update_xy()
+        except ValueError:
+            logging.warning(f"Enter numeric value between 0 and {self.tmax /self.fs_song} seconds.")
+        
     def update_xy(self):
         self.x = self.ds.sampletime.data[self.time0:self.time1]
         self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
@@ -469,9 +468,8 @@ class PSV():
                 channel_list = np.delete(np.arange(self.nb_channels), self.current_channel_index)
                 self.y_other = self.ds.song_raw[self.time0:self.time1].values[:, channel_list]
                 
-        # plot selected trace
         self.slice_view.update_trace()
-
+        
         self.spec_view.clear_annotations()
         if self.show_spec:
             self.spec_view.update_spec(self.x, self.y)
@@ -508,8 +506,11 @@ class PSV():
         return event_onset_indices, event_offset_indices
 
     def plot_song_events(self, x):
-        movable = self.STOP and self.movable_events
         for event_type in range(self.nb_eventtypes):
+            movable = self.STOP and self.movable_events
+            if self.move_only_current_events:
+                movable = movable and self.current_event_index==event_type
+
             if self.show_manualonly and 'manual' not in self.ds.event_types.values[event_type]:
                 continue
             
@@ -519,9 +520,9 @@ class PSV():
             if self.ds.event_categories.data[event_type] == 'segment':
                 event_onset_indices, event_offset_indices = self.get_events_in_range(x, event_type)
                 for onset, offset in zip(event_onset_indices, event_offset_indices):
-                    self.slice_view.add_segment(onset, offset, event_brush, movable)
+                    self.slice_view.add_segment(onset, offset, event_type, event_brush, movable)
                     if self.show_spec:
-                        self.spec_view.add_segment(onset, offset, event_brush, movable)            
+                        self.spec_view.add_segment(onset, offset, event_type, event_brush, movable)            
             else:
                 event_trace = self.ds.song_events.data[int(self.index_other - self.span_index):
                                                        int(self.index_other + self.span_index) - 1,
@@ -529,7 +530,6 @@ class PSV():
                 event_indices = np.where(event_trace)[0] * int(1 / self.fs_other * self.fs_song)
                 events = x[event_indices]
                 if len(events):
-                    # xx = np.broadcast_to(events[np.newaxis, :], (2, len(events)))
                     self.slice_view.add_event(events, event_type, event_pen, movable)
                     if self.show_spec:
                         self.spec_view.add_event(events, event_type, event_pen, movable)
@@ -550,44 +550,36 @@ class PSV():
                 self.update_frame()
                 logging.debug('   Stopped playback.')
 
-    def on_region_change_finished(self, axis_range, region):        
-        # delete original region in ds
-        if self.current_event_index is None or 'manual' not in self.ds.event_types.values[self.current_event_index]:
+    def on_region_change_finished(self, region):    
+        if self.move_only_current_events and self.current_event_index != region.event_index:
             return
 
-        # this should be done by the view:
-        f = scipy.interpolate.interp1d(axis_range, self.trange, 
+        # this could be done by the view:
+        f = scipy.interpolate.interp1d(region.xrange, self.trange, 
                                        bounds_error=False, fill_value='extrapolate')
         new_region = f(region.getRegion())
         
-        self.ds.song_events.sel(time=slice(*region.original_region))[:, self.current_event_index] = False
-        # convert region to time coordinates (important for spec_view since x-axis does not correspond to time)
-        # f = scipy.interpolate.interp1d(region.original_region_axis, region.original_region, 
+        # remove old segment in events
+        self.ds.song_events.sel(time=slice(*region.bounds))[:, region.event_index] = False
         
-        # set new region in ds
-        self.ds.song_events.sel(time=slice(*new_region))[:, self.current_event_index] = True
-        logging.info(f'  Moved {self.current_event_name} from t=[{region.original_region[0]:1.4f}:{region.original_region[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
-        region.original_region = new_region
+        # add new region in ds
+        self.ds.song_events.sel(time=slice(*new_region))[:, region.event_index] = True
+        logging.info(f'  Moved {self.current_event_name} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
         self.update_xy()
 
-    def on_position_change_finished(self, axis_range, position):
-        # delete original region in ds
-        # if self.current_event_index is None or 'manual' not in self.ds.event_types.values[self.current_event_index]:
-            # return
+    def on_position_change_finished(self, position):
+        if self.move_only_current_events and self.current_event_index != position.event_index:
+            return
 
         # this should be done by the view:
         # convert position to time coordinates (important for spec_view since x-axis does not correspond to time)
-        f = scipy.interpolate.interp1d(axis_range, self.trange, 
+        f = scipy.interpolate.interp1d(position.xrange, self.trange, 
                                        bounds_error=False, fill_value='extrapolate')
         new_position = f(position.pos()[0])
         # set new position in ds
-        self.ds.song_events.sel(time=new_position, method='nearest')[position.event_type] = True
-        self.ds.song_events.sel(time=position.original_position)[position.event_type] = False
-        logging.info(f'  Moved {self.ds.event_types[position.event_type]} from t=[{position.original_position:1.4f} to {new_position:1.4f} seconds.')
-        # self.ds.song_events.sel(time=new_position, method='nearest')[self.current_event_index] = True
-        # self.ds.song_events.sel(time=position.original_position)[self.current_event_index] = False
-        # logging.info(f'  Moved {self.current_event_name} from t=[{position.original_position:1.4f} to {new_position:1.4f} seconds.')
-        position.original_position = new_position
+        self.ds.song_events.sel(time=position.position)[position.event_index] = False
+        self.ds.song_events.sel(time=new_position, method='nearest')[position.event_index] = True
+        logging.info(f'  Moved {self.ds.event_types.values[position.event_index]} from t=[{position.position:1.4f} to {new_position:1.4f} seconds.')
         self.update_xy()
 
     def on_video_clicked(self, mouseX, mouseY):
@@ -595,9 +587,9 @@ class PSV():
         fly_pos = np.array(fly_pos)  # in case this is a dask.array
         if self.crop:  # transform fly pos to coordinates of the cropped box
             box_center = self.ds.pose_positions_allo.data[self.index_other,
-                                                            self.focal_fly, self.thorax_index] + self.box_size / 2
+                                                          self.focal_fly,
+                                                          self.thorax_index] + self.box_size / 2
             box_center = np.array(box_center)  # in case this is a dask.array
-                                                        
             fly_pos = fly_pos - box_center
         fly_dist = np.sum((fly_pos - np.array([mouseX, mouseY]))**2, axis=-1)
         fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
@@ -674,25 +666,49 @@ class PSV():
                 self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
             self.update_frame()
 
+    def save_swaps(self, qt_keycode):
+        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'],
+                            self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save swaps to', str(savefilename),
+                                                                filter="txt files (*.txt);;all files (*)")
+        if len(savefilename):
+            logging.info(f'   Saving list of swap indices to {savefilename}.')
+            np.savetxt(savefilename, self.swap_events, fmt='%d', header='index fly1 fly2')
+            logging.info(f'   Done.')
+
+    def save_annotations(self, qt_keycode):
+        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
+                            f"{self.ds.attrs['datename']}_songmanual.zarr")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save annotations to', str(savefilename),
+                                                                filter="zarr files (*.zarr);;all files (*)")
+        if len(savefilename):
+            logging.info(f'   Saving annotations to {savefilename}.')
+            # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
+            xb.save(savefilename, self.ds.song_events.to_dataset())
+            logging.info(f'   Done.')
+
+    def save_dataset(self, qt_keycode):
+        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
+                            f"{self.ds.attrs['datename']}.zarr")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save dataset to', str(savefilename),
+                                                                filter="zarr files (*.zarr);;all files (*)")
+        if len(savefilename):
+            logging.info(f'   Saving dataset to {savefilename}.')
+            # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
+            xb.save(savefilename, self.ds)
+            logging.info(f'   Done.')
+
     def dss_train(self, qt_keycode):
         logging.info('Training not implemented yet.')
-
         # export dataset as training/testing files
-
         # call dss.train
-
 
     def dss_predict(self, qt_keycode):
         logging.info('Prediction not implemented yet.')
-
         # load model
-
         # predict
-
         # update ds
-
-        # load new ds
-
+        
 
 def main(datename: str, *,
          root: str = '', dat_path='dat', res_path='res',
@@ -814,5 +830,5 @@ def main(datename: str, *,
 if __name__ == '__main__':
     import warnings
     warnings.filterwarnings("ignore")
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     defopt.run(main)
