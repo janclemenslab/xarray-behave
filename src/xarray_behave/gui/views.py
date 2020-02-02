@@ -7,6 +7,7 @@ import scipy.signal
 import time
 import logging
 from functools import partial
+from typing import Tuple
 
 from .. import xarray_behave as xb
 from .. import _ui_utils
@@ -15,18 +16,65 @@ from .. import _ui_utils
 class Model():
 
     def __init__(self, ds):
-        self.m.ds = ds
-       
+        self.ds = ds
 
     def save(self, filename):
-        xb.save(filename, ds)
+        xb.save(filename, self.ds)
     
     @classmethod
     def from_file(cls, filename):
         ds = xb.load(filename)
         return cls(ds)
 
-    
+
+class SegmentItem(pg.LinearRegionItem):
+    def __init__(self, bounds: Tuple[float, float], event_index: int, xrange,
+                 movable=True, pen=None, brush=None, **kwargs):
+        """[summary]
+        
+        Args:
+            bounds (Tuple[float]): (onset, offset) in seconds.
+            event_index (int): for directly indexing event_types in ds.song_events
+            xrange: prop from parent
+            movable (bool, optional): [description]. Defaults to True.
+            pen ([type], optional): [description]. Defaults to None.
+            brush ([type], optional): [description]. Defaults to None.
+            **kwargs passed to pg.LinearRegionItem
+        """
+        super().__init__(bounds, **kwargs)
+        self.bounds = bounds
+        self.event_index = event_index
+        self.xrange = xrange
+        # this corresponds to the undelrying only for TraveView, not for SpecView
+        self._parent = self.getViewWidget
+
+
+class EventItem(pg.InfiniteLine):
+    def __init__(self, position: float, event_index: int, xrange,
+                 time_pos=None, movable=True, pen=None, brush=None, **kwargs):
+        """[summary]
+        
+        Args:
+            position (float): in axis coords).
+            event_index (int): for directly indexing event_types in ds.song_events
+            xrange: prop from parent
+            time_pos (optional): if axis coords is not seconds
+            movable (bool, optional): [description]. Defaults to True.
+            pen ([type], optional): [description]. Defaults to None.
+            brush ([type], optional): [description]. Defaults to None.
+            **kwargs passed to pg.LinearRegionItem
+        """                
+        super().__init__(pos=position, movable=movable, pen=pen, **kwargs)
+        if time_pos is None:
+            self.position = position
+        else:
+            self.position = time_pos
+        self.event_index = event_index
+        self.xrange = xrange
+        # this corresponds to the undelrying only for TraveView, not for SpecView
+        self._parent = self.getViewWidget
+
+
 # the viewer is getting data from the Model (ds) but does not change it 
 # (so make ds-ref in View read-only via @property)
 class TraceView(pg.PlotWidget):
@@ -45,6 +93,10 @@ class TraceView(pg.PlotWidget):
     @property
     def m(self):  # make read-only
         return self._m
+
+    @property
+    def trange(self):
+        return None
 
     @property
     def xrange(self):
@@ -69,12 +121,12 @@ class TraceView(pg.PlotWidget):
                                      pos=self.m.x[int(self.m.span / 2)],
                                      pen=pg.mkPen(color='r', width=1)))
 
-    def add_segment(self, onset, offset, brush, movable=True):
-        region = pg.LinearRegionItem(values=(onset, offset), movable=movable, brush=brush)
-        region.original_region = (onset, offset)
+    def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
+        region = SegmentItem((onset, offset), region_typeindex, self.xrange,
+                             brush=brush, movable=movable)
         self.addItem(region)
         if movable:
-            region.sigRegionChangeFinished.connect(partial(self.m.on_region_change_finished, self.xrange))
+            region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
         
     def add_event(self, xx, event_type, pen, movable=False):        
         if not movable:
@@ -83,11 +135,8 @@ class TraceView(pg.PlotWidget):
             _ui_utils.fast_plot(self, xx.T, yy.T, pen)
         else:
             for x in xx:
-                line = pg.InfiniteLine(movable=True, angle=90,
-                                       pos=x, pen=pen)
-                line.original_position = x
-                line.event_type = event_type
-                line.sigPositionChangeFinished.connect(partial(self.m.on_position_change_finished, self.xrange))
+                line = EventItem(x, event_type, self.xrange, movable=True, angle=90, pen=pen)
+                line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
                 self.addItem(line)
 
     def time_to_pos(self, time):
@@ -140,7 +189,7 @@ class SpecView(pg.ImageView):
     
     def clear_annotations(self):
         [self.removeItem(item) for item in self.old_items]  # remove annotations
-
+        
     def update_spec(self, x, y):
         # hash x to avoid re-calculation? only useful when annotating
         self.clear_annotations()
@@ -183,14 +232,15 @@ class SpecView(pg.ImageView):
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f[f_idx0:f_idx1], t
 
-    def add_segment(self, onset, offset, brush, movable=True):
+    def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
         onset_spec, offset_spec = self.time_to_pos((onset, offset)) 
-        region = pg.LinearRegionItem(values=(onset_spec, offset_spec), movable=movable, brush=brush)
-        region.original_region = (onset, offset)
-        if movable:
-            region.sigRegionChangeFinished.connect(partial(self.m.on_region_change_finished, self.xrange))
+        region = SegmentItem((onset_spec, offset_spec), region_typeindex, self.xrange, 
+                             brush=brush, movable=movable)
         self.addItem(region)
         self.old_items.append(region)
+        if movable:
+            region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
+    
 
     def add_event(self, xx, event_type, pen, movable=False):
         xx0 = xx.copy()
@@ -201,11 +251,8 @@ class SpecView(pg.ImageView):
             self.old_items.append(_ui_utils.fast_plot(self, xx.T, yy.T, pen))
         else:
             for (x, x0) in zip(xx, xx0):
-                line = pg.InfiniteLine(movable=True, angle=90,
-                                       pos=x, pen=pen)
-                line.original_position = x0
-                line.event_type = event_type
-                line.sigPositionChangeFinished.connect(partial(self.m.on_position_change_finished, self.xrange))
+                line = EventItem(x, event_type, self.xrange, time_pos=x0, movable=True, angle=90, pen=pen)
+                line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
                 self.addItem(line)
                 self.old_items.append(line)
     
@@ -237,9 +284,7 @@ class MovieView(_ui_utils.FastImageWidget):
         return self._m
 
     def update_frame(self, ):
-        self.m.fn = self.m.ds.coords['nearest_frame'][self.m.index_other].data
-
-        frame = self.m.vr[self.m.fn]
+        frame = self.m.vr[self.m.framenumber]
         if frame is not None:  # frame is None when at end of video
             # # FIXME the annotations potentially waste time annotating outside of the cropped frame
             if 'pose_positions_allo' in self.m.ds:
@@ -252,7 +297,7 @@ class MovieView(_ui_utils.FastImageWidget):
 
             self.setImage(frame, auto_scale=True)
             if self.m.show_framenumber:                    
-                self.image_view_framenumber_text.setPlainText(f'frame {self.m.fn}')
+                self.image_view_framenumber_text.setPlainText(f'frame {self.m.framenumber}')
             else:
                 self.image_view_framenumber_text.setPlainText('')
 
