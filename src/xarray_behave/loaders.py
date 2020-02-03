@@ -42,6 +42,25 @@ def rotate_point(pos, degrees, origin=(0, 0)):
     return qx, qy
 
 
+def rotate_pose(positions, degree, origin=(0, 0)):
+    """Rotate point set.
+
+    Args:
+        pos (np.ndarray): [points, x/y]
+        degrees (float): degree by which to rotate
+        origin (Tuple[float, float], optional): point (x,y) around which to rotate point. Defaults to (0, 0).
+
+    Returns:
+        tuple: (x, y) rotated
+    """
+    radians = degree / 180 * np.pi
+    cos_rad = np.cos(radians)
+    sin_rad = np.sin(radians)
+    rot = np.array([[cos_rad, sin_rad], [-sin_rad, cos_rad]])
+    positions_centered = positions - origin
+    return rot.dot(positions_centered.T).T + origin
+
+
 def find_nearest(array, values):
     """Find nearest occurrence of each item of values in array.
 
@@ -338,8 +357,9 @@ def load_poses_leap(filepath):
     # transform poses back to frame coordinates
     origin = [b / 2 for b in box_size]
     poses_allo = np.zeros_like(poses)
-    for cnt, ((x, y), a, p_ego) in enumerate(zip(box_offset, box_angle, poses)):
-        tmp = [rotate_point(pt, a, origin) for pt in p_ego]  # rotate
+    for cnt, ((x, y), ang, p_ego) in enumerate(zip(box_offset, box_angle, poses)):
+        # tmp = [rotate_point(pt, a, origin) for pt in p_ego]  # rotate
+        tmp = rotate_pose(p_ego, float(ang), origin)
         p_allo = np.stack(tmp) + np.array((x, y)) - origin  # translate
         poses_allo[cnt, ...] = p_allo
 
@@ -354,7 +374,8 @@ def load_poses_leap(filepath):
     head_pos = poses[:,  head_idx, :]
     head_thorax_angle = 90 + np.arctan2(head_pos[:, 0], head_pos[:, 1]) * 180 / np.pi
     for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle, poses)):
-        poses[cnt, ...] = [rotate_point(pt, -a, origin) for pt in p_ego]
+        # poses[cnt, ...] = [rotate_point(pt, -a, origin) for pt in p_ego]
+        poses[cnt, ...] = rotate_pose(p_ego, -a, origin)
 
     box_offset = box_offset.reshape((-1, nb_flies, *box_offset.shape[1:]))  # "unfold" fly dimension
     box_angle = box_angle.reshape((-1, nb_flies, *box_angle.shape[1:]))  # "unfold" fly dimension
@@ -400,7 +421,8 @@ def load_poses_deepposekit(filepath):
                                          poses_ego.sel(poseparts='head', coords='x')) * 180 / np.pi
     for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle.data, poses_ego.data)):
         for fly in range(nb_flies):
-            poses_ego.data[cnt, fly, ...] = [rotate_point(pt, -a[fly]) for pt in p_ego[fly]]
+            # poses_ego.data[cnt, fly, ...] = [rotate_point(pt, -a[fly]) for pt in p_ego[fly]]
+            poses_ego.data[cnt, fly, ...] = rotate_pose(p_ego[fly], -a[fly])
 
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
 
@@ -461,12 +483,18 @@ def load_times(filepath_timestamps, filepath_daq):
     last_valid_idx = np.argmax(daq_stamps == 0)
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:last_valid_idx, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
-
     nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]))  # seconds - using mode here to be more robust
     nb_seconds_per_interval = nb_seconds_per_interval[0]
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
+
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
+
+    # s0 = ss.sample_time(0)  # first sample is 0 seconds
+    # ss = SampStamp(sample_times=daq_stamps[:, 0] - s0, frame_times=cam_stamps[:, 0] - s0, sample_numbers=daq_samplenumber[:, 0])
+    # f0 = ss.frame_time(0)  # first frame is 0 seconds - for no-resample-video-data
+    # ss = SampStamp(sample_times=daq_stamps[:, 0] - f0, frame_times=cam_stamps[:, 0] - f0, sample_numbers=daq_samplenumber[:, 0])
+    
     return ss, last_sample, sampling_rate_Hz
 
 
