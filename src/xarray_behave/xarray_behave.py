@@ -163,19 +163,28 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
     first_sample = 0
     last_sample = int(last_sample_with_frame)
-
+    ref_time = ss.sample_time(0)
     step = int(sampling_rate / target_sampling_rate)  # ms - will resample song annotations and tracking data to 1000Hz
     # construct desired sample grid for resampled data
+
     target_samples = np.arange(first_sample, last_sample, step, dtype=np.uintp)
-    time = target_samples / sampling_rate  # time in seconds for each sample in the song annotation data
+    # time = target_samples / sampling_rate  # time in seconds for each sample in the song annotation data
+    time = ss.sample_time(target_samples) - ref_time
     # time in seconds for each sample in the song recording
-    sampletime = np.arange(first_sample, last_sample) / sampling_rate
+    # sampletime = np.arange(first_sample, last_sample) / sampling_rate
+    sampletime = ss.sample_time(np.arange(first_sample, last_sample)) - ref_time
 
     # get nearest frame for each sample in the resampled grid
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
+    if not resample_video_data:
+        target_samples = frame_samples
+        # time = target_samples / sampling_rate  # time in seconds for each sample in the song annotation data
+        time = ss.sample_time(target_samples) - ref_time
+        resample_video_data = True        
     interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
                                               kind='nearest', bounds_error=False, fill_value=np.nan)
+    # both conditions should produce identical results - but explicit assignment prolly safer and definitely faster
     if resample_video_data:
         nearest_frame = interpolator(target_samples).astype(np.uintp)
     else:
@@ -242,7 +251,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
-            frame_times = ss.frame_time(frame_numbers)
+            frame_times = ss.frame_time(frame_numbers) - ref_time
             song_events_np = ld.interpolate_binary(time, song_events_np, frame_times)
             time = frame_times
 
@@ -265,7 +274,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         # FIXME - resampling reduces data size (?)
         if not resample_video_data:
             logging.info(f'Resampling event data to match frame times.')
-            frame_times = ss.frame_time(frame_numbers)
+            frame_times = ss.frame_time(frame_numbers) - ref_time
             song_events_np_p = ld.interpolate_binary(time, song_events_np_p, frame_times)
             time = frame_times
         else:
@@ -316,8 +325,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     fps = None
     if with_tracks:
         logging.info('   tracking')
-        frame_times = ss.frame_time(frame_numbers)
-        fps = 1/np.nanmean(np.diff(frame_times))
+        frame_times = ss.frame_time(frame_numbers) - ref_time
+        fps = 1 / np.nanmean(np.diff(frame_times))
 
         if resample_video_data:  # resample to common grid at target_sampling_rate.
             frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
@@ -328,7 +337,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             body_pos = interpolator(target_samples)
         else:
             time = frame_times
-            nearest_frame = frame_numbers
+            # nearest_frame = frame_numbers
+            nearest_frame = np.arange(first_tracked_frame, last_tracked_frame)
             time = time[:min_len]
             nearest_frame = nearest_frame[:min_len]
             body_pos = body_pos[:min_len]
@@ -351,7 +361,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # POSES
     if with_poses:
         logging.info('   poses')
-        frame_times = ss.frame_time(frame_numbers)
+        frame_times = ss.frame_time(frame_numbers) - ref_time
         fps = 1/np.nanmean(np.diff(frame_times))
 
         if resample_video_data:  # resample to common grid at target_sampling_rate.
@@ -367,7 +377,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             pose_pos_allo = interpolator(target_samples)
         else:
             time = frame_times
-            nearest_frame = frame_numbers
+            # nearest_frame = frame_numbers
+            nearest_frame = np.arange(first_pose_frame, last_pose_frame)
             # ensure all is equal length
             time = time[:min_len]
             nearest_frame = nearest_frame[:min_len]
@@ -403,7 +414,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                          'spatial_units': 'pixels',
                                          'poses_from': poses_from})
         dataset_data['pose_positions_allo'] = poses_allo
-
     # MAKE THE DATASET
     logging.info('   assembling')
     dataset = xr.Dataset(dataset_data, attrs={})
