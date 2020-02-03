@@ -51,7 +51,8 @@ class PSV():
         elif 'song_raw' in self.ds:
             self.tmax = self.ds.song_raw.shape[0]
         elif 'body_positions' in self.ds:
-            self.tmax = len(self.ds.body_positions) * 10  # TODO: get from  factor ds.attrs.body_positions.sampling_rate
+            # self.tmax = len(self.ds.body_positions) * 10  # TODO: get from  factor ds.attrs.body_positions.sampling_rate
+            self.tmax = len(self.ds.body_positions) * self.ds.target_sampling_rate_Hz
         else:
             raise ValueError('No time stamp info in dataset.')
 
@@ -273,6 +274,7 @@ class PSV():
     @property
     def framenumber(self):
         return self.ds.coords['nearest_frame'][self.index_other].data
+        # return self.ds.nearest_frame.sel(time=self.ds.sampletime[int(self.t0)], method='nearest')
 
     @property
     def span(self):
@@ -427,28 +429,17 @@ class PSV():
         self.t0 += self.span / 2
 
     def go_to_frame(self, qt_keycode):
-        try:
-            fn = int(input(f"Enter frame number between 0 and {np.max(self.ds.nearest_frame.data)}: "))
-            if fn < 0 or fn > np.max(self.ds.nearest_frame.data):
-                    raise ValueError
-            idx = np.argmax(self.ds.nearest_frame>=fn) 
-            self.t0 = self.ds.time.data[idx] * self.fs_song
-            self.update_frame()
-            self.update_xy()
-        except ValueError:
-            logging.warning(f"Enter numeric value between 0 and {np.max(self.ds.nearest_frame.data)} frames.")
+        fn, okPressed = QtGui.QInputDialog.getInt(self.win, "Enter frame number", "Frame number:", 
+                            value=self.framenumber, min=0, max=np.max(self.ds.nearest_frame.data), step=1)
+        if okPressed:
+            time_index = np.argmax(self.ds.nearest_frame>fn)  
+            self.t0 = int(time_index / self.fs_other * self.fs_song)
         
     def go_to_time(self, qt_keycode):
-        try:
-            print('') 
-            time = float(input(f"Enter time in seconds between 0 and {self.tmax /self.fs_song} seconds: "))
-            if time < 0 or time > self.tmax /self.fs_song:
-                raise ValueError
-            self.t0 = time * self.fs_song
-            self.update_frame()
-            self.update_xy()
-        except ValueError:
-            logging.warning(f"Enter numeric value between 0 and {self.tmax /self.fs_song} seconds.")
+        time, okPressed = QtGui.QInputDialog.getDouble(self.win, "Enter time", "Seconds:", 
+                value=self.t0 / self.fs_song, min=0, max=self.tmax /self.fs_song)
+        if okPressed:
+            self.t0 = np.argmax(self.ds.sampletime.data>time)
         
     def update_xy(self):
         self.x = self.ds.sampletime.data[self.time0:self.time1]
