@@ -284,7 +284,7 @@ def load_manual_annotation_matlab(filepath):
                 mat_data[key.lower()] = val[:].T
 
     manual_events_seconds = dict()
-    event_types = []
+    event_categories = []
     for key, val in mat_data.items():
         if len(val) and hasattr(val, 'ndim') and val.ndim == 2 and not key.startswith('_'):  # ignore matfile metadata
             manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
@@ -489,7 +489,7 @@ def load_times(filepath_timestamps, filepath_daq):
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
 
     ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
-
+    # different refs:
     # s0 = ss.sample_time(0)  # first sample is 0 seconds
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - s0, frame_times=cam_stamps[:, 0] - s0, sample_numbers=daq_samplenumber[:, 0])
     # f0 = ss.frame_time(0)  # first frame is 0 seconds - for no-resample-video-data
