@@ -28,21 +28,26 @@ class Model():
 
 
 class SegmentItem(pg.LinearRegionItem):
+
     def __init__(self, bounds: Tuple[float, float], event_index: int, xrange,
-                 movable=True, pen=None, brush=None, **kwargs):
+                 time_bounds: Tuple[float, float]=None, movable=True, pen=None, brush=None, **kwargs):
         """[summary]
         
         Args:
-            bounds (Tuple[float]): (onset, offset) in seconds.
+            bounds (Tuple[float, float]): (onset, offset) in seconds.
             event_index (int): for directly indexing event_types in ds.song_events
             xrange: prop from parent
+            time_bounds (Tuple[float, float], optional): if axis coords is not seconds
             movable (bool, optional): [description]. Defaults to True.
             pen ([type], optional): [description]. Defaults to None.
             brush ([type], optional): [description]. Defaults to None.
             **kwargs passed to pg.LinearRegionItem
         """
         super().__init__(bounds, **kwargs)
+        if time_bounds is None:
         self.bounds = bounds
+        else:
+            self.bounds = time_bounds
         self.event_index = event_index
         self.xrange = xrange
         # this corresponds to the undelrying only for TraveView, not for SpecView
@@ -50,6 +55,7 @@ class SegmentItem(pg.LinearRegionItem):
 
 
 class EventItem(pg.InfiniteLine):
+
     def __init__(self, position: float, event_index: int, xrange,
                  time_pos=None, movable=True, pen=None, brush=None, **kwargs):
         """[summary]
@@ -231,6 +237,41 @@ class SpecView(pg.ImageView):
         S = np.log2(1 + psd[f_idx0:f_idx1, :])
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f[f_idx0:f_idx1], t
+
+    def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
+        onset_spec, offset_spec = self.time_to_pos((onset, offset)) 
+        region = SegmentItem((onset_spec, offset_spec), region_typeindex, self.xrange, 
+                             time_bounds=(onset, offset), brush=brush, movable=movable)
+        self.addItem(region)
+        self.old_items.append(region)
+        if movable:
+            region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
+    
+    def add_event(self, xx, event_type, pen, movable=False):
+        xx0 = xx.copy()
+        xx = self.time_to_pos(xx)
+        if not movable:
+            xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
+            yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
+            self.old_items.append(_ui_utils.fast_plot(self, xx.T, yy.T, pen))
+        else:
+            for (x, x0) in zip(xx, xx0):
+                line = EventItem(x, event_type, self.xrange, time_pos=x0, movable=True, angle=90, pen=pen)
+                line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
+                self.addItem(line)
+                self.old_items.append(line)
+    
+    def time_to_pos(self, time):
+        return np.interp(time, self.m.trange, self.xrange) 
+
+    def pos_to_time(self, pos):
+        return np.interp(pos, self.xrange, self.m.trange)
+
+    def _click(self, event):
+        event.accept()
+        pos = event.pos()[0]
+        mouseT = self.pos_to_time(pos)
+        self.callback(mouseT)
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
         onset_spec, offset_spec = self.time_to_pos((onset, offset)) 
