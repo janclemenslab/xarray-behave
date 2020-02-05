@@ -717,7 +717,7 @@ def main(datename: str, *,
     """
     Args:
         datename (str): Experiment id.
-                        If "datename.zarr" exists: Name of the dataset file - will open "datename.zarr".
+                        If "datename" or "datename.zarr" exists: Open dataset file with that name.
                         Otherwise: Experiment id - will assemble new dataset from files in 
                         root/dat_path/datename and root/res_path/datename.
         root (str): Path containing the `dat` and `res` folders for the experiment. 
@@ -759,10 +759,13 @@ def main(datename: str, *,
         cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']). 
                          Defaults to 'turbo'.
     """
+    if os.path.exists(datename + '.zarr') or os.path.exists(datename):
+        is_ds = True
+        loadname = datename if os.path.exists(datename) else datename+'.zarr'
 
-    if not ignore_existing and os.path.exists(datename + '.zarr'):
-        logging.info(f'Loading ds from {datename}.zarr.')
-        ds = xb.load(datename + '.zarr', lazy=True)
+    if not ignore_existing and is_ds:  #os.path.exists(datename + '.zarr'):
+        logging.info(f'Loading ds from {loadname}.')
+        ds = xb.load(loadname, lazy=True)
         if 'song_events' in ds:
             ds.song_events.load()  # never lazy load song events so we can edit them
         if not lazy:
