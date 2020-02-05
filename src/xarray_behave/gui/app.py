@@ -592,8 +592,12 @@ class PSV():
         if self.current_event_index is not None:
             if self.ds.event_categories.data[self.current_event_index] == 'segment':
                 if self.sinet0 is None:
+                    self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+                    self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
                     self.sinet0 = mouseT
                 else:
+                    self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                    self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
                     self.ds.song_events.sel(time=slice(
                         *sorted([self.sinet0, mouseT])))[:, self.current_event_index] = True
                     logging.info(f'  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.')
