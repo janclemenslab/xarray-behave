@@ -35,7 +35,6 @@ class PSV():
     def __init__(self, ds, vr=None, cue_points=[], cmap_name: str = 'turbo', box_size: int = 200,
                  fmin=None, fmax=None):
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
-
         # build model:
         self.ds = ds
         # self.m = views.Model(ds)
@@ -52,7 +51,7 @@ class PSV():
             self.tmax = self.ds.song_raw.shape[0]
         elif 'body_positions' in self.ds:
             # self.tmax = len(self.ds.body_positions) * 10  # TODO: get from  factor ds.attrs.body_positions.sampling_rate
-            self.tmax = len(self.ds.body_positions) * self.ds.target_sampling_rate_Hz
+            self.tmax = len(self.ds.body_positions) * ds.attrs['target_sampling_rate_Hz']
         else:
             raise ValueError('No time stamp info in dataset.')
 
@@ -90,7 +89,11 @@ class PSV():
         self.nb_channels = self.ds.song_raw.shape[-1]
         self.sinet0 = None
         # FIXME: will fail for datasets w/o song
-        self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+        if 'song_events' in self.ds:
+            self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+        else:
+            self.fs_other = ds.attrs['target_sampling_rate_Hz']
+
         if 'song' in self.ds:
             self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
         elif 'song_raw' in self.ds:
@@ -549,11 +552,8 @@ class PSV():
         f = scipy.interpolate.interp1d(region.xrange, self.trange, 
                                        bounds_error=False, fill_value='extrapolate')
         new_region = f(region.getRegion())
-        
         # remove old segment in events
         self.ds.song_events.sel(time=slice(*region.bounds))[:, region.event_index] = False
-        
-        # add new region in ds
         self.ds.song_events.sel(time=slice(*new_region))[:, region.event_index] = True
         logging.info(f'  Moved {self.current_event_name} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
         self.update_xy()
@@ -762,7 +762,7 @@ def main(datename: str, *,
     if os.path.exists(datename + '.zarr') or os.path.exists(datename):
         is_ds = True
         loadname = datename if os.path.exists(datename) else datename+'.zarr'
-
+        
     if not ignore_existing and is_ds:  #os.path.exists(datename + '.zarr'):
         logging.info(f'Loading ds from {loadname}.')
         ds = xb.load(loadname, lazy=True)
