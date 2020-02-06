@@ -507,16 +507,15 @@ class PSV():
 
             if self.show_manualonly and 'manual' not in self.ds.event_types.values[event_type]:
                 continue
-            
             event_pen = pg.mkPen(color=self.eventype_colors[event_type], width=1)
             event_brush = pg.mkBrush(color=[*self.eventype_colors[event_type], 25])
 
             if self.ds.event_categories.data[event_type] == 'segment':
                 event_onset_indices, event_offset_indices = self.get_events_in_range(x, event_type)
                 for onset, offset in zip(event_onset_indices, event_offset_indices):
-                    self.slice_view.add_segment(onset, offset, event_type, event_brush, movable)
+                    self.slice_view.add_segment(onset, offset, event_type, event_brush, movable=movable)
                     if self.show_spec:
-                        self.spec_view.add_segment(onset, offset, event_type, event_brush, movable)            
+                        self.spec_view.add_segment(onset, offset, event_type, event_brush, movable=movable)            
             else:
                 event_trace = self.ds.song_events.data[int(self.index_other - self.span_index):
                                                        int(self.index_other + self.span_index) - 1,
@@ -524,9 +523,9 @@ class PSV():
                 event_indices = np.where(event_trace)[0] * int(1 / self.fs_other * self.fs_song)
                 events = x[event_indices]
                 if len(events):
-                    self.slice_view.add_event(events, event_type, event_pen, movable)
+                    self.slice_view.add_event(events, event_type, event_pen, movable=movable)
                     if self.show_spec:
-                        self.spec_view.add_event(events, event_type, event_pen, movable)
+                        self.spec_view.add_event(events, event_type, event_pen, movable=movable)
         
     def play_video(self):  # TODO: get rate from ds (video fps attr)
         RUN = True

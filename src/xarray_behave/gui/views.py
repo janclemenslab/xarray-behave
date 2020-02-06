@@ -43,9 +43,9 @@ class SegmentItem(pg.LinearRegionItem):
             brush ([type], optional): [description]. Defaults to None.
             **kwargs passed to pg.LinearRegionItem
         """
-        super().__init__(bounds, **kwargs)
+        super().__init__(bounds, movable=movable, pen=pen, brush=brush, **kwargs)
         if time_bounds is None:
-        self.bounds = bounds
+            self.bounds = bounds
         else:
             self.bounds = time_bounds
         self.event_index = event_index
@@ -57,7 +57,7 @@ class SegmentItem(pg.LinearRegionItem):
 class EventItem(pg.InfiniteLine):
 
     def __init__(self, position: float, event_index: int, xrange,
-                 time_pos=None, movable=True, pen=None, brush=None, **kwargs):
+                 time_pos=None, movable=True, pen=None, **kwargs):
         """[summary]
         
         Args:
@@ -88,6 +88,7 @@ class TraceView(pg.PlotWidget):
     def __init__(self, model, callback):
         # additionally make names of trace and event arrays in ds args?
         super().__init__(name="song")
+        self.setMouseEnabled(x=False, y=False)
         # this should be just a link/ref so changes in ds made by the controller will propagate
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
         self.disableAutoRange()
@@ -166,7 +167,8 @@ class SpecView(pg.ImageView):
         self.ui.roiBtn.hide()
         self.ui.menuBtn.hide()
         self.view.disableAutoRange()
-        
+        self.view.setMouseEnabled(x=False, y=False)
+
         self._m = model
         self.callback = callback
         self.imageItem.mouseClickEvent = self._click
@@ -273,16 +275,102 @@ class SpecView(pg.ImageView):
         mouseT = self.pos_to_time(pos)
         self.callback(mouseT)
 
+
+class SpecView2(pg.PlotWidget):
+
+    def __init__(self, model, callback, colormap=None):
+        super().__init__()
+        # self.plotItem = self.addPlot()
+        self.imageItem = pg.ImageItem()
+        self.addItem(self.imageItem)
+        self.view = self
+        # self.view.disableAutoRange()
+        self.view.setMouseEnabled(x=False, y=False)
+
+        self._m = model
+        self.callback = callback
+        self.imageItem.mouseClickEvent = self._click
+        
+        if colormap is not None:
+            self.imageItem.setLookupTable(colormap)  # apply the colormap
+        self.old_items = []
+        
+    @property
+    def m(self):  # read only access to the model
+        return self._m
+
+    @property
+    def xrange(self):
+        try:  # to prevent failure on init
+            return np.array(self.view.viewRange()[0])
+        except AttributeError:
+            return None        
+    
+    @property
+    def yrange(self):
+        try:  # to prevent failure on init
+            return np.array(self.view.viewRange()[1])
+        except AttributeError:
+            return None        
+    
+    def clear_annotations(self):
+        [self.removeItem(item) for item in self.old_items]  # remove annotations
+        
+    def update_spec(self, x, y):
+        # hash x to avoid re-calculation? only useful when annotating
+        self.clear_annotations()
+        
+        S, f, t = self._calc_spec(y)
+        self.imageItem.setImage(S.T[:, ::-1])
+        self.view.setLimits(xMin=0, xMax=S.shape[1], yMin=0, yMax=S.shape[0])
+        
+        x_axis = self.view.getAxis('bottom')
+        x_axis.setScale(max(t) / len(t))
+        ticks = np.linspace(0, len(t)-1, 10, dtype=np.uintp)
+        t_offset = float(self.m.ds.sampletime[self.m.time0])
+        x_axis.setTicks([[(ii, str(int((t_offset + t[ii])*self.m.fs_song)/self.m.fs_song)) for ii in ticks]])
+        # self.view.setLimits(xMin=0, xMax=max(t), yMin=0, yMax=S.shape[0])
+
+        # FIXME: long yticklabels (e.g "5000") lead to misalignment between spec and trace plots
+        f = f[::-1]
+        # y_axis = self.getView().getAxis('left')
+        # ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
+        # y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
+
+        x_axis = self.view.getAxis('bottom')
+        
+    # @lru_cache(maxsize=2, typed=False)
+    def _calc_spec(self, y):
+        # signal.spectrogram will internally limit spec_win to len(y)
+        # and will throw error since noverlap will then be too big
+        self.spec_win = min(len(y), self.m.spec_win)
+        f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=self.spec_win,
+                                             noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
+        self.spec_t = t
+
+        if self.m.fmax is not None:
+            f_idx1 = np.argmax(f > self.m.fmax)
+        else:
+            f_idx1 = -1
+        
+        if self.m.fmin is not None:
+            f_idx0 = np.argmax(f > self.m.fmin)
+        else:
+            f_idx0 = 0
+
+        S = np.log2(1 + psd[f_idx0:f_idx1, :])
+        S = S / np.max(S) * 255  # normalize to 0...255
+        return S, f[f_idx0:f_idx1], t
+
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
         onset_spec, offset_spec = self.time_to_pos((onset, offset)) 
         region = SegmentItem((onset_spec, offset_spec), region_typeindex, self.xrange, 
-                             brush=brush, movable=movable)
+                             time_bounds=(onset, offset), brush=brush, movable=movable)
         self.addItem(region)
         self.old_items.append(region)
         if movable:
             region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
     
-
     def add_event(self, xx, event_type, pen, movable=False):
         xx0 = xx.copy()
         xx = self.time_to_pos(xx)
