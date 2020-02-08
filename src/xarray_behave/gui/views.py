@@ -1,5 +1,5 @@
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
+from pyqtgraph.Qt import QtGui, QtCore
 from PyQt5.QtGui import QImage, QPixmap
 import numpy as np
 import skimage.draw
@@ -79,6 +79,78 @@ class EventItem(pg.InfiniteLine):
         self.xrange = xrange
         # this corresponds to the undelrying only for TraveView, not for SpecView
         self._parent = self.getViewWidget
+
+
+class Draggable(pg.GraphItem):
+    """Draggable point cloud or graph."""
+    def __init__(self, callback):
+        self.dragPoint = None
+        self.dragOffset = None
+        self.textItems = []
+        super().__init__()
+        self.callback = callback
+    
+    def setData(self, **kwds):
+        self.text = kwds.pop('text', [])
+        self.data = kwds
+        if 'pos' in self.data:
+            npts = self.data['pos'].shape[0]
+            self.data['data'] = np.empty(npts, dtype=[('index', int)])
+            self.data['data']['index'] = np.arange(npts)
+        self.setTexts(self.text)
+        self.updateGraph()
+        
+    def setTexts(self, text):
+        for i in self.textItems:
+            i.scene().removeItem(i)
+        self.textItems = []
+        for t in text:
+            item = pg.TextItem(t)
+            self.textItems.append(item)
+            item.setParentItem(self)
+        
+    def updateGraph(self):
+        pg.GraphItem.setData(self, **self.data)
+        for i,item in enumerate(self.textItems):
+            item.setPos(*self.data['pos'][i])
+        
+        
+    def mouseDragEvent(self, ev):
+        if ev.button() != QtCore.Qt.LeftButton:
+            ev.ignore()
+            return
+        
+        if ev.isStart():
+            # We are already one step into the drag.
+            # Find the point(s) at the mouse cursor when the button was first 
+            # pressed:
+            pos = ev.buttonDownPos()
+            pts = self.scatter.pointsAt(pos)
+            if len(pts) == 0:
+                ev.ignore()
+                return
+            print('updating')
+            self.dragPoint = pts[0]
+            ind = pts[0].data()[0]
+            self.dragOffset = self.data['pos'][ind] - pos
+        elif ev.isFinish():
+            # when draggin is done, update the model
+            ind = self.dragPoint.data()[0]
+            drag_offset = self.dragOffset  # this should be the cumulative offset over the whole drag!!
+            new_pos = ev.pos() + self.dragOffset
+            self.callback(ind, new_pos, drag_offset)
+            self.dragPoint = None
+            return
+        else:
+            if self.dragPoint is None:
+                ev.ignore()
+                return
+        # update data and fraph in view - that way we get faster visual feedback
+        # w/o having to update the whole frame/view again
+        ind = self.dragPoint.data()[0]
+        self.data['pos'][ind] = ev.pos() + self.dragOffset
+        self.updateGraph()
+        ev.accept()
 
 
 # the viewer is getting data from the Model (ds) but does not change it 
@@ -405,8 +477,17 @@ class MovieView(_ui_utils.FastImageWidget):
         self._m = model
         self.callback = callback
         self.registerMouseClickEvent(self._click)
+        
         self.image_view_framenumber_text = pg.TextItem(color=(200, 0, 0), anchor=(-2, 1))
         self.viewBox.addItem(self.image_view_framenumber_text)
+        
+        self.fly_positions = Draggable(self.m.on_position_dragged)
+        self.viewBox.addItem(self.fly_positions)
+
+        self.brushes = []
+        alpha = 96
+        for dot_fly in range(self.m.nb_flies):
+            self.brushes.append(pg.mkBrush(*self.m.fly_colors[dot_fly], alpha))
         
     @property
     def m(self):  # read only access to the model
@@ -422,24 +503,23 @@ class MovieView(_ui_utils.FastImageWidget):
                 if self.m.show_dot:
                     frame = self.annotate_dot(frame)
                 if self.m.crop:
-                    frame = np.ascontiguousarray(self.crop_frame(frame))
+                    # frame_x, x_range, y_range = np.ascontiguousarray(self.crop_frame(frame))
+                    x_range, y_range = self.crop_frame(frame)
+                else:
+                    x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
 
             self.setImage(frame, auto_scale=True)
+            self.viewBox.setRange(xRange=y_range, yRange=x_range)
             if self.m.show_framenumber:                    
                 self.image_view_framenumber_text.setPlainText(f'frame {self.m.framenumber}')
             else:
                 self.image_view_framenumber_text.setPlainText('')
-
+        
     def annotate_dot(self, frame):
         # mark each fly with uniquely colored dots
-        for dot_fly in range(self.m.nb_flies):
-            fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, dot_fly, self.m.thorax_index]
-            x_dot = np.clip((fly_pos[0] - self.m.dot_size, fly_pos[0] + self.m.dot_size),
-                             0, self.m.vr.frame_width - 1).astype(np.uintp)
-            y_dot = np.clip((fly_pos[1] - self.m.dot_size, fly_pos[1] + self.m.dot_size),
-                             0, self.m.vr.frame_height - 1).astype(np.uintp)
-            frame[slice(*x_dot), slice(*y_dot), :] = self.m.fly_colors[dot_fly]  # set pixels around
-
+        pos = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, self.m.thorax_index])
+        self.fly_positions.setData(pos=pos[:,::-1], symbolBrush=self.brushes, pen=None, size=8)
+        
         # mark *focal* and *other* fly with circle
         for this_fly, color in zip((self.m.focal_fly, self.m.other_fly), self.m.bodypart_colors[[2, 6]]):
             fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other,
@@ -451,6 +531,7 @@ class MovieView(_ui_utils.FastImageWidget):
         return frame
 
     def annotate_poses(self, frame):
+        # TODO use (non-draggable) GraphItem here as well - could even plot skeleton
         for dot_fly in range(self.m.nb_flies):
             fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, dot_fly, ...]
             x_dot = np.clip((fly_pos[..., 0] - self.m.dot_size, fly_pos[..., 0] + self.m.dot_size),
@@ -469,8 +550,10 @@ class MovieView(_ui_utils.FastImageWidget):
         fly_pos[1] = np.clip(fly_pos[1], self.m.box_size, self.m.vr.frame_height - 1 - self.m.box_size)
         x_range = (int(fly_pos[0] - self.m.box_size), int(fly_pos[0] + self.m.box_size))
         y_range = (int(fly_pos[1] - self.m.box_size), int(fly_pos[1] + self.m.box_size))
-        frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
-        return frame
+        # frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
+        # return frame, x_range, y_range
+        return x_range, y_range
+        
 
     def _click(self, event):
         event.accept()
