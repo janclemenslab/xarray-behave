@@ -92,7 +92,6 @@ class FastImageWidget(pg.GraphicsLayoutWidget):
         self.pixmapItem.setShapeMode(QGraphicsPixmapItem.BoundingRectShape)
         self.viewBox.addItem(self.pixmapItem)
         self.viewBox.setAspectLocked(lock=True, ratio=1)
-        self.viewBox.setMouseEnabled(False, False)
         self.viewBox.disableAutoRange()
 
     def registerMouseClickEvent(self, func):
