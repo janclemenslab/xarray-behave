@@ -544,6 +544,7 @@ class PSV():
                 logging.debug('   Stopped playback.')
 
     def on_region_change_finished(self, region):    
+        """Called when dragging a segment-like song_event - will change its bounds."""
         if self.move_only_current_events and self.current_event_index != region.event_index:
             return
 
@@ -555,9 +556,10 @@ class PSV():
         self.ds.song_events.sel(time=slice(*region.bounds))[:, region.event_index] = False
         self.ds.song_events.sel(time=slice(*new_region))[:, region.event_index] = True
         logging.info(f'  Moved {self.current_event_name} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
-        self.update_xy()
+        # self.update_xy()
 
     def on_position_change_finished(self, position):
+        """Called when dragging an event-like song_event - will change time."""
         if self.move_only_current_events and self.current_event_index != position.event_index:
             return
 
@@ -572,7 +574,16 @@ class PSV():
         logging.info(f'  Moved {self.ds.event_types.values[position.event_index]} from t=[{position.position:1.4f} to {new_position:1.4f} seconds.')
         self.update_xy()
 
+    def on_position_dragged(self, fly, pos, offset):
+        """Called when dragging a fly body position - will change that pos."""
+        pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, self.thorax_index]
+        pos1 = [pos.y(), pos.x()]
+        self.ds.pose_positions_allo.data[self.index_other, fly, :] += (pos1 - pos0) 
+        logging.info(f'   Moved fly from {pos0} to {pos1}.')
+        self.update_frame()
+        
     def on_video_clicked(self, mouseX, mouseY):
+        """Called when clicking the video - will select the focal fly."""
         fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
         fly_pos = np.array(fly_pos)  # in case this is a dask.array
         if self.crop:  # transform fly pos to coordinates of the cropped box
@@ -588,6 +599,9 @@ class PSV():
         self.update_frame()
 
     def on_trace_clicked(self, mouseT):
+        """Called when traceview or specview have been clicked - will add new
+        song event at click position.
+        """
         if self.current_event_index is not None:
             if self.ds.event_categories.data[self.current_event_index] == 'segment':
                 if self.sinet0 is None:
