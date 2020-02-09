@@ -83,10 +83,11 @@ class EventItem(pg.InfiniteLine):
 
 class Draggable(pg.GraphItem):
     """Draggable point cloud or graph."""
-    def __init__(self, callback):
+    def __init__(self, callback, acceptDrags=True):
         self.dragPoint = None
         self.dragOffset = None
         self.textItems = []
+        self.acceptDrags = acceptDrags
         super().__init__()
         self.callback = callback
     
@@ -98,6 +99,8 @@ class Draggable(pg.GraphItem):
             self.data['data'] = np.empty(npts, dtype=[('index', int)])
             self.data['data']['index'] = np.arange(npts)
         self.setTexts(self.text)
+        if 'acceptDrags' in kwds:
+            self.acceptDrags = kwds['acceptDrags']
         self.updateGraph()
         
     def setTexts(self, text):
@@ -116,7 +119,7 @@ class Draggable(pg.GraphItem):
         
         
     def mouseDragEvent(self, ev):
-        if ev.button() != QtCore.Qt.LeftButton:
+        if ev.button() != QtCore.Qt.LeftButton or not self.acceptDrags:
             ev.ignore()
             return
         
@@ -129,7 +132,6 @@ class Draggable(pg.GraphItem):
             if len(pts) == 0:
                 ev.ignore()
                 return
-            print('updating')
             self.dragPoint = pts[0]
             ind = pts[0].data()[0]
             self.dragOffset = self.data['pos'][ind] - pos
@@ -359,14 +361,27 @@ class MovieView(_ui_utils.FastImageWidget):
         self.image_view_framenumber_text = pg.TextItem(color=(200, 0, 0), anchor=(-2, 1))
         self.viewBox.addItem(self.image_view_framenumber_text)
         
-        self.fly_positions = Draggable(self.m.on_position_dragged)
+        self.fly_positions = Draggable(self.m.on_position_dragged, acceptDrags=not self.m.move_poses)
         self.viewBox.addItem(self.fly_positions)
+        self.fly_poses = Draggable(self.m.on_poses_dragged, acceptDrags=self.m.move_poses)
+        self.viewBox.addItem(self.fly_poses)
 
         self.brushes = []
         alpha = 96
         for dot_fly in range(self.m.nb_flies):
             self.brushes.append(pg.mkBrush(*self.m.fly_colors[dot_fly], alpha))
+
+        self.pose_brushes = []
+        for bodypart in range(self.m.nb_bodyparts):
+            self.pose_brushes.append(pg.mkBrush(*self.m.bodypart_colors[bodypart], alpha))
+        self.pose_brushes = self.pose_brushes * self.m.nb_flies
         
+        self.fly_pens = []
+        for dot_fly in range(self.m.nb_flies):
+            for bodypart in range(self.m.nb_bodyparts):
+                self.fly_pens.append(pg.mkBrush(*self.m.fly_colors[dot_fly], alpha))
+
+
     @property
     def m(self):  # read only access to the model
         return self._m
@@ -396,7 +411,9 @@ class MovieView(_ui_utils.FastImageWidget):
     def annotate_dot(self, frame):
         # mark each fly with uniquely colored dots
         pos = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, self.m.thorax_index])
-        self.fly_positions.setData(pos=pos[:,::-1], symbolBrush=self.brushes, pen=None, size=8)
+        self.fly_positions.setData(pos=pos[:,::-1], 
+                                   symbolBrush=self.brushes, pen=None, size=10,
+                                   acceptDrags=not self.m.move_poses)
         
         # mark *focal* and *other* fly with circle
         for this_fly, color in zip((self.m.focal_fly, self.m.other_fly), self.m.bodypart_colors[[2, 6]]):
@@ -410,14 +427,16 @@ class MovieView(_ui_utils.FastImageWidget):
 
     def annotate_poses(self, frame):
         # TODO use (non-draggable) GraphItem here as well - could even plot skeleton
-        for dot_fly in range(self.m.nb_flies):
-            fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, dot_fly, ...]
-            x_dot = np.clip((fly_pos[..., 0] - self.m.dot_size, fly_pos[..., 0] + self.m.dot_size),
-                            0, self.m.vr.frame_width - 1).astype(np.uintp)
-            y_dot = np.clip((fly_pos[..., 1] - self.m.dot_size, fly_pos[..., 1] + self.m.dot_size),
-                            0, self.m.vr.frame_height - 1).astype(np.uintp)
-            for bodypart_color, x_pos, y_pos in zip(self.m.bodypart_colors, x_dot.T, y_dot.T):
-                frame[slice(*x_pos), slice(*y_pos), :] = bodypart_color
+        poses = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, :])
+        poses = poses.reshape(-1, 2)  # flatten
+        # hard-coded skeleton - should be part of the ds
+        skeleton = np.array([[0, 1], [1, 8], [8, 11],  # body axis
+                             [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7],  # legs
+                             [8, 9], [8, 10]])  # wings
+        self.fly_poses.setData(pos=poses[:,::-1],
+                               adj=skeleton, 
+                               symbolBrush=self.pose_brushes, size=6, 
+                               acceptDrags=self.m.move_poses)
         return frame
 
     def crop_frame(self, frame):

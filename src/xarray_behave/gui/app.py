@@ -61,6 +61,7 @@ class PSV():
         self.old_show_dot_state = self.show_dot
         self.dot_size = 2
         self.show_poses = False
+        self.move_poses = False
         self.circle_size = 8
         self.show_framenumber = False
 
@@ -150,6 +151,9 @@ class PSV():
         self.add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), QtCore.Qt.Key_C,
                                 checkable=True, checked=self.crop)
         self.add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, QtCore.Qt.Key_F)
+        view_video.addSeparator()
+        self.add_keyed_menuitem(view_video, "Move poses", partial(self.toggle, 'move_poses'), QtCore.Qt.Key_B,
+                                checkable=True, checked=self.move_poses)
         view_video.addSeparator()
         self.add_keyed_menuitem(view_video, "Show fly position", partial(self.toggle, 'show_dot'), QtCore.Qt.Key_O,
                                 checkable=True, checked=self.show_dot)
@@ -582,6 +586,16 @@ class PSV():
         logging.info(f'   Moved fly from {pos0} to {pos1}.')
         self.update_frame()
         
+    def on_poses_dragged(self, ind, pos, offset):
+        """Called when dragging a fly body position - will change that pos."""
+        # breakpoint()
+        fly, part = np.unravel_index(ind, (self.nb_flies, self.nb_bodyparts))
+        pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, part]
+        pos1 = [pos.y(), pos.x()]
+        self.ds.pose_positions_allo.data[self.index_other, fly, part] += (pos1 - pos0) 
+        logging.info(f'   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.')
+        self.update_frame()
+       
     def on_video_clicked(self, mouseX, mouseY):
         """Called when clicking the video - will select the focal fly."""
         fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
