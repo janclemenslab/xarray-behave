@@ -228,7 +228,7 @@ class TraceView(pg.PlotWidget):
         event.accept()
         pos = event.pos()
         mouseT = self.getPlotItem().getViewBox().mapSceneToView(pos).x()
-        self.callback(mouseT)   
+        self.callback(mouseT, event.button())   
 
 
 class SpecView(pg.ImageView):

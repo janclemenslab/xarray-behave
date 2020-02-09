@@ -598,31 +598,53 @@ class PSV():
         logging.debug(f"Selected {self.other_fly}.")
         self.update_frame()
 
-    def on_trace_clicked(self, mouseT):
+    def on_trace_clicked(self, mouseT, mouseButton):
         """Called when traceview or specview have been clicked - will add new
         song event at click position.
         """
-        if self.current_event_index is not None:
-            if self.ds.event_categories.data[self.current_event_index] == 'segment':
-                if self.sinet0 is None:
-                    self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-                    self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-                    self.sinet0 = mouseT
-                else:
-                    self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-                    self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-                    self.ds.song_events.sel(time=slice(
-                        *sorted([self.sinet0, mouseT])))[:, self.current_event_index] = True
-                    logging.info(f'  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.')
+        if mouseButton == 1:  # add event
+            if self.current_event_index is not None:
+                if self.ds.event_categories.data[self.current_event_index] == 'segment':
+                    if self.sinet0 is None:
+                        self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+                        self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+                        self.sinet0 = mouseT
+                    else:
+                        self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                        self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                        self.ds.song_events.sel(time=slice(
+                            *sorted([self.sinet0, mouseT])))[:, self.current_event_index] = True
+                        logging.info(f'  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.')
+                        self.sinet0 = None
+                else:  # pulse-like event
                     self.sinet0 = None
-            else:  # pulse-like event
+                    self.ds.song_events.sel(time=mouseT, method='nearest').values[self.current_event_index] = True
+                    logging.info(f'  Added {self.current_event_name} at t={mouseT:1.4f} seconds.')
+                self.update_xy()
+            else:
                 self.sinet0 = None
-                self.ds.song_events.sel(time=mouseT, method='nearest').values[self.current_event_index] = True
-                logging.info(f'  Added {self.current_event_name} at t={mouseT:1.4f} seconds.')
-            self.update_xy()
-        else:
+        elif mouseButton == 2:  #delete nearest event
             self.sinet0 = None
-
+            event_at_mouseT = self.ds.song_events.sel(time=mouseT, method='nearest').data[self.current_event_index]
+            if event_at_mouseT and self.ds.event_categories.data[self.current_event_index] == 'segment':
+                # find segment surrounding the mouseT and delete it
+                array = self.ds.song_events.sel(time=slice(mouseT, None), event_types=self.current_event_name)
+                last_time = array.where(array==0, drop=True)[0].time.values
+                array = self.ds.song_events.sel(time=slice(None, mouseT), event_types=self.current_event_name)
+                first_time = array.where(array==0, drop=True)[-1].time.values    
+                self.ds.song_events.sel(time=slice(first_time, last_time)).data[:, self.current_event_index] = False
+                logging.info(f'  Deleted {self.current_event_name} from {first_time:1.4f} to {last_time:1.4f} seconds.')
+            elif event_at_mouseT and self.ds.event_categories.data[self.current_event_index] == 'event':
+                # find nearest event with N milliseconds of mouseT and delete it
+                tol = 0.05
+                this = self.ds.song_events.sel(time=slice(mouseT-tol, mouseT+tol), event_types=self.current_event_name) 
+                this_eventtimes = this.where(this==1, drop=True)  # event times within the tol range
+                nearest_idx = np.argmin(np.abs(this_eventtimes.time - mouseT))  # get nearest
+                nearest_time = this_eventtimes[nearest_idx].time.values
+                self.ds.song_events.sel(time=nearest_time).data[self.current_event_index] = False
+                logging.info(f'  Deleted {self.current_event_name} at t={nearest_time:1.4f} seconds.')
+            self.update_xy()
+                    
     def play_audio(self, qt_keycode):
         """Play vector as audio using the simpleaudio package."""
 
