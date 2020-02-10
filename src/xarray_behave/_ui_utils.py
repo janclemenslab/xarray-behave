@@ -147,9 +147,19 @@ def detect_events(ds):
             event_times[event_name] = np.stack((onsets, offsets)).T
     return event_times
 
-def eventtimes_to_traces(event_times):
-    pass
+def eventtimes_to_traces(ds, event_times):
+    event_names = ds.song_events.event_types.data
+    event_categories = ds.song_events.event_categories.data
+    for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
+        ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
+        if event_category == 'event':
+            ds.song_events.sel(time=event_times[event_name], event_types=event_name).data[:] = 1
+        elif event_category == 'segment':
+            for onset, offset in zip(event_times[event_name][:,0], event_times[event_name][:,1]):
+                ds.song_events.sel(time=slice(onset, offset), event_types=event_name).data[:] = 1
+    return ds
 
+    
 
 def find_nearest(array, value):
     array = np.asarray(array)
