@@ -127,6 +127,13 @@ class FastImageWidget(pg.GraphicsLayoutWidget):
 
 
 def detect_events(ds):
+    """Transform ds.song_events into dict of event (on/offset) times.
+    Args:
+        ds ([xarray.Dataset]): dataset with song_events
+    
+    Returns:
+        dict: with event times or segment on/offsets.
+    """
     event_times = dict()
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
@@ -147,7 +154,16 @@ def detect_events(ds):
             event_times[event_name] = np.stack((onsets, offsets)).T
     return event_times
 
+
 def eventtimes_to_traces(ds, event_times):
+    """Convert dict of event (on/offset) times into song_events.
+    Args:
+        ds ([xarray.Dataset]): dataset with song_events
+        event_times ([dict]): event times or segment on/offsets.
+    
+    Returns:
+        xarray.Dataset
+    """
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
