@@ -124,3 +124,34 @@ class FastImageWidget(pg.GraphicsLayoutWidget):
             height ([type]): [description]
         """
         self.viewBox.setRange(xRange=(0, width), yRange=(0, height), padding=0)
+
+
+def detect_events(ds):
+    event_times = dict()
+    event_names = ds.song_events.event_types.data
+    event_categories = ds.song_events.event_categories.data
+    for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
+        if event_category == 'event':
+            event_times[event_name] = ds.time.where(ds.song_events[:, event_idx], drop=True).data
+        elif event_category == 'segment':
+            onsets = ds.time.where(ds.song_events[:, event_idx].diff(dim='time') == 1, drop=True).data
+            offsets = ds.time.where(ds.song_events[:, event_idx].diff(dim='time') == -1, drop=True).data
+            if len(onsets) and len(offsets):
+                # ensure onsets and offsets match            
+                offsets = offsets[offsets>np.min(onsets)]
+                onsets = onsets[onsets<np.max(offsets)]
+            if len(onsets) != len(offsets):
+                print('Inconsistent segment onsets or offsets - ignoring all on- and offsets.')
+                onsets = []
+                offsets = []
+            event_times[event_name] = np.stack((onsets, offsets)).T
+    return event_times
+
+def eventtimes_to_traces(event_times):
+    pass
+
+
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
