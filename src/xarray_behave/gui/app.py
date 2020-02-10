@@ -32,7 +32,7 @@ class PSV():
 
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(self, ds, vr=None, cue_points=[], cmap_name: str = 'turbo', box_size: int = 200,
+    def __init__(self, ds, vr=None, event_times=None, cue_points=[], cmap_name: str = 'turbo', box_size: int = 200,
                  fmin=None, fmax=None):
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         # build model:
@@ -40,6 +40,7 @@ class PSV():
         # self.m = views.Model(ds)
         self.vr = vr
         self.cue_points = cue_points
+        self.event_times = event_times
 
         self.box_size = box_size
         self.fmin = fmin
@@ -484,48 +485,34 @@ class PSV():
             self.movie_view.update_frame()
             self.app.processEvents()
 
-    def get_events_in_range(self, x, event_type):
-        event_trace = self.ds.song_events.data[int(self.index_other - self.span_index):
-                                                int(self.index_other + self.span_index),
-                                                event_type]
-        d_event_trace = np.diff(event_trace.astype(np.int))
-        event_onset_indices = x[np.where(d_event_trace > 0)[0] * int(1 / self.fs_other * self.fs_song)]
-        event_offset_indices = x[np.where(d_event_trace < 0)[0] * int(1 / self.fs_other * self.fs_song)]
-
-        # FIXME both will fail if there is only a single but incomplete sine song in the x-range since the respective other will have zero length
-        # first offset outside of x-range
-        if len(event_offset_indices) and len(event_onset_indices) and event_offset_indices[0] < event_onset_indices[0]:
-            event_onset_indices = np.pad(event_onset_indices, (1, 0), mode='constant',
-                                            constant_values=x[0])  # add additional onset at x[0] boundary
-        # last offset outside of x-range
-        if len(event_offset_indices) and len(event_onset_indices) and event_offset_indices[-1] < event_onset_indices[-1]:
-            # add additional offset at x[-1] boundary
-            event_offset_indices = np.pad(event_offset_indices, (0, 1), mode='constant', constant_values=x[-1])
-        return event_onset_indices, event_offset_indices
-
     def plot_song_events(self, x):
         for event_type in range(self.nb_eventtypes):
             movable = self.STOP and self.movable_events
+            event_name = self.ds.event_types.values[event_type]
             if self.move_only_current_events:
                 movable = movable and self.current_event_index==event_type
 
-            if self.show_manualonly and 'manual' not in self.ds.event_types.values[event_type]:
+            if self.show_manualonly and 'manual' not in event_name:
                 continue
             event_pen = pg.mkPen(color=self.eventype_colors[event_type], width=1)
             event_brush = pg.mkBrush(color=[*self.eventype_colors[event_type], 25])
-
+            
+            this = self.event_times[event_name]
             if self.ds.event_categories.data[event_type] == 'segment':
-                event_onset_indices, event_offset_indices = self.get_events_in_range(x, event_type)
-                for onset, offset in zip(event_onset_indices, event_offset_indices):
-                    self.slice_view.add_segment(onset, offset, event_type, event_brush, movable=movable)
-                    if self.show_spec:
-                        self.spec_view.add_segment(onset, offset, event_type, event_brush, movable=movable)            
-            else:
-                event_trace = self.ds.song_events.data[int(self.index_other - self.span_index):
-                                                       int(self.index_other + self.span_index) - 1,
-                                                       event_type]
-                event_indices = np.where(event_trace)[0] * int(1 / self.fs_other * self.fs_song)
-                events = x[event_indices]
+                event_onset_indices = this[np.logical_and(this[:,0]>x[0], this[:,0]<x[-1]), 0]
+                event_offset_indices = this[np.logical_and(this[:,1]>x[0], this[:,1]<x[-1]), 1]
+                # ensure onsets and offsets match
+                # TODO plot partial segments
+                if len(event_onset_indices) and len(event_offset_indices):
+                    # breakpoint()
+                    event_offset_indices = event_offset_indices[event_offset_indices>np.min(event_onset_indices)]
+                    event_onset_indices = event_onset_indices[event_onset_indices<np.max(event_offset_indices)]
+                    for onset, offset in zip(event_onset_indices, event_offset_indices):
+                        self.slice_view.add_segment(onset, offset, event_type, event_brush, movable=movable)
+                        if self.show_spec:
+                            self.spec_view.add_segment(onset, offset, event_type, event_brush, movable=movable)            
+            elif len(this):
+                events = this[np.logical_and(this>x[0], this<x[-1])]
                 if len(events):
                     self.slice_view.add_event(events, event_type, event_pen, movable=movable)
                     if self.show_spec:
@@ -556,11 +543,13 @@ class PSV():
         f = scipy.interpolate.interp1d(region.xrange, self.trange, 
                                        bounds_error=False, fill_value='extrapolate')
         new_region = f(region.getRegion())
-        # remove old segment in events
-        self.ds.song_events.sel(time=slice(*region.bounds))[:, region.event_index] = False
-        self.ds.song_events.sel(time=slice(*new_region))[:, region.event_index] = True
+        # replace segment in events
+        this = self.event_times[self.current_event_name]
+        event_idx = np.where(np.logical_and(this[:,0]==region.bounds[0], 
+                                            this[:,1]==region.bounds[1]))
+        this[event_idx, :] = new_region    
         logging.info(f'  Moved {self.current_event_name} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
-        # self.update_xy()
+        self.update_xy()
 
     def on_position_change_finished(self, position):
         """Called when dragging an event-like song_event - will change time."""
@@ -573,8 +562,8 @@ class PSV():
                                        bounds_error=False, fill_value='extrapolate')
         new_position = f(position.pos()[0])
         # set new position in ds
-        self.ds.song_events.sel(time=position.position)[position.event_index] = False
-        self.ds.song_events.sel(time=new_position, method='nearest')[position.event_index] = True
+        this = self.event_times[self.current_event_name]
+        this[np.where(this==position.position)] = new_position
         logging.info(f'  Moved {self.ds.event_types.values[position.event_index]} from t=[{position.position:1.4f} to {new_position:1.4f} seconds.')
         self.update_xy()
 
@@ -616,6 +605,8 @@ class PSV():
         """Called when traceview or specview have been clicked - will add new
         song event at click position.
         """
+        if self.current_event_index is None:
+            return
         if mouseButton == 1:  # add event
             if self.current_event_index is not None:
                 if self.ds.event_categories.data[self.current_event_index] == 'segment':
@@ -626,37 +617,36 @@ class PSV():
                     else:
                         self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
                         self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-                        self.ds.song_events.sel(time=slice(
-                            *sorted([self.sinet0, mouseT])))[:, self.current_event_index] = True
+                        self.event_times[self.current_event_name] = np.concatenate((self.event_times[self.current_event_name],
+                                                                                    np.array(sorted([self.sinet0, mouseT]))[np.newaxis,:]),
+                                                                                   axis=0)
                         logging.info(f'  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.')
                         self.sinet0 = None
                 else:  # pulse-like event
                     self.sinet0 = None
-                    self.ds.song_events.sel(time=mouseT, method='nearest').values[self.current_event_index] = True
+                    self.event_times[self.current_event_name] = np.append(self.event_times[self.current_event_name], mouseT)
                     logging.info(f'  Added {self.current_event_name} at t={mouseT:1.4f} seconds.')
                 self.update_xy()
             else:
                 self.sinet0 = None
         elif mouseButton == 2:  #delete nearest event
             self.sinet0 = None
-            event_at_mouseT = self.ds.song_events.sel(time=mouseT, method='nearest').data[self.current_event_index]
-            if event_at_mouseT and self.ds.event_categories.data[self.current_event_index] == 'segment':
-                # find segment surrounding the mouseT and delete it
-                array = self.ds.song_events.sel(time=slice(mouseT, None), event_types=self.current_event_name)
-                last_time = array.where(array==0, drop=True)[0].time.values
-                array = self.ds.song_events.sel(time=slice(None, mouseT), event_types=self.current_event_name)
-                first_time = array.where(array==0, drop=True)[-1].time.values    
-                self.ds.song_events.sel(time=slice(first_time, last_time)).data[:, self.current_event_index] = False
-                logging.info(f'  Deleted {self.current_event_name} from {first_time:1.4f} to {last_time:1.4f} seconds.')
-            elif event_at_mouseT and self.ds.event_categories.data[self.current_event_index] == 'event':
-                # find nearest event with N milliseconds of mouseT and delete it
+            this = self.event_times[self.current_event_name]        
+            if self.ds.event_categories.data[self.current_event_index] == 'segment':
+                nearest_onset = float(_ui_utils.find_nearest(this[:,0], mouseT))
+                event_idx = np.where(this[:, 0]==nearest_onset)[0]
+                matching_offset = float(this[event_idx, 1])
+                event_at_mouseT = matching_offset > mouseT
+                if event_at_mouseT:
+                    self.event_times[self.current_event_name] = np.delete(this, event_idx, axis=0)
+                    logging.info(f'  Deleted {self.current_event_name} from {nearest_onset:1.4f} to {matching_offset:1.4f} seconds.')
+            elif self.ds.event_categories.data[self.current_event_index] == 'event':
                 tol = 0.05
-                this = self.ds.song_events.sel(time=slice(mouseT-tol, mouseT+tol), event_types=self.current_event_name) 
-                this_eventtimes = this.where(this==1, drop=True)  # event times within the tol range
-                nearest_idx = np.argmin(np.abs(this_eventtimes.time - mouseT))  # get nearest
-                nearest_time = this_eventtimes[nearest_idx].time.values
-                self.ds.song_events.sel(time=nearest_time).data[self.current_event_index] = False
-                logging.info(f'  Deleted {self.current_event_name} at t={nearest_time:1.4f} seconds.')
+                nearest_event = _ui_utils.find_nearest(this, mouseT)
+                event_at_mouseT = np.abs(mouseT - nearest_event) < tol
+                if len(event_at_mouseT):
+                    self.event_times[self.current_event_name] = np.delete(this, np.where(this==nearest_event)[0])
+                    logging.info(f'  Deleted {self.current_event_name} at t={nearest_event:1.4f} seconds.')
             self.update_xy()
                     
     def play_audio(self, qt_keycode):
@@ -721,6 +711,8 @@ class PSV():
             logging.info(f'   Done.')
 
     def save_annotations(self, qt_keycode):
+        logging.info('   Updating song events')
+        self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}_songmanual.zarr")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save annotations to', str(savefilename),
@@ -732,6 +724,8 @@ class PSV():
             logging.info(f'   Done.')
 
     def save_dataset(self, qt_keycode):
+        logging.info('   Updating song events')
+        self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}.zarr")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self.win, 'Save dataset to', str(savefilename),
@@ -811,6 +805,8 @@ def main(datename: str, *,
     if os.path.exists(datename + '.zarr') or os.path.exists(datename):
         is_ds = True
         loadname = datename if os.path.exists(datename) else datename+'.zarr'
+    else:
+        is_ds = False
         
     if not ignore_existing and is_ds:  #os.path.exists(datename + '.zarr'):
         logging.info(f'Loading ds from {loadname}.')
@@ -850,6 +846,11 @@ def main(datename: str, *,
                                (('event_types'),
                                event_categories)}) 
 
+    # detect all event times and segment on/offsets
+    if 'song_events' in ds:
+        event_times = _ui_utils.detect_events(ds)
+    else:
+        event_times = dict()
     logging.info(ds)
     filepath = ds.attrs['video_filename']
     vr = None
@@ -860,14 +861,14 @@ def main(datename: str, *,
         except:
             video_filename = filepath[:-3] + 'avi'
             vr = _ui_utils.VideoReaderNP(video_filename)
-        print(vr)
+        logging.info(vr)
     except FileNotFoundError:
-        print(f'Video "{video_filename}" not found. Continuing without.')
+        logging.info(f'Video "{video_filename}" not found. Continuing without.')
     except:
-        print(f'Something went wrong when loading the video. Continuing without.')
+        logging.info(f'Something went wrong when loading the video. Continuing without.')
 
     cue_points = eval(cue_points)
-    PSV(ds, vr, cue_points, cmap_name, box_size=box_size, fmin=spec_freq_min, fmax=spec_freq_max)
+    PSV(ds, vr, event_times, cue_points, cmap_name, box_size=box_size, fmin=spec_freq_min, fmax=spec_freq_max)
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
