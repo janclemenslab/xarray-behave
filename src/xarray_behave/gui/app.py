@@ -646,7 +646,7 @@ class PSV():
                 tol = 0.05
                 nearest_event = _ui_utils.find_nearest(this, mouseT)
                 event_at_mouseT = np.abs(mouseT - nearest_event) < tol
-                if len(event_at_mouseT):
+                if event_at_mouseT:
                     self.event_times[self.current_event_name] = np.delete(this, np.where(this==nearest_event)[0])
                     logging.info(f'  Deleted {self.current_event_name} at t={nearest_event:1.4f} seconds.')
             self.update_xy()
