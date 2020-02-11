@@ -401,6 +401,8 @@ class MovieView(_ui_utils.FastImageWidget):
             if 'pose_positions_allo' in self.m.ds:
                 if self.m.show_poses:
                     frame = self.annotate_poses(frame)
+                else:
+                    self.fly_poses.setData()
                 if self.m.show_dot:
                     frame = self.annotate_dot(frame)
                 if self.m.crop:
