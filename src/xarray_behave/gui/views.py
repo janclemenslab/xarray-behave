@@ -12,6 +12,10 @@ from typing import Tuple
 from .. import xarray_behave as xb
 from .. import _ui_utils
 
+
+logging.basicConfig(level=logging.INFO)
+
+
 # add io etc. 
 class Model():
 
@@ -88,6 +92,7 @@ class Draggable(pg.GraphItem):
         self.dragOffset = None
         self.textItems = []
         self.acceptDrags = acceptDrags
+        self.focalFly = None
         super().__init__()
         self.callback = callback
     
@@ -101,6 +106,11 @@ class Draggable(pg.GraphItem):
         self.setTexts(self.text)
         if 'acceptDrags' in kwds:
             self.acceptDrags = kwds['acceptDrags']
+        if 'focalFly' in kwds:
+            self.focalFly = kwds['focalFly']
+        else:
+            self.focalFly = None
+
         self.updateGraph()
         
     def setTexts(self, text):
@@ -122,6 +132,7 @@ class Draggable(pg.GraphItem):
         if ev.button() != QtCore.Qt.LeftButton or not self.acceptDrags:
             ev.ignore()
             return
+        # breakpoint()
         
         if ev.isStart():
             # We are already one step into the drag.
@@ -132,8 +143,20 @@ class Draggable(pg.GraphItem):
             if len(pts) == 0:
                 ev.ignore()
                 return
-            self.dragPoint = pts[0]
-            ind = pts[0].data()[0]
+
+            if ev.modifiers() == QtCore.Qt.ControlModifier and self.focalFly is not None:
+                inds = [pt.data()[0] for pt in pts]
+                if self.focalFly not in inds:
+                    logging.info(f'   Did not drag focal fly {self.focalFly} - dragged {inds}. Ignoring.')
+                    ev.ignore()
+                    return
+                else:
+                    logging.info(f'   Dragged focal fly {self.focalFly} - dragged {inds}. Moving.')
+                    self.dragPoint = pts[inds.index(self.focalFly)]
+                    ind = self.dragPoint.data()[0]
+            else:
+                self.dragPoint = pts[0]
+                ind = self.dragPoint.data()[0]
             self.dragOffset = self.data['pos'][ind] - pos
         elif ev.isFinish():
             # when draggin is done, update the model
@@ -406,7 +429,6 @@ class MovieView(_ui_utils.FastImageWidget):
                 if self.m.show_dot:
                     frame = self.annotate_dot(frame)
                 if self.m.crop:
-                    # frame_x, x_range, y_range = np.ascontiguousarray(self.crop_frame(frame))
                     x_range, y_range = self.crop_frame(frame)
                 else:
                     x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
@@ -423,7 +445,8 @@ class MovieView(_ui_utils.FastImageWidget):
         pos = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, self.m.thorax_index])
         self.fly_positions.setData(pos=pos[:,::-1], 
                                    symbolBrush=self.brushes, pen=None, size=10,
-                                   acceptDrags=not self.m.move_poses)
+                                   acceptDrags=not self.m.move_poses,
+                                   focalFly=self.m.focal_fly)
         
         # mark *focal* and *other* fly with circle
         for this_fly, color in zip((self.m.focal_fly, self.m.other_fly), self.m.bodypart_colors[[2, 6]]):
