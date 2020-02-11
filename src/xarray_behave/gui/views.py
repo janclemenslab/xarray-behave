@@ -381,6 +381,14 @@ class MovieView(_ui_utils.FastImageWidget):
             for bodypart in range(self.m.nb_bodyparts):
                 self.fly_pens.append(pg.mkBrush(*self.m.fly_colors[dot_fly], alpha))
 
+        # build skeletons
+        skeleton = np.array([[0, 1], [1, 8], [8, 11],  # body axis
+                             [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7],  # legs
+                             [8, 9], [8, 10]])  # wings
+        self.skeletons = np.zeros((0, 2), dtype=np.uint)
+        for dot_fly in range(self.m.nb_flies):
+            self.skeletons = np.append(self.skeletons, self.m.nb_bodyparts * dot_fly + skeleton, axis=0)
+        self.skeletons = self.skeletons.astype(np.uint)
 
     @property
     def m(self):  # read only access to the model
@@ -429,12 +437,8 @@ class MovieView(_ui_utils.FastImageWidget):
         # TODO use (non-draggable) GraphItem here as well - could even plot skeleton
         poses = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, :])
         poses = poses.reshape(-1, 2)  # flatten
-        # hard-coded skeleton - should be part of the ds
-        skeleton = np.array([[0, 1], [1, 8], [8, 11],  # body axis
-                             [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7],  # legs
-                             [8, 9], [8, 10]])  # wings
         self.fly_poses.setData(pos=poses[:,::-1],
-                               adj=skeleton, 
+                               adj=self.skeletons, 
                                symbolBrush=self.pose_brushes, size=6, 
                                acceptDrags=self.m.move_poses)
         return frame
