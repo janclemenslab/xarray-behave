@@ -474,6 +474,9 @@ def load_times(filepath_timestamps, filepath_daq):
     with h5py.File(filepath_timestamps, 'r') as f:
         cam_stamps = f['timeStamps'][:]
 
+    # time stamps at idx 0 can be a little wonky - so use the information embedded in the image
+    shutter_times = cam_stamps[:,1] + cam_stamps[:,2]/1000000;  # time of "Shutter OFF"
+
     # DAQ time stamps
     with h5py.File(filepath_daq, 'r') as f:
         daq_stamps = f['systemtime'][:]
@@ -487,8 +490,7 @@ def load_times(filepath_timestamps, filepath_daq):
     nb_seconds_per_interval = nb_seconds_per_interval[0]
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
-
-    ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=cam_stamps[:, 0], sample_numbers=daq_samplenumber[:, 0])
+    ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=shutter_times, sample_numbers=daq_samplenumber[:, 0])
     # different refs:
     # s0 = ss.sample_time(0)  # first sample is 0 seconds
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - s0, frame_times=cam_stamps[:, 0] - s0, sample_numbers=daq_samplenumber[:, 0])
