@@ -140,7 +140,7 @@ def detect_events(ds):
     event_categories = ds.song_events.event_categories.data
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         if event_category == 'event':
-            event_times[event_name] = ds.time.where(ds.song_events[:, event_idx], drop=True).data
+            event_times[event_name] = ds.time.where(ds.song_events[:, event_idx] == 1, drop=True).data
         elif event_category == 'segment':
             onsets = ds.time.where(ds.song_events[:, event_idx].diff(dim='time') == 1, drop=True).data
             offsets = ds.time.where(ds.song_events[:, event_idx].diff(dim='time') == -1, drop=True).data
@@ -170,7 +170,10 @@ def eventtimes_to_traces(ds, event_times):
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
         if event_category == 'event':
-            ds.song_events.sel(time=event_times[event_name], event_types=event_name).data[:] = 1
+            times = ds.time.sel(time=event_times[event_name], method='nearest').data
+            for time in times:
+                idx = np.where(ds.time==time)[0]
+                ds.song_events[idx, event_idx] = 1
         elif event_category == 'segment':
             for onset, offset in zip(event_times[event_name][:,0], event_times[event_name][:,1]):
                 ds.song_events.sel(time=slice(onset, offset), event_types=event_name).data[:] = 1
