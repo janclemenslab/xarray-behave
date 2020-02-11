@@ -631,6 +631,8 @@ class PSV():
                 self.sinet0 = None
         elif mouseButton == 2:  #delete nearest event
             self.sinet0 = None
+            self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+            self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             this = self.event_times[self.current_event_name]        
             if self.ds.event_categories.data[self.current_event_index] == 'segment':
                 nearest_onset = float(_ui_utils.find_nearest(this[:,0], mouseT))
