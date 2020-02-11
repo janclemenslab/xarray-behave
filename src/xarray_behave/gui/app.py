@@ -595,7 +595,7 @@ class PSV():
                                                           self.thorax_index] + self.box_size / 2
             box_center = np.array(box_center)  # in case this is a dask.array
             fly_pos = fly_pos - box_center
-        fly_dist = np.sum((fly_pos - np.array([mouseX, mouseY]))**2, axis=-1)
+        fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX]))**2, axis=-1)
         fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
         self.other_fly = np.argmin(fly_dist)
         logging.debug(f"Selected {self.other_fly}.")
