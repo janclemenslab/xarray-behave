@@ -570,7 +570,10 @@ class PSV():
     def on_position_dragged(self, fly, pos, offset):
         """Called when dragging a fly body position - will change that pos."""
         pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, self.thorax_index]
-        pos1 = [pos.y(), pos.x()]
+        try:
+            pos1 = [pos.y(), pos.x()]
+        except:
+            pos1 = pos
         self.ds.pose_positions_allo.data[self.index_other, fly, :] += (pos1 - pos0) 
         logging.info(f'   Moved fly from {pos0} to {pos1}.')
         self.update_frame()
@@ -580,25 +583,31 @@ class PSV():
         # breakpoint()
         fly, part = np.unravel_index(ind, (self.nb_flies, self.nb_bodyparts))
         pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, part]
-        pos1 = [pos.y(), pos.x()]
+        try:
+            pos1 = [pos.y(), pos.x()]
+        except:
+            pos1 = pos
         self.ds.pose_positions_allo.data[self.index_other, fly, part] += (pos1 - pos0) 
         logging.info(f'   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.')
         self.update_frame()
        
-    def on_video_clicked(self, mouseX, mouseY):
+    def on_video_clicked(self, mouseX, mouseY, event):
         """Called when clicking the video - will select the focal fly."""
-        fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
-        fly_pos = np.array(fly_pos)  # in case this is a dask.array
-        if self.crop:  # transform fly pos to coordinates of the cropped box
-            box_center = self.ds.pose_positions_allo.data[self.index_other,
-                                                          self.focal_fly,
-                                                          self.thorax_index] + self.box_size / 2
-            box_center = np.array(box_center)  # in case this is a dask.array
-            fly_pos = fly_pos - box_center
-        fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX]))**2, axis=-1)
-        fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
-        self.other_fly = np.argmin(fly_dist)
-        logging.debug(f"Selected {self.other_fly}.")
+        if event.modifiers() == QtCore.Qt.ControlModifier and self.focal_fly is not None:
+            self.on_position_dragged(self.focal_fly, pos=[mouseY, mouseX], offset=None)
+        else:
+            fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
+            fly_pos = np.array(fly_pos)  # in case this is a dask.array
+            if self.crop:  # transform fly pos to coordinates of the cropped box
+                box_center = self.ds.pose_positions_allo.data[self.index_other,
+                                                            self.focal_fly,
+                                                            self.thorax_index] + self.box_size / 2
+                box_center = np.array(box_center)  # in case this is a dask.array
+                fly_pos = fly_pos - box_center
+            fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX]))**2, axis=-1)
+            fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
+            self.other_fly = np.argmin(fly_dist)
+            logging.debug(f"Selected {self.other_fly}.")
         self.update_frame()
 
     def on_trace_clicked(self, mouseT, mouseButton):
