@@ -432,6 +432,8 @@ class MovieView(_ui_utils.FastImageWidget):
                     x_range, y_range = self.crop_frame(frame)
                 else:
                     x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
+            else:
+                x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
 
             self.setImage(frame, auto_scale=True)
             self.viewBox.setRange(xRange=y_range, yRange=x_range)
