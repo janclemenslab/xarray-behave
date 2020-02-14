@@ -208,10 +208,11 @@ class PSV():
         view_audio.addSeparator()
         for ii in range(self.cb.count()):
             self.cb.itemText(ii)
+            key = eval(f'QtCore.Qt.Key_{ii}') if ii<10 else None
             self.add_keyed_menuitem(view_audio,
                                     self.cb.itemText(ii),
                                     self.change_event_type,
-                                    eval(f'QtCore.Qt.Key_{ii}'))
+                                    key)
 
         # CHANNEL selector
         self.cb2 = pg.QtGui.QComboBox()
