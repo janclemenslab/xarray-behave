@@ -154,7 +154,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             with_segmentation_manual = True
             logging.debug(f'   {filepath_segmentation_manual} loaded.')
         elif os.path.exists(filepath_segmentation_manual_matlab):
-            manual_events_seconds = ld.load_manual_annotation_matlab(filepath_segmentation_manual_matlab)
+            manual_events_seconds, event_categories = ld.load_manual_annotation_matlab(filepath_segmentation_manual_matlab)
             with_segmentation_manual_matlab = True
             logging.debug(f'   {filepath_segmentation_manual_matlab} loaded.')
         else:
