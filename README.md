@@ -3,7 +3,8 @@
 ## Installation
 First, manually install dependencies:
 ```shell
-conda install numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz pytables
+conda install pyside2 numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz pytables
+conda install pysoundfile -c conda-forge
 pip install git+http://github.com/janclemenslab/samplestamps
 pip install flammkuchen
 ```

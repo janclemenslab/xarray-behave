@@ -17,8 +17,8 @@ setup(name='xarray_behave',
       license='MIT',
       packages=find_packages('src'),
       package_dir={'': 'src'},
-      install_requires=['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen'],
-      extras_require={'gui': ['pyqtgraph', 'simpleaudio', 'scikit-image', 'opencv-python']},
+      install_requires=['PySide2', 'numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen', 'pysoundfile'],
+      extras_require={'gui': ['pyside2', 'pyqtgraph', 'simpleaudio', 'scikit-image', 'opencv-python']},
       include_package_data=True,
       zip_safe=False
      )
