@@ -160,20 +160,20 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         else:
             logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual} or {filepath_segmentation_manual_matlab}.')
 
-    
+
     # PREPARE sample/time/framenumber grids
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
     first_sample = 0
     last_sample = int(last_sample_with_frame)
     ref_time = ss.sample_time(0)  # 0 seconds = first DAQ sample
     # time in seconds for each sample in the song recording
-    sampletime = ss.sample_time(np.arange(first_sample, last_sample)) - ref_time    
-    
+    sampletime = ss.sample_time(np.arange(first_sample, last_sample)) - ref_time
+
     # build interpolator to get neareast frame for each sample in the new grid
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
     interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
-                                              kind='nearest', bounds_error=False, fill_value=np.nan)    
+                                              kind='nearest', bounds_error=False, fill_value=np.nan)
     # construct desired sample grid for data
     step = int(sampling_rate / target_sampling_rate)
     if resample_video_data:
@@ -236,7 +236,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     if with_segmentation or with_segmentation_matlab:
         for event_name, event_indices in zip(res['event_names'], res['event_indices']):
             events[event_name + '_auto'] = event_indices
-                
+
     if with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab:
         eventtypes = [*events.keys()]
         song_events_np = np.full((len(time), len(eventtypes)), False, dtype=np.bool)  # pre-allocate grid holding event data
@@ -259,7 +259,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         eventtypes_p = []
         for index, event_type in enumerate(manual_events_ds.event_types.values):
             eventtypes_p.append(event_type.decode("utf-8") if isinstance(event_type, bytes) else event_type)
-            
+
         # HACK zarr (or xarray) cuts off long string keys in event-types
         fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
         for index, eventtype in enumerate(eventtypes_p):
@@ -510,10 +510,10 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
 
         # wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
         # wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
-        # wing_angle_sum = wing_angle_left + wing_angle_right
+        # wing_angle_sum = mt.internal_angle(wing_left,thoraces,wing_right)
         wing_angle_left = mt.internal_angle(wing_left,thoraces,heads)
         wing_angle_right = mt.internal_angle(wing_right,thoraces,heads)
-        wing_angle_sum = mt.internal_angle(wing_left,thoraces,wing_right)
+        wing_angle_sum = wing_angle_left + wing_angle_right
 
         list_absolute = [
             angles, rotational_speed, rotational_acc,
@@ -585,7 +585,7 @@ def save(savepath, dataset):
     """
     with zarr.ZipStore(savepath, mode='w') as zarr_store:
         ## re-chunking does not seem to help with IO speed upon lazy loading
-        # chunks = dict(dataset.dims) 
+        # chunks = dict(dataset.dims)
         # chunks['time'] = 100_000
         # chunks['sampletime'] = 100_000
         # dataset = dataset.chunk(chunks)
@@ -653,6 +653,6 @@ def from_wav(filepath, target_sampling_rate=1_000):
     ds.attrs = {'video_filename': '',
                      'datename': datename,
                      'root': '', 'dat_path': '', 'res_path': '',
-                     'sampling_rate_Hz': sampling_rate,                               
+                     'sampling_rate_Hz': sampling_rate,
                      'target_sampling_rate_Hz': target_sampling_rate}
     return ds
