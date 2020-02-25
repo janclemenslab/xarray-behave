@@ -1,0 +1,47 @@
+main:
+  
+- name: data_dir
+  label: data directory
+  type: file_dir
+  default: " "
+
+- name: target_samplingrate
+  label: Target sampling rate (0=use frametimes)
+  type: int
+  range: 0,1000000
+  default: 1000
+
+- name: spec_freq_min
+  label: Min freq in spec display
+  type: float
+  range: 1.0, 1000000.0
+  default: 1.0
+
+- name: spec_freq_max
+  label: Max freq in spec display
+  type: float
+  range: 1.0, 1000000.0
+
+- name: ignore_song
+  label: Ignore song
+  type: bool
+  default: False
+
+- name: init_annotations
+  label: Initialize annotations
+  type: stacked
+  default: "no"
+  options: "no,yes"
+  
+  "no":
+
+  "yes":
+  - name: events
+    label: Event names and categories (event, segment)
+    type: string
+    default: "syllable,segment"
+
+- name: generate
+  label: Load data and generate dataset
+  type: button
+  default: main action

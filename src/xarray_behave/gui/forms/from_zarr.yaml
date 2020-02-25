@@ -1,0 +1,27 @@
+main:
+  
+- name: zarr_filename
+  label: Dataset filename
+  type: file_open
+  default: " "
+  
+- name: spec_freq_min
+  label: Min freq in spec display
+  type: float
+  range: 1.0, 1000000.0
+  default: 1.0
+
+- name: spec_freq_max
+  label: Max freq in spec display
+  type: float
+  range: 1.0, 1000000.0
+
+- name: lazy
+  label: Lazy load data
+  type: bool
+  default: True
+
+- name: generate
+  label: Load dataset
+  type: button
+  default: main action

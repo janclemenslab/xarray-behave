@@ -1,0 +1,29 @@
+main:
+  
+- name: event
+  label: Event name  # add overwrite warning
+  type: string
+  default: DeepSS
+
+- name: threshold
+  label: Threshold
+  type: float
+  default: 0.5
+  range: 0,1
+
+- name: hold_time
+  label: Hold time (seconds)
+  type: float
+  default: 0
+  range: 0,1000000
+
+- name: min_dur
+  label: Minimal duration (seconds)
+  type: float
+  default: 0
+  range: 0,1000000
+
+- name: save_button
+  label: Update labels
+  type: button
+  default: main action

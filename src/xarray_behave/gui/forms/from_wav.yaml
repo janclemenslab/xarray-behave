@@ -1,0 +1,47 @@
+main:
+  
+- name: wav_filename
+  label: Wave file
+  type: file_open
+  default: " "
+  
+- name: load_csv_annotations
+  label: Load annotations from csv
+  type: stacked
+  default: "no"
+  options: "no,yes"
+  
+  "no":
+
+  "yes":
+    - name: filename
+      label: CSV file
+      type: file_open
+      default: " "
+    
+- name: events
+  label: Event names and categories (event, segment)
+  type: string
+  default: "syllable,segment"
+
+- name: event_samplerate
+  label: Samplerate for events in Hz (Defaults to samplerate of the recording)
+  type: int
+  range: 1,1000000
+  default: 1000
+
+- name: spec_freq_min
+  label: Min freq in spec display
+  type: float
+  range: 1.0, 1000000.0
+  default: 1.0
+
+- name: spec_freq_max
+  label: Max freq in spec display
+  type: float
+  range: 1.0, 1000000.0
+
+- name: generate
+  label: Load data and generate dataset
+  type: button
+  default: main action

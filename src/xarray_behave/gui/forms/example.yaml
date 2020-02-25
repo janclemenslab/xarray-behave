@@ -1,0 +1,106 @@
+main:
+
+- name: data_dir
+  label: Data directory
+  type: file_dir
+  default: " "
+  
+- name: save_dir
+  label: Save directory
+  type: file_dir
+  default: " "
+  
+
+- name: preprocess
+  label: Downsampling frontend
+  type: stacked
+  default: "None"
+  options: "None,stft,tcn"
+  
+  "None":
+
+  tcn:
+    - name: tcn
+      label: Downsampling factor (stride)
+      type: int
+      default: 4
+      range: 1,100
+  stft:
+    - name: stft
+      label: Downsampling factor (stride)
+      type: int
+      default: 4
+      range: 1,100
+
+- name: architecture
+  label: Architecture
+  type: stacked
+  default: "TCN"
+  options: "TCN,FCN"
+
+  TCN:
+    - name: nb_filters
+      label: Number of filters
+      type: int
+      default: 20
+      range: 1,3000
+    - name: kernel_size
+      label: Filter duration
+      type: int
+      default: 16
+
+  FCN:
+    - name: nb_filters
+      label: Number of filters
+      type: int
+      default: 20
+      range: 1,3000
+    - name: kernel_size
+      label: Filter duration
+      type: int
+      default: 16
+
+- name: learning_rate
+  label: Learning rate
+  type: float
+  default: 0.0001
+
+- name: nb_epochs
+  label: Number of epochs
+  type: int
+  default: 100
+
+- name: nb_steps
+  label: Steps per epoch
+  type: int
+  default: 100
+
+- name: reduce_lr
+  label: Reduce learning rate
+  type: stacked
+  default: "no"
+  options: "no,yes"
+  
+  "no":
+
+  "yes":
+    - name: patience
+      label: Patience
+      type: int
+      default: 4
+
+
+- name: export_button
+  label: Load config
+  type: button
+  default: main action
+
+- name: export_button
+  label: Save config
+  type: button
+  default: main action
+
+- name: save_button
+  label: Start training
+  type: button
+  default: main action

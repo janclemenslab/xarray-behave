@@ -21,6 +21,7 @@ cuepoints: string evaluating to a list (e.g. '[100, 50000, 100000]' - including 
 import os
 import sys
 import logging
+# import PySide2
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 from . import xarray_behave as xb

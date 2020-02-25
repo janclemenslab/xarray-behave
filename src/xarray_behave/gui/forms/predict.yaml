@@ -1,0 +1,40 @@
+main:
+  
+- name: model_path
+  label: model
+  type: file_open
+  default: " "
+
+- name: event
+  label: Batch size
+  type: int
+  default: 32
+  range: 1,1000000
+
+- name: event
+  label: Event name
+  type: string
+  default: DeepSS
+
+- name: threshold
+  label: Threshold
+  type: float
+  default: 0.5
+  range: 0,1
+
+- name: hold_time
+  label: Hold time (seconds)
+  type: float
+  default: 0
+  range: 0,1000000
+
+- name: min_dur
+  label: Minimal duration (seconds)
+  type: float
+  default: 0
+  range: 0,1000000
+
+- name: save_button
+  label: Start inference
+  type: button
+  default: main action

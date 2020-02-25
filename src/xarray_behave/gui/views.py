@@ -1,6 +1,6 @@
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore
-from PyQt5.QtGui import QImage, QPixmap
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+# from PySide2.QtGui import QImage, QPixmap
 import numpy as np
 import skimage.draw
 import scipy.signal
@@ -11,7 +11,8 @@ from typing import Tuple
 
 from .. import xarray_behave as xb
 from .. import _ui_utils
-
+from . import formbuilder
+from . import app
 
 logging.basicConfig(level=logging.INFO)
 
@@ -30,7 +31,7 @@ class Model():
         ds = xb.load(filename)
         return cls(ds)
 
-
+     
 class SegmentItem(pg.LinearRegionItem):
 
     def __init__(self, bounds: Tuple[float, float], event_index: int, xrange,
@@ -184,7 +185,7 @@ class TraceView(pg.PlotWidget):
 
     def __init__(self, model, callback):
         # additionally make names of trace and event arrays in ds args?
-        super().__init__(name="song")
+        super().__init__()
         self.setMouseEnabled(x=False, y=False)
         # this should be just a link/ref so changes in ds made by the controller will propagate
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
@@ -322,14 +323,14 @@ class SpecView(pg.ImageView):
         f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=self.spec_win,
                                              noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
         self.spec_t = t
-
+        
         if self.m.fmax is not None:
-            f_idx1 = np.argmax(f > self.m.fmax)
+            f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)  
         else:
             f_idx1 = -1
         
         if self.m.fmin is not None:
-            f_idx0 = np.argmax(f > self.m.fmin)
+            f_idx0 = np.argmax(f >= self.m.fmin)
         else:
             f_idx0 = 0
 
@@ -487,4 +488,4 @@ class MovieView(_ui_utils.FastImageWidget):
         event.accept()
         pos = event.pos()
         mouseX, mouseY = int(pos.x()), int(pos.y())
-        self.callback(mouseX, mouseY)
+        self.callback(mouseX, mouseY, event)
