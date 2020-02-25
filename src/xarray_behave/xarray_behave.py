@@ -169,6 +169,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 logging.info(f'Could not load song from {filepath_daq}.')
                 logging.debug(e)
 
+        # merge manual and auto events -
+        # this will overwrite thing with manual overwriting existing auto events with the same key
+        # could add optional merging were values for identical keys are combined
+        event_seconds = auto_event_seconds.copy()
+        event_seconds.update(manual_event_seconds)
+        event_categories = auto_event_categories.copy()
+        event_categories.update(manual_event_categories)
+
+
 
     # PREPARE sample/time/framenumber grids
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
@@ -226,94 +235,17 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                             'amplitude_units': 'volts'})
             dataset_data['non_song_raw'] = non_song_raw
 
-    # SONG EVENTS
-    # merge manual and auto events -
-    # this will overwrite thing with manual overwriting existing auto events with the same key
-    # could add optional merging were values for identical keys are combined
-    event_seconds = auto_event_seconds.copy()
-    event_seconds.update(manual_event_seconds)
-    event_categories = auto_event_categories.copy()
-    event_categories.update(manual_event_categories)
 
     if not resample_video_data:
         logging.info(f'Resampling event data to match frame times.')
         frame_times = ss.frame_time(frame_numbers) - ref_time
         time = frame_times
 
-    # if with_segmentation_manual_matlab:
-    #     manual_events_samples = {key: (val * sampling_rate).astype(np.uintp)
-    #                              for key, val in manual_event_seconds.items()}
-    #     # make mask for events that are defined by start/end points (sine)
-    #     for key, val in manual_events_samples.items():
-    #         if val.shape[1] == 2:  # val contains start/end points of each event
-    #             mask = [np.arange(t0, t1+1, dtype=np.uintp) for (t0, t1) in val]
-    #             manual_events_samples[key] = np.concatenate(mask)
-    #             event_categories[key] = 'segment'
-    #         else:
-    #             event_categories[key] = 'event'
-    #     events = manual_events_samples
-
-    # if with_segmentation or with_segmentation_matlab:
-    #     for event_name, event_indices in zip(res['event_names'], res['event_indices']):
-    #         events[event_name + '_auto'] = event_indices
-
-    # if with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab:
-    #     # eventtypes = [*events.keys()]
-    #     # song_events_np = np.full((len(time), len(eventtypes)), False, dtype=np.bool)  # pre-allocate grid holding event data
-    #     # for cnt, key in enumerate(events.keys()):
-    #     #     event_times = np.unique((events[key] / step).astype(np.uintp))
-    #     #     event_times = event_times[event_times < last_sample_with_frame / step]
-    #     #     song_events_np[event_times, cnt] = True
-
-    #     if not resample_video_data:
-    #         logging.info(f'Resampling event data to match frame times.')
-    #         frame_times = ss.frame_time(frame_numbers) - ref_time
-    #         song_events_np = ld.interpolate_binary(time, song_events_np, frame_times)
-    #         time = frame_times
-
-    # if with_segmentation_manual:  #else:
-    #     # manual events loaded from the python manual segmenter may live on their own sampling grid
-    #     # so we need to resample to align these events with the target sampling grid of the newly created dataset
-    #     song_events_np_p = manual_events_ds.song_events.values
-    #     song_event_times_p = manual_events_ds.time.values
-    #     eventtypes_p = []
-    #     for index, event_type in enumerate(manual_events_ds.event_types.values):
-    #         eventtypes_p.append(event_type.decode("utf-8") if isinstance(event_type, bytes) else event_type)
-
-    #     # HACK zarr (or xarray) cuts off long string keys in event-types
-    #     fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
-    #     for index, eventtype in enumerate(eventtypes_p):
-    #         if eventtype in fix_dict.keys():
-    #             logging.info(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
-    #             eventtypes_p[index] = fix_dict[eventtype]
-
-    #     # FIXME - resampling reduces data size (?)
-    #     if not resample_video_data:
-    #         logging.info(f'Resampling event data to match frame times.')
-    #         frame_times = ss.frame_time(frame_numbers) - ref_time
-    #         song_events_np_p = ld.interpolate_binary(time, song_events_np_p, frame_times)
-    #         time = frame_times
-    #     else:
-    #         logging.info(f'Resampling manual event data to match target sampling grid of the dataset.')
-    #         # FIXME: events are spread out over if diff(song_event_times_p) < diff(time)
-    #         song_events_np_p = ld.interpolate_binary(song_event_times_p, song_events_np_p, time)
-
-    # if with_segmentation_manual and (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):  #else:
-    #     logging.info('Merging segmentations.')
-    #     song_events_np = np.concatenate((song_events_np, song_events_np_p), axis=-1)  # TODO: ensure that time grids are identical!!!
-    #     del song_events_np_p
-    #     del song_event_times_p
-    #     eventtypes.extend(eventtypes_p)
-    # elif with_segmentation_manual and not (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):
-    #     song_events_np = song_events_np_p
-    #     eventtypes = eventtypes_p
-
-    if not resample_video_data:
         len_list = [time.shape[0]]
         if with_tracks:
             len_list.append(body_pos.shape[0])
-        if with_segmentation_manual or with_segmentation:
-            len_list.append(song_events.shape[0])
+        # if with_segmentation_manual or with_segmentation:
+        #     len_list.append(song_events.shape[0])
         if with_poses:
             len_list.append(pose_pos.shape[0])
         min_len = min(len_list)
