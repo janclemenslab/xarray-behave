@@ -9,6 +9,7 @@ import os.path
 from pathlib import Path
 from . import loaders as ld
 from . import metrics as mt
+from . import _ui_utils
 
 
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
@@ -109,26 +110,50 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     if include_song:
         logging.info('Attempting to load automatic segmentation:')
         # load AUTOMATIC SEGMENTATION - currently produced by matlab
-        res = dict()
         filepath_segmentation_matlab = Path(root, res_path, datename, f'{datename}_song.mat')
         filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.h5')
+        auto_event_seconds = {}
+        auto_event_categories = {}
         if os.path.exists(filepath_segmentation):
-            res = ld.load_segmentation(filepath_segmentation)
+            # res = ld.load_segmentation(filepath_segmentation)
+            auto_event_seconds, auto_event_categories = ld.load_segmentation(filepath_segmentation)
             with_segmentation = True
             merge_raw_recording = True
             logging.debug(f'   {filepath_segmentation} loaded.')
         elif os.path.exists(filepath_segmentation_matlab):
             logging.debug(f'   {filepath_segmentation} not found.')
-            res = ld.load_segmentation_matlab(filepath_segmentation_matlab)
+            # res = ld.load_segmentation_matlab(filepath_segmentation_matlab)
+            auto_event_seconds, auto_event_categories  = ld.load_segmentation_matlab(filepath_segmentation_matlab)
             with_segmentation = True
             with_segmentation_matlab = True
+            merge_raw_recording = True
             with_song = True
             logging.debug(f'   {filepath_segmentation_matlab} loaded.')
         else:
             logging.debug(f'   {filepath_segmentation_matlab} not found.')
             logging.info(f'   Could not load automatic segmentation from {filepath_segmentation} or {filepath_segmentation_matlab}.')
 
+        # load MANUAL SONG ANNOTATIONS
+        # first try PYTHON, then matlab
+        logging.info('Attempting to load manual segmentation:')
+        filepath_segmentation_manual = Path(root, res_path, datename, f'{datename}_songmanual.zarr')
+        filepath_segmentation_manual_matlab = Path(root, res_path, datename, f'{datename}_songmanual.mat')
+        manual_event_seconds = {}
+        manual_event_categories = {}
+        if os.path.exists(filepath_segmentation_manual):
+            manual_event_seconds, manual_event_categories = ld.load_manual_annotation(filepath_segmentation_manual)  # need to extract event_seconds and categories from that one
+            with_segmentation_manual = True
+            logging.debug(f'   {filepath_segmentation_manual} loaded.')
+        elif os.path.exists(filepath_segmentation_manual_matlab):
+            manual_event_seconds, manual_event_categories = ld.load_manual_annotation_matlab(filepath_segmentation_manual_matlab)
+            with_segmentation_manual = True
+            with_segmentation_manual_matlab = True
+            logging.debug(f'   {filepath_segmentation_manual_matlab} loaded.')
+        else:
+            logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual} or {filepath_segmentation_manual_matlab}.')
+
         # load RAW song traces
+        res = dict()
         if keep_multi_channel or merge_raw_recording:
             try:
                 logging.info(f'Reading recording from {filepath_daq}.')
@@ -144,36 +169,20 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 logging.info(f'Could not load song from {filepath_daq}.')
                 logging.debug(e)
 
-        # load MANUAL SONG ANNOTATIONS
-        # first try PYTHON
-        logging.info('Attempting to load manual segmentation:')
-        filepath_segmentation_manual = Path(root, res_path, datename, f'{datename}_songmanual.zarr')
-        filepath_segmentation_manual_matlab = Path(root, res_path, datename, f'{datename}_songmanual.mat')
-        if os.path.exists(filepath_segmentation_manual):
-            manual_events_ds = ld.load_manual_annotation(filepath_segmentation_manual)
-            with_segmentation_manual = True
-            logging.debug(f'   {filepath_segmentation_manual} loaded.')
-        elif os.path.exists(filepath_segmentation_manual_matlab):
-            manual_events_seconds, event_categories = ld.load_manual_annotation_matlab(filepath_segmentation_manual_matlab)
-            with_segmentation_manual_matlab = True
-            logging.debug(f'   {filepath_segmentation_manual_matlab} loaded.')
-        else:
-            logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual} or {filepath_segmentation_manual_matlab}.')
 
-    
     # PREPARE sample/time/framenumber grids
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
     first_sample = 0
     last_sample = int(last_sample_with_frame)
     ref_time = ss.sample_time(0)  # 0 seconds = first DAQ sample
     # time in seconds for each sample in the song recording
-    sampletime = ss.sample_time(np.arange(first_sample, last_sample)) - ref_time    
-    
+    sampletime = ss.sample_time(np.arange(first_sample, last_sample)) - ref_time
+
     # build interpolator to get neareast frame for each sample in the new grid
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
     interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
-                                              kind='nearest', bounds_error=False, fill_value=np.nan)    
+                                              kind='nearest', bounds_error=False, fill_value=np.nan)
     # construct desired sample grid for data
     step = int(sampling_rate / target_sampling_rate)
     if resample_video_data:
@@ -198,7 +207,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset_data['song'] = song
 
     if with_song_raw:
-        if 0 not in res['song_raw'].shape:  # xr fails saving zarr files with 0-size along in any dim
+        if 0 not in res['song_raw'].shape:  # xr fails saving zarr files with 0-size along any dim
             song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
                                     dims=['sampletime', 'channels'],
                                     coords={'sampletime': sampletime, },
@@ -207,7 +216,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                         'time_units': 'seconds',
                                         'amplitude_units': 'volts'})
             dataset_data['song_raw'] = song_raw
-        if 0 not in res['non_song_raw'].shape:  # xr fails saving zarr files with 0-size along in any dim
+        if 0 not in res['non_song_raw'].shape:  # xr fails saving zarr files with 0-size along any dim
             non_song_raw = xr.DataArray(data=res['non_song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
                                         dims=['sampletime', 'no_song_channels'],
                                         coords={'sampletime': sampletime, },
@@ -218,82 +227,93 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             dataset_data['non_song_raw'] = non_song_raw
 
     # SONG EVENTS
-    events = dict()
-    event_classes = dict()
-    if with_segmentation_manual_matlab:
-        manual_events_samples = {key: (val * sampling_rate).astype(np.uintp)
-                                 for key, val in manual_events_seconds.items()}
-        # make mask for events that are defined by start/end points (sine)
-        for key, val in manual_events_samples.items():
-            if val.shape[1] == 2:  # val contains start/end points of each event
-                mask = [np.arange(t0, t1+1, dtype=np.uintp) for (t0, t1) in val]
-                manual_events_samples[key] = np.concatenate(mask)
-                event_classes[key] = 'segment'
-            else:
-                event_classes[key] = 'event'
-        events = manual_events_samples
+    # merge manual and auto events -
+    # this will overwrite thing with manual overwriting existing auto events with the same key
+    # could add optional merging were values for identical keys are combined
+    event_seconds = auto_event_seconds.copy()
+    event_seconds.update(manual_event_seconds)
+    event_categories = auto_event_categories.copy()
+    event_categories.update(manual_event_categories)
 
-    if with_segmentation or with_segmentation_matlab:
-        for event_name, event_indices in zip(res['event_names'], res['event_indices']):
-            events[event_name + '_auto'] = event_indices
-                
-    if with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab:
-        eventtypes = [*events.keys()]
-        song_events_np = np.full((len(time), len(eventtypes)), False, dtype=np.bool)  # pre-allocate grid holding event data
-        for cnt, key in enumerate(events.keys()):
-            event_times = np.unique((events[key] / step).astype(np.uintp))
-            event_times = event_times[event_times < last_sample_with_frame / step]
-            song_events_np[event_times, cnt] = True
+    if not resample_video_data:
+        logging.info(f'Resampling event data to match frame times.')
+        frame_times = ss.frame_time(frame_numbers) - ref_time
+        time = frame_times
 
-        if not resample_video_data:
-            logging.info(f'Resampling event data to match frame times.')
-            frame_times = ss.frame_time(frame_numbers) - ref_time
-            song_events_np = ld.interpolate_binary(time, song_events_np, frame_times)
-            time = frame_times
+    # if with_segmentation_manual_matlab:
+    #     manual_events_samples = {key: (val * sampling_rate).astype(np.uintp)
+    #                              for key, val in manual_event_seconds.items()}
+    #     # make mask for events that are defined by start/end points (sine)
+    #     for key, val in manual_events_samples.items():
+    #         if val.shape[1] == 2:  # val contains start/end points of each event
+    #             mask = [np.arange(t0, t1+1, dtype=np.uintp) for (t0, t1) in val]
+    #             manual_events_samples[key] = np.concatenate(mask)
+    #             event_categories[key] = 'segment'
+    #         else:
+    #             event_categories[key] = 'event'
+    #     events = manual_events_samples
 
-    if with_segmentation_manual:  #else:
-        # manual events loaded from the python manual segmenter may live on their own sampling grid
-        # so we need to resample to align these events with the target sampling grid of the newly created dataset
-        song_events_np_p = manual_events_ds.song_events.values
-        song_event_times_p = manual_events_ds.time.values
-        eventtypes_p = []
-        for index, event_type in enumerate(manual_events_ds.event_types.values):
-            eventtypes_p.append(event_type.decode("utf-8") if isinstance(event_type, bytes) else event_type)
-            
-        # HACK zarr (or xarray) cuts off long string keys in event-types
-        fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
-        for index, eventtype in enumerate(eventtypes_p):
-            if eventtype in fix_dict.keys():
-                logging.info(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
-                eventtypes_p[index] = fix_dict[eventtype]
+    # if with_segmentation or with_segmentation_matlab:
+    #     for event_name, event_indices in zip(res['event_names'], res['event_indices']):
+    #         events[event_name + '_auto'] = event_indices
 
-        # FIXME - resampling reduces data size (?)
-        if not resample_video_data:
-            logging.info(f'Resampling event data to match frame times.')
-            frame_times = ss.frame_time(frame_numbers) - ref_time
-            song_events_np_p = ld.interpolate_binary(time, song_events_np_p, frame_times)
-            time = frame_times
-        else:
-            logging.info(f'Resampling manual event data to match target sampling grid of the dataset.')
-            # FIXME: events are spread out over if diff(song_event_times_p) < diff(time)
-            song_events_np_p = ld.interpolate_binary(song_event_times_p, song_events_np_p, time)
+    # if with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab:
+    #     # eventtypes = [*events.keys()]
+    #     # song_events_np = np.full((len(time), len(eventtypes)), False, dtype=np.bool)  # pre-allocate grid holding event data
+    #     # for cnt, key in enumerate(events.keys()):
+    #     #     event_times = np.unique((events[key] / step).astype(np.uintp))
+    #     #     event_times = event_times[event_times < last_sample_with_frame / step]
+    #     #     song_events_np[event_times, cnt] = True
 
-    if with_segmentation_manual and (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):  #else:
-        logging.info('Merging segmentations.')
-        song_events_np = np.concatenate((song_events_np, song_events_np_p), axis=-1)  # TODO: ensure that time grids are identical!!!
-        del song_events_np_p
-        del song_event_times_p
-        eventtypes.extend(eventtypes_p)
-    elif with_segmentation_manual and not (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):
-        song_events_np = song_events_np_p
-        eventtypes = eventtypes_p
+    #     if not resample_video_data:
+    #         logging.info(f'Resampling event data to match frame times.')
+    #         frame_times = ss.frame_time(frame_numbers) - ref_time
+    #         song_events_np = ld.interpolate_binary(time, song_events_np, frame_times)
+    #         time = frame_times
+
+    # if with_segmentation_manual:  #else:
+    #     # manual events loaded from the python manual segmenter may live on their own sampling grid
+    #     # so we need to resample to align these events with the target sampling grid of the newly created dataset
+    #     song_events_np_p = manual_events_ds.song_events.values
+    #     song_event_times_p = manual_events_ds.time.values
+    #     eventtypes_p = []
+    #     for index, event_type in enumerate(manual_events_ds.event_types.values):
+    #         eventtypes_p.append(event_type.decode("utf-8") if isinstance(event_type, bytes) else event_type)
+
+    #     # HACK zarr (or xarray) cuts off long string keys in event-types
+    #     fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
+    #     for index, eventtype in enumerate(eventtypes_p):
+    #         if eventtype in fix_dict.keys():
+    #             logging.info(f'   Replacing {eventtype} with {fix_dict[eventtype]}.')
+    #             eventtypes_p[index] = fix_dict[eventtype]
+
+    #     # FIXME - resampling reduces data size (?)
+    #     if not resample_video_data:
+    #         logging.info(f'Resampling event data to match frame times.')
+    #         frame_times = ss.frame_time(frame_numbers) - ref_time
+    #         song_events_np_p = ld.interpolate_binary(time, song_events_np_p, frame_times)
+    #         time = frame_times
+    #     else:
+    #         logging.info(f'Resampling manual event data to match target sampling grid of the dataset.')
+    #         # FIXME: events are spread out over if diff(song_event_times_p) < diff(time)
+    #         song_events_np_p = ld.interpolate_binary(song_event_times_p, song_events_np_p, time)
+
+    # if with_segmentation_manual and (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):  #else:
+    #     logging.info('Merging segmentations.')
+    #     song_events_np = np.concatenate((song_events_np, song_events_np_p), axis=-1)  # TODO: ensure that time grids are identical!!!
+    #     del song_events_np_p
+    #     del song_event_times_p
+    #     eventtypes.extend(eventtypes_p)
+    # elif with_segmentation_manual and not (with_segmentation_manual_matlab or with_segmentation or with_segmentation_matlab):
+    #     song_events_np = song_events_np_p
+    #     eventtypes = eventtypes_p
 
     if not resample_video_data:
         len_list = [time.shape[0]]
         if with_tracks:
             len_list.append(body_pos.shape[0])
         if with_segmentation_manual or with_segmentation:
-            len_list.append(song_events_np.shape[0])
+            len_list.append(song_events.shape[0])
         if with_poses:
             len_list.append(pose_pos.shape[0])
         min_len = min(len_list)
@@ -302,20 +322,28 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     logging.info('Making all datasets:')
     if with_segmentation_manual or with_segmentation_manual_matlab or with_segmentation:
         logging.info('   segmentations')
+        song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
+
         if not resample_video_data:
             time = time[:min_len]
-            song_events_np = song_events_np[:min_len]
+            song_events = song_events[:min_len]
             nearest_frame = nearest_frame[:min_len]
-        song_events = xr.DataArray(data=song_events_np,
+
+        song_events = xr.DataArray(data=song_events,  # start with empty song_events matrix
                                    dims=['time', 'event_types'],
                                    coords={'time': time,
-                                           'event_types': eventtypes,
-                                        #    'event_classes': (('event_types'), list(event_classes.values())),
+                                           'event_types': list(event_seconds.keys()),
+                                           'event_categories': (('event_types'), list(event_categories.values())),
                                            'nearest_frame': (('time'), nearest_frame), },
                                    attrs={'description': 'Event times as boolean arrays.',
                                           'sampling_rate_Hz': sampling_rate / step,
-                                          'time_units': 'seconds', })
-        dataset_data['song_events'] = song_events
+                                          'time_units': 'seconds',
+                                          'event_times': event_seconds})
+
+        # now populate from event_times attribute
+        song_events_ds = _ui_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
+                                                        song_events.attrs['event_times'])
+        dataset_data['song_events'] = song_events_ds.song_events
 
     # BODY POSITION
     fps = None
@@ -585,7 +613,7 @@ def save(savepath, dataset):
     """
     with zarr.ZipStore(savepath, mode='w') as zarr_store:
         ## re-chunking does not seem to help with IO speed upon lazy loading
-        # chunks = dict(dataset.dims) 
+        # chunks = dict(dataset.dims)
         # chunks['time'] = 100_000
         # chunks['sampletime'] = 100_000
         # dataset = dataset.chunk(chunks)
@@ -625,13 +653,27 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True):
     return dataset
 
 
-def from_wav(filepath, target_sampling_rate=1_000):
-    import scipy.io.wavfile as wav
-    sampling_rate, data = wav.read(filepath)
+def from_wav(filepath, target_samplerate=None, event_names=[], event_categories=[]):
+
+    if event_names and not event_categories:
+        logging.info('No event_categories specified - defaulting to segments')
+        event_categories = ['segment'] * len(event_names)
+
+    if len(event_names) != len(event_categories):
+        raise ValueError(f'event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}.')
+
+    import soundfile
+    data, sampling_rate = soundfile.read(filepath)
+
+    if target_samplerate is None:
+        target_samplerate = sampling_rate
+
+    dataset_data = dict()
 
     data = data[:, np.newaxis]
     sampletime = np.arange(len(data)) / sampling_rate
-    dataset_data = {}
+    time = np.arange(sampletime[0], sampletime[-1], 1 / target_samplerate)
+
     song_raw = xr.DataArray(data=data,  # cut recording to match new grid
                         dims=['sampletime', 'channels'],
                         coords={'sampletime': sampletime, },
@@ -641,18 +683,31 @@ def from_wav(filepath, target_sampling_rate=1_000):
                                'amplitude_units': 'volts'})
     dataset_data['song_raw'] = song_raw
 
+    if event_names is not None and event_categories is not None:
+        song_events_data = np.zeros((len(time), len(event_names)), dtype=np.uint)
+        song_events = xr.DataArray(data=song_events_data,
+                    dims=['time', 'event_types'],
+                    coords={'time': time,
+                            'event_types': event_names,
+                            'event_categories': (('event_types'), event_categories)},
+                    attrs={'description': 'Song annotations',
+                            'sampling_rate_Hz': sampling_rate,
+                            'time_units': 'seconds',
+                           })
+        dataset_data['song_events'] = song_events
+
     # MAKE THE DATASET
     ds = xr.Dataset(dataset_data, attrs={})
+    ds.coords['time'] = time
+    ds.coords['nearest_frame'] = ('time', (time/100).astype(np.uint))  # do we need this?
 
-    ds.coords['time'] = np.arange(sampletime[0], sampletime[-1], 1 / target_sampling_rate)
-    # dataset.coords['sampletime'] = np.arange(sampletime[0], sampletime[-1], 1 / target_sampling_rate)
-    ds.coords['nearest_frame'] = ('time', (ds.coords['time']/100).astype(np.uint))
-
-    datename = filepath.split('/')[-1][:-4]
     # save command line args
     ds.attrs = {'video_filename': '',
-                     'datename': datename,
-                     'root': '', 'dat_path': '', 'res_path': '',
-                     'sampling_rate_Hz': sampling_rate,                               
-                     'target_sampling_rate_Hz': target_sampling_rate}
+                'datename': filepath,
+                'root': '', 'dat_path': '', 'res_path': '',
+                'sampling_rate_Hz': sampling_rate,
+                     'sampling_rate_Hz': sampling_rate,
+                'sampling_rate_Hz': sampling_rate,
+                'target_sampling_rate_Hz': target_samplerate}
+    logging.info(ds)
     return ds

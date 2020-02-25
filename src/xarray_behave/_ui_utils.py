@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QGraphicsPixmapItem
+from pyqtgraph.Qt import QtGui, QtWidgets
+# from PySide2.QtGui import QImage, QPixmap
+# from PySide2.QtWidgets import QGraphicsPixmapItem
 
 from videoreader import VideoReader
 
@@ -81,44 +81,44 @@ class FastImageWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, *args, useOpenGL=True, **kwargs):
         """[summary]
-        
+
         Args:
             useOpenGL (bool, optional): [description]. Defaults to True.
         """
         super(FastImageWidget, self).__init__(*args, **kwargs)
         self.viewBox = self.addViewBox()
         self.useOpenGL(useOpenGL)
-        self.pixmapItem = QGraphicsPixmapItem()
-        self.pixmapItem.setShapeMode(QGraphicsPixmapItem.BoundingRectShape)
+        self.pixmapItem = QtWidgets.QGraphicsPixmapItem()
+        self.pixmapItem.setShapeMode(QtWidgets.QGraphicsPixmapItem.BoundingRectShape)
         self.viewBox.addItem(self.pixmapItem)
         self.viewBox.setAspectLocked(lock=True, ratio=1)
         self.viewBox.disableAutoRange()
 
     def registerMouseClickEvent(self, func):
         """[summary]
-        
+
         Args:
             func ([type]): [description]
         """
         self.pixmapItem.mouseClickEvent = func
 
-    def setImage(self, image, image_format=QImage.Format_RGB888, auto_scale: bool = False):
+    def setImage(self, image, image_format=QtGui.QImage.Format_RGB888, auto_scale: bool = False):
         """[summary]
-        
+
         Args:
             image ([type]): [description]
-            image_format ([type], optional): [description]. Defaults to QImage.Format_RGB888.
+            image_format ([type], optional): [description]. Defaults to QtGui.QImage.Format_RGB888.
             auto_scale (bool, optional): [description]. Defaults to False.
         """
-        qimg = QImage(image.ctypes.data, image.shape[1], image.shape[0], image_format)
-        qpix = QPixmap(qimg)
+        qimg = QtGui.QImage(image.ctypes.data, image.shape[1], image.shape[0], image_format)
+        qpix = QtGui.QPixmap(qimg)
         self.pixmapItem.setPixmap(qpix)
         if auto_scale:
             self.fitImage(image.shape[1], image.shape[0])
 
     def fitImage(self, width: int, height: int):
         """[summary]
-        
+
         Args:
             width ([type]): [description]
             height ([type]): [description]
@@ -130,7 +130,7 @@ def detect_events(ds):
     """Transform ds.song_events into dict of event (on/offset) times.
     Args:
         ds ([xarray.Dataset]): dataset with song_events
-    
+
     Returns:
         dict: with event times or segment on/offsets.
     """
@@ -140,19 +140,23 @@ def detect_events(ds):
     event_categories = ds.song_events.event_categories.data
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         if event_category == 'event':
-            event_times[event_name] = ds.time.where(ds.song_events[:, event_idx] == 1, drop=True).data
+            event_times[event_name] = ds.song_events.time.where(ds.song_events[:, event_idx] == 1, drop=True).data.ravel()
         elif event_category == 'segment':
-            onsets = ds.time.where(ds.song_events[:, event_idx].diff(dim='time') == 1, drop=True).data
-            offsets = ds.time.where(ds.song_events[:, event_idx].diff(dim='time') == -1, drop=True).data
+            onsets = ds.song_events.time.where(ds.song_events[:, event_idx].diff(dim='time') == 1, drop=True).data
+            offsets = ds.song_events.time.where(ds.song_events[:, event_idx].diff(dim='time') == -1, drop=True).data
             if len(onsets) and len(offsets):
-                # ensure onsets and offsets match            
+                # ensure onsets and offsets match
                 offsets = offsets[offsets>np.min(onsets)]
                 onsets = onsets[onsets<np.max(offsets)]
             if len(onsets) != len(offsets):
                 print('Inconsistent segment onsets or offsets - ignoring all on- and offsets.')
                 onsets = []
                 offsets = []
-            event_times[event_name] = np.stack((onsets, offsets)).T
+
+            if not len(onsets) and not len(offsets):
+                event_times[event_name] = np.zeros((0,2))
+            else:
+                event_times[event_name] = np.stack((onsets, offsets)).T
     return event_times
 
 
@@ -161,7 +165,7 @@ def eventtimes_to_traces(ds, event_times):
     Args:
         ds ([xarray.Dataset]): dataset with song_events
         event_times ([dict]): event times or segment on/offsets.
-    
+
     Returns:
         xarray.Dataset
     """
@@ -170,16 +174,31 @@ def eventtimes_to_traces(ds, event_times):
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
         if event_category == 'event':
-            times = ds.time.sel(time=event_times[event_name], method='nearest').data
+            try:
+                times = ds.song_events.time.sel(time=event_times[event_name].ravel(), method='nearest').data
+            except:
+                breakpoint()
+
             for time in times:
                 idx = np.where(ds.time==time)[0]
                 ds.song_events[idx, event_idx] = 1
         elif event_category == 'segment':
-            for onset, offset in zip(event_times[event_name][:,0], event_times[event_name][:,1]):
-                ds.song_events.sel(time=slice(onset, offset), event_types=event_name).data[:] = 1
+            if event_times[event_name].shape[0] > 0:
+                for onset, offset in zip(event_times[event_name][:, 0], event_times[event_name][:, 1]):
+                    ds.song_events.sel(time=slice(onset, offset), event_types=event_name).data[:] = 1
     return ds
 
-    
+
+def eventtimes_delete(eventtimes, which):
+    return eventtimes
+
+def eventtimes_add(eventtimes, which, resort=False):
+    return eventtimes
+
+def eventtimes_replace(eventtimes, which_old, which_new, resort=False):
+    eventtimes = eventtimes_delete(eventtimes, which_old)
+    eventtimes = eventtimes_add(eventtimes, which_new)
+    return eventtimes
 
 def find_nearest(array, value):
     array = np.asarray(array)

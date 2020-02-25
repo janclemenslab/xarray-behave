@@ -16,6 +16,7 @@ import xarray as xr
 import zarr
 import math
 from . import xarray_behave as xb
+from . import _ui_utils
 from typing import Sequence
 
 
@@ -202,38 +203,6 @@ def swap_flies(dataset, indices, flies1=0, flies2=1):
     return dataset
 
 
-def load_segmentation_matlab(filepath):
-    """Load output produced by FlySongSegmenter."""
-    res = dict()
-    try:
-        d = loadmat(filepath)
-        res['pulse_times_samples'] = d['pInf'][0, 0]['wc']
-        res['pulse_labels'] = d['pInf'][0, 0]['pulseLabels']
-        res['song_mask'] = d['bInf'][0, 0]['Mask'].T  # 0 - silence, 1 - pulse, 2 - sine
-        res['song'] = d['Song'].T
-    except NotImplementedError:
-        with h5py.File(filepath, 'r') as f:
-            res['pulse_times_samples'] = f['pInf/wc'][:].T
-            res['pulse_labels'] = f['pInf/pulseLabels'][:].T
-            res['song_mask'] = f['bInf/Mask'][:]
-            res['song'] = f['Song'][:]
-    res['song'] = res['song'].astype(np.float32) / 1000
-
-    # events['song_pulse_any'] = res['pulse_times_samples']
-    # events['song_pulse_slow'] = res['pulse_times_samples'][res['pulse_labels'] == 1]
-    # events['song_pulse_fast'] = res['pulse_times_samples'][res['pulse_labels'] == 0]
-    # sine_song = res['song_mask'][first_sample:last_sample:step, 0] == 2
-    sine_song = res['song_mask'] == 2
-    # events['sine'] = np.where(sine_song == 2)[0]
-    res['event_names'] = ['song_pulse_any', 'song_pulse_slow', 'song_pulse_fast', 'sine']
-    res['event_categories'] = ['event', 'event', 'event', 'segment']
-    res['event_indices'] = [res['pulse_times_samples'],
-                            res['pulse_times_samples'][res['pulse_labels'] == 1],
-                            res['pulse_times_samples'][res['pulse_labels'] == 0],
-                            np.where(sine_song == 2)[0]]
-    return res
-
-
 def infer_event_categories(data):
     """Infer event type (event/segment) based on median interval between
     event times.
@@ -251,26 +220,80 @@ def infer_event_categories(data):
     return event_categories
 
 
+def load_segmentation_matlab(filepath):
+    """Load output produced by FlySongSegmenter."""
+    res = dict()
+    try:
+        d = loadmat(filepath)
+        res['pulse_times_samples'] = d['pInf'][0, 0]['wc']
+        res['pulse_labels'] = d['pInf'][0, 0]['pulseLabels']
+        res['song_mask'] = d['bInf'][0, 0]['Mask'].T  # 0 - silence, 1 - pulse, 2 - sine
+    except NotImplementedError:
+        with h5py.File(filepath, 'r') as f:
+            res['pulse_times_samples'] = f['pInf/wc'][:].T
+            res['pulse_labels'] = f['pInf/pulseLabels'][:].T
+            res['song_mask'] = f['bInf/Mask'][:]
+
+    sine_song = res['song_mask'] == 2
+    fs = 10_000  # Hz
+
+    res['event_names'] = ['song_pulse_any_fss', 'song_pulse_slow_fss', 'song_pulse_fast_fss', 'sine_fss']
+    res['event_categories'] = ['event', 'event', 'event', 'segment']
+    res['event_indices'] = [res['pulse_times_samples'],
+                            res['pulse_times_samples'][res['pulse_labels'] == 1],
+                            res['pulse_times_samples'][res['pulse_labels'] == 0],
+                            np.where(sine_song == 2)[0]]
+    # extract event_seconds
+    event_seconds = {'song_pulse_any_fss': res['pulse_times_samples'] / fs,
+                     'song_pulse_slow_fss': res['pulse_times_samples'][res['pulse_labels'] == 1] / fs,
+                     'song_pulse_fast_fss': res['pulse_times_samples'][res['pulse_labels'] == 0] / fs,
+                     'sine_fss': np.where(sine_song == 2)[0] / fs}
+    # event_categories
+    event_categories = {}
+    for cat, typ in zip(event_seconds.keys(), ['event', 'event', 'event', 'segment']):
+        event_categories[cat] = typ
+    return event_seconds, event_categories
+
+
 def load_segmentation(filepath):
     """Load output produced by DeepSongSegmenter.
 
     File should have at least 'event_names' and 'event_indices' datasets."""
     res = dd_io.load(filepath)
-    if 'event_categories' not in res:
-        pass # res['event_categories'] = infer_event_categories(manual_events.song_events.data)
-    return res
+    # extract event_seconds
+    event_seconds = {}
+    for indices, name in zip(res['event_indices'], res['event_names']):
+        event_seconds[name] = indices / res['samplerate_Hz']
+
+    # event_categories
+    if 'event_categories' in res:
+        event_categories = res['event_categories']
+    else:
+        event_categories = {}
+        for name, times in event_seconds.items():
+            if times.ndim == 1 or times.shape[1] == 1:
+                event_categories[name] = 'event'
+            else:
+                event_categories[name] = 'segment'
+    return event_seconds, event_categories
 
 
 def load_manual_annotation(filepath):
     """Load output produced by the python ManualSegmenter."""
-    manual_events = xb.load(filepath)
+    manual_events_ds = xb.load(filepath)
 
-    if 'event_categories' not in manual_events:
-        event_categories = infer_event_categories(manual_events.song_events.data)
-        manual_events = manual_events.assign_coords({'event_categories':
-                              (('event_types'),
-                              event_categories)})
-    return manual_events
+    if 'event_categories' not in manual_events_ds:
+        event_categories_List = infer_event_categories(manual_events_ds.song_events.data)
+        manual_events_ds = manual_events_ds.assign_coords(
+                                {'event_categories': (('event_types'), event_categories_List)})
+
+    event_seconds = _ui_utils.detect_events(manual_events_ds)
+
+    event_categories = {}
+    for typ, cat in zip(manual_events_ds.event_types.data, manual_events_ds.event_categories.data):
+        event_categories[typ] = cat
+
+    return event_seconds, event_categories
 
 
 def load_manual_annotation_matlab(filepath):
@@ -284,14 +307,14 @@ def load_manual_annotation_matlab(filepath):
                 mat_data[key.lower()] = val[:].T
 
     manual_events_seconds = dict()
-    event_categories = []
+    event_categories = dict()
     for key, val in mat_data.items():
         if len(val) and hasattr(val, 'ndim') and val.ndim == 2 and not key.startswith('_'):  # ignore matfile metadata
-            manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
+            manual_events_seconds[key.lower() + '_fss_manual'] = np.sort(val[:, 1:])
             if val.shape[1] == 2:  # pulse times
-               event_categories.append('event')
+               event_categories[key.lower() + '_fss_manual'] = 'event'
             else:  # sine on and offset
-               event_categories.append('segment')
+               event_categories[key.lower() + '_fss_manual'] = 'segment'
     return manual_events_seconds, event_categories
 
 
@@ -496,11 +519,12 @@ def load_times(filepath_timestamps, filepath_daq):
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - s0, frame_times=cam_stamps[:, 0] - s0, sample_numbers=daq_samplenumber[:, 0])
     # f0 = ss.frame_time(0)  # first frame is 0 seconds - for no-resample-video-data
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - f0, frame_times=cam_stamps[:, 0] - f0, sample_numbers=daq_samplenumber[:, 0])
-    
+
     return ss, last_sample, sampling_rate_Hz
 
 
-def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = False, force_overwrite: bool = False) -> xr.Dataset:
+def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = False, force_overwrite: bool = False,
+                                  new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']) -> xr.Dataset:
     """[summary]
 
     Args:
@@ -512,11 +536,12 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
                                             Defaults to False.
         force_overwrite (bool, optional): Overwrite existing manual events.
                                           Defaults to False.
+        new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
 
     Returns:
         xarray.Dataset: [description]
     """
-    new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
+    # ????!!!! no!!
     if 'song_events' in ds:
         new_manual_event_types = [evt for evt in new_manual_event_types
                                       if evt not in ds.song_events.event_types]
