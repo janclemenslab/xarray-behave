@@ -587,3 +587,22 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
                 else:  # add auto events to the corresponding manual event
                     ds.song_events.loc[:, evt] = np.logical_or((ds.song_events.loc[:, evt], ds.song_events.loc[:, auto_key]))
     return ds
+
+
+    def fix_keys(d):
+        d_new = dict()
+        # HACK zarr (or xarray) cuts off long string keys in event-types
+        fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
+        # make this a function!!
+        for eventtype in d.keys():
+            # convert all from b'..' to str
+            try:
+                d_new[eventtype.decode()]  = d[eventtype]
+            except AttributeError:
+                d_new[eventtype] = d[eventtype]
+
+        for eventtype in d_new:
+            if eventtype in fix_dict.keys():
+                # logging.info(f'   Renaming {eventtype} to {fix_dict[eventtype]}.')
+                d_new[fix_dict[eventtype]]  = d_new.pop(eventtype)
+        return d_new

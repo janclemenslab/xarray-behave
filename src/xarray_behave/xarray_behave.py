@@ -169,15 +169,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 logging.info(f'Could not load song from {filepath_daq}.')
                 logging.debug(e)
 
-        # merge manual and auto events -
-        # this will overwrite thing with manual overwriting existing auto events with the same key
-        # could add optional merging were values for identical keys are combined
-        event_seconds = auto_event_seconds.copy()
-        event_seconds.update(manual_event_seconds)
-        event_categories = auto_event_categories.copy()
-        event_categories.update(manual_event_categories)
+    # merge manual and auto events -
+    # this will overwrite thing with manual overwriting existing auto events with the same key
+    # could add optional merging were values for identical keys are combined
+    event_seconds = auto_event_seconds.copy()
+    event_seconds.update(manual_event_seconds)
+    event_categories = auto_event_categories.copy()
+    event_categories.update(manual_event_categories)
 
-
+    event_seconds = ld.fix_keys(event_seconds)
+    event_categories = ld.fix_keys(event_categories)
 
     # PREPARE sample/time/framenumber grids
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
