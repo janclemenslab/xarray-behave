@@ -48,10 +48,15 @@ class MainApp(QtGui.QApplication):
 
 class MainWindow(pg.QtGui.QMainWindow):
 
-    def __init__(self, parent=None, title="xb.gui"):
+    def __init__(self, app=None, parent=None, title="xb.gui"):
         super().__init__(parent)
 
         self.windows = []
+        self.parent = parent
+        if app is None:
+            self.app = QtGui.QApplication()
+        else:
+            self.app = app
 
         self.resize(1000, 800)
         self.setWindowTitle(title)
@@ -105,7 +110,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             logging.info(f'   Done.')
 
     @classmethod
-    def from_wav(cls, wav_filename=None, qt_keycode=None):
+    def from_wav(cls, wav_filename=None, app=None, qt_keycode=None):
         def make_dataset(form_data):
             dialog.close()
         if wav_filename is None:
@@ -147,10 +152,10 @@ class MainWindow(pg.QtGui.QMainWindow):
         fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
         fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-        return PSV(ds, title=wav_filename, fmin=fmin, fmax=fmax)
+        return PSV(ds, app=app, title=wav_filename, fmin=fmin, fmax=fmax)
 
     @classmethod
-    def from_dir(cls, dirname=None, qt_keycode=None):
+    def from_dir(cls, dirname=None, app=None, qt_keycode=None):
         def make_dataset():
             dialog.close()
 
@@ -209,10 +214,10 @@ class MainWindow(pg.QtGui.QMainWindow):
         fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
         fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-        return PSV(ds, title=dirname, vr=vr, fmin=fmin, fmax=fmax)
+        return PSV(ds, app=app, title=dirname, vr=vr, fmin=fmin, fmax=fmax)
 
     @classmethod
-    def from_zarr(cls, filename=None, qt_keycode=None):
+    def from_zarr(cls, filename=None, app=None, qt_keycode=None):
         def make_dataset():
             dialog.close()
         logging.info('   Updating song events')
@@ -265,15 +270,14 @@ class MainWindow(pg.QtGui.QMainWindow):
             except:
                 logging.info(f'Something went wrong when loading the video. Continuing without.')
 
-            return PSV(ds, vr=vr, title=filename)
+            return PSV(ds, app=app, vr=vr, title=filename)
         else:
             return None
 
     @classmethod
-    def from_npydir(cls, dirname=None, qt_keycode=None):
+    def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
         logging.info('Not implemented yet')
         pass
-
 
     def save_dataset(self, qt_keycode=None):
         logging.info('   Updating song events')
@@ -306,9 +310,9 @@ class PSV(MainWindow):
 
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(self, ds, vr=None, cue_points=[], title='xb.ui', cmap_name: str = 'turbo', box_size: int = 200,
+    def __init__(self, ds, app=None, vr=None, cue_points=[], title='xb.ui', cmap_name: str = 'turbo', box_size: int = 200,
                  fmin=None, fmax=None):
-        super().__init__(title=title)
+        super().__init__(app=app, title=title)
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         # build model:
         self.ds = ds
@@ -389,7 +393,6 @@ class PSV(MainWindow):
         self._span = int(self.fs_song)
         self._t0 = int(self.span / 2)
 
-        self.app = pg.QtGui.QApplication([])
         self.resize(1000, 800)
 
         # build UI/controller
@@ -803,8 +806,8 @@ class PSV(MainWindow):
                 RUN = False
                 self.update_xy()
                 self.update_frame()
-                self.app.processEvents()
                 logging.debug('   Stopped playback.')
+            self.app.processEvents()
 
     def on_region_change_finished(self, region):
         """Called when dragging a segment-like song_event - will change its bounds."""
@@ -1179,16 +1182,16 @@ def main(datename: str = '', *,
     """
 
     app = MainApp()
-    mainwin = MainWindow()
+    mainwin = MainWindow(app=app)
     mainwin.show()
     if not len(datename):
         pass
     elif datename.endswith('.wav'):
-        mainwin.windows.append(MainWindow.from_wav(datename))
+        mainwin.windows.append(MainWindow.from_wav(datename, app=app))
     elif datename.endswith('.zarr'):
-        mainwin.windows.append(MainWindow.from_zarr(filename=datename))
+        mainwin.windows.append(MainWindow.from_zarr(filename=datename, app=app))
     elif os.path.isdir(datename):
-        mainwin.windows.append(MainWindow.from_dir(datename))
+        mainwin.windows.append(MainWindow.from_dir(datename, app=app))
     # else:
     #     if os.path.exists(datename + '.zarr') or os.path.exists(datename):
     #         is_ds = True
