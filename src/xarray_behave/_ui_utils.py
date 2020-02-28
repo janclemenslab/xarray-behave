@@ -174,11 +174,8 @@ def eventtimes_to_traces(ds, event_times):
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
         if event_category == 'event':
-            try:
-                times = ds.song_events.time.sel(time=event_times[event_name].ravel(), method='nearest').data
-            except:
-                breakpoint()
-
+            times = ds.song_events.time.sel(time=event_times[event_name].ravel(), method='nearest').data
+            # this is sloooooow
             for time in times:
                 idx = np.where(ds.time==time)[0]
                 ds.song_events[idx, event_idx] = 1
