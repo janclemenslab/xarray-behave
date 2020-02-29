@@ -1,5 +1,5 @@
 main:
-  
+
 - name: data_dir
   label: data directory
   type: file_dir
@@ -32,7 +32,7 @@ main:
   type: stacked
   default: "no"
   options: "no,yes"
-  
+
   "no":
 
   "yes":
@@ -40,6 +40,25 @@ main:
     label: Event names and categories (event, segment)
     type: string
     default: "syllable,segment"
+
+- name: load_cues
+  label: Load cue points
+  type: stacked
+  default: "no"
+  options: "no,yes"
+
+  "no":
+
+  "yes":
+  - name: cues_file
+    label: File name with cue times (seconds)
+    type: file_open
+    default: " "
+
+  - name: cues_delimiter
+    label: Delimiter
+    type: string
+    default: ","
 
 - name: generate
   label: Load data and generate dataset

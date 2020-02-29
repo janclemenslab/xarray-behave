@@ -54,7 +54,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.windows = []
         self.parent = parent
         if app is None:
-            self.app = QtGui.QApplication()
+            self.app = QtGui.QApplication([])
         else:
             self.app = app
 
@@ -214,7 +214,12 @@ class MainWindow(pg.QtGui.QMainWindow):
         fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
         fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-        return PSV(ds, app=app, title=dirname, vr=vr, fmin=fmin, fmax=fmax)
+        cue_points = []
+        if form_data['load_cues']=='yes':
+            cue_points = cls.load_cues(form_data['cues_file'],
+                                        form_data['cues_delimiter'])
+
+        return PSV(ds, app=app, title=dirname, cue_points=cue_points, vr=vr, fmin=fmin, fmax=fmax)
 
     @classmethod
     def from_zarr(cls, filename=None, app=None, qt_keycode=None):
@@ -270,7 +275,13 @@ class MainWindow(pg.QtGui.QMainWindow):
             except:
                 logging.info(f'Something went wrong when loading the video. Continuing without.')
 
-            return PSV(ds, app=app, vr=vr, title=filename)
+            # load cues
+            cue_points = []
+            if form_data['load_cues']=='yes':
+                cue_points = cls.load_cues(form_data['cues_file'],
+                                           form_data['cues_delimiter'])
+
+            return PSV(ds, app=app, vr=vr, cue_points=cue_points, title=filename)
         else:
             return None
 
@@ -278,6 +289,16 @@ class MainWindow(pg.QtGui.QMainWindow):
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
         logging.info('Not implemented yet')
         pass
+
+    @staticmethod
+    def load_cues(filename, delimiter=','):
+        cues = []
+        try:
+            cues = np.loadtxt(fname=filename,
+                              delimiter=delimiter)
+        except FileNotFoundError:
+            logging.warning(f"{filename} not found.")
+        return cues
 
     def save_dataset(self, qt_keycode=None):
         logging.info('   Updating song events')
@@ -687,16 +708,16 @@ class PSV(MainWindow):
             self.update_frame()
 
     def set_prev_cuepoint(self, qt_keycode):
-        if self.cue_points:
+        if len(self.cue_points):
             self.cue_index = max(0, self.cue_index - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
-            self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
+            self.t0 = self.cue_points[self.cue_index]  * self.fs_song # jump to PREV cue point
 
     def set_next_cuepoint(self, qt_keycode):
-        if self.cue_points:
+        if len(self.cue_points):
             self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
-            self.t0 = self.cue_points[self.cue_index]  # jump to PREV cue point
+            self.t0 = self.cue_points[self.cue_index] * self.fs_song # jump to PREV cue point
 
     def zoom_in_song(self, qt_keycode):
         self.span /= 2

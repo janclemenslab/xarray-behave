@@ -1,10 +1,10 @@
 main:
-  
+
 - name: zarr_filename
   label: Dataset filename
   type: file_open
   default: " "
-  
+
 - name: spec_freq_min
   label: Min freq in spec display
   type: float
@@ -20,6 +20,25 @@ main:
   label: Lazy load data
   type: bool
   default: True
+
+- name: load_cues
+  label: Load cue points
+  type: stacked
+  default: "no"
+  options: "no,yes"
+
+  "no":
+
+  "yes":
+  - name: cues_file
+    label: File name with cue times (seconds)
+    type: file_open
+    default: " "
+
+  - name: cues_delimiter
+    label: Delimiter
+    type: string
+    default: ","
 
 - name: generate
   label: Load dataset
