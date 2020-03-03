@@ -310,11 +310,11 @@ def load_manual_annotation_matlab(filepath):
     event_categories = dict()
     for key, val in mat_data.items():
         if len(val) and hasattr(val, 'ndim') and val.ndim == 2 and not key.startswith('_'):  # ignore matfile metadata
-            manual_events_seconds[key.lower() + '_fss_manual'] = np.sort(val[:, 1:])
+            manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
             if val.shape[1] == 2:  # pulse times
-               event_categories[key.lower() + '_fss_manual'] = 'event'
+               event_categories[key.lower() + '_manual'] = 'event'
             else:  # sine on and offset
-               event_categories[key.lower() + '_fss_manual'] = 'segment'
+               event_categories[key.lower() + '_manual'] = 'segment'
     return manual_events_seconds, event_categories
 
 
