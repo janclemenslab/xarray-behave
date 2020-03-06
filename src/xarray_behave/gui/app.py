@@ -30,7 +30,11 @@ import xarray as xr
 from .. import xarray_behave as xb
 from .. import loaders as ld
 from .. import _ui_utils
-from .. import dss
+try:
+    from .. import dss
+except ImportError:
+    pass
+
 from .. import colormaps
 
 from . import views
