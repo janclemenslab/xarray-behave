@@ -279,13 +279,16 @@ class MainWindow(pg.QtGui.QMainWindow):
             except:
                 logging.info(f'Something went wrong when loading the video. Continuing without.')
 
+            fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
+            fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+
             # load cues
             cue_points = []
             if form_data['load_cues']=='yes':
                 cue_points = cls.load_cues(form_data['cues_file'],
                                            form_data['cues_delimiter'])
 
-            return PSV(ds, app=app, vr=vr, cue_points=cue_points, title=filename)
+            return PSV(ds, app=app, vr=vr, cue_points=cue_points, title=filename, fmin=fmin, fmax=fmax)
         else:
             return None
 
@@ -395,6 +398,7 @@ class PSV(MainWindow):
         self.movable_events = True
         self.move_only_current_events = True
         self.show_all_channels = True
+        self.select_loudest_channel = False
         self.nb_channels = self.ds.song_raw.shape[-1]
         self.sinet0 = None
         # FIXME: will fail for datasets w/o song
@@ -467,6 +471,8 @@ class PSV(MainWindow):
                                 checkable=True, checked=self.show_songevents)
         self.add_keyed_menuitem(view_audio, "Show all channels", partial(self.toggle, 'show_all_channels'), None,
                                 checkable=True, checked=self.show_all_channels)
+        self.add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), None,
+                                checkable=True, checked=self.select_loudest_channel)
         view_audio.addSeparator()
         self.add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), QtCore.Qt.Key_G,
                                 checkable=True, checked=self.show_spec)
@@ -764,13 +770,19 @@ class PSV(MainWindow):
         else:
             # load song for current channel
             try:
-                self.y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index].compute()
+                y_all = self.ds.song_raw.data[self.time0:self.time1, :].compute()
             except AttributeError:
-                self.y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]
+                y_all = self.ds.song_raw.data[self.time0:self.time1, :]
 
+            self.y = y_all[:, self.current_channel_index]
             if self.show_all_channels:
                 channel_list = np.delete(np.arange(self.nb_channels), self.current_channel_index)
-                self.y_other = self.ds.song_raw[self.time0:self.time1].values[:, channel_list]
+                self.y_other = y_all[:, channel_list]
+
+            # self.select_loudest_channel = True
+            if self.select_loudest_channel:
+                self.loudest_channel = np.argmax(np.max(y_all, axis=0))
+                self.cb2.setCurrentIndex(self.loudest_channel)
 
         self.slice_view.update_trace()
 
@@ -1061,6 +1073,7 @@ class PSV(MainWindow):
                                title='Update predictions',
                                main_callback=update_predictions)
         dialog.show()
+
     def edit_annotation_types(self, qt_keycode):
         if 'event_types' in self.ds:
             types = self.ds.event_types.coords['event_types'].data
@@ -1217,70 +1230,7 @@ def main(datename: str = '', *,
         mainwin.windows.append(MainWindow.from_zarr(filename=datename, app=app))
     elif os.path.isdir(datename):
         mainwin.windows.append(MainWindow.from_dir(datename, app=app))
-    # else:
-    #     if os.path.exists(datename + '.zarr') or os.path.exists(datename):
-    #         is_ds = True
-    #         loadname = datename if os.path.exists(datename) else datename+'.zarr'
-    #     else:
-    #         is_ds = False
 
-    #     if not ignore_existing and is_ds:  #os.path.exists(datename + '.zarr'):
-    #         logging.info(f'Loading ds from {loadname}.')
-    #         ds = xb.load(loadname, lazy=True)
-    #         if 'song_events' in ds:
-    #             ds.song_events.load()  # never lazy load song events so we can edit them
-    #         if not lazy:
-    #             logging.info(f'   Loading data from ds.')
-    #             if 'song' in ds:
-    #                 ds.song.load()  # non-lazy load song for faster updates
-    #             if 'pose_positions_allo' in ds:
-    #                 ds.pose_positions_allo.load()  # non-lazy load song for faster updates
-    #             if 'sampletime' in ds:
-    #                 ds.sampletime.load()
-    #             if 'song_raw' in ds:  # this will take a long time:
-    #                 ds.song_raw.load()  # non-lazy load song for faster updates
-    #     else:
-    #         logging.info(f'Assembling dataset for {datename}.')
-    #         ds = xb.assemble(datename, root=root, dat_path='dat', res_path='res',
-    #                         fix_fly_indices=False, include_song=with_song,
-    #                         keep_multi_channel=True, target_sampling_rate=target_sampling_rate,
-    #                         resample_video_data=resample_video_data)
-    #         if save:
-    #             logging.info('   saving dataset.')
-    #             xb.save(savefolder + datename + '.zarr', ds)
-
-    #     if create_manual_segmentation or 'song_events' not in ds:
-    #         ds = ld.initialize_manual_song_events(ds, from_segmentation=False, force_overwrite=False)
-
-    #     # add event categories if they are missing in the dataset
-    #     if 'song_events' in ds and 'event_categories' not in ds:
-    #         event_categories = ['segment'
-    #                             if 'sine' in evt or 'syllable' in evt
-    #                             else 'event'
-    #                             for evt in ds.event_types.values]
-    #         ds = ds.assign_coords({'event_categories':
-    #                             (('event_types'),
-    #                             event_categories)})
-
-    #     logging.info(ds)
-    #     filepath = ds.attrs['video_filename']
-    #     vr = None
-    #     try:
-    #         try:
-    #             video_filename = filepath[:-3] + 'mp4'
-    #             vr = _ui_utils.VideoReaderNP(video_filename)
-    #         except:
-    #             video_filename = filepath[:-3] + 'avi'
-    #             vr = _ui_utils.VideoReaderNP(video_filename)
-    #         logging.info(vr)
-    #     except FileNotFoundError:
-    #         logging.info(f'Video "{video_filename}" not found. Continuing without.')
-    #     except:
-    #         logging.info(f'Something went wrong when loading the video. Continuing without.')
-
-    #     cue_points = eval(cue_points)
-    #     psv=PSV(ds, vr=vr, cue_points=cue_points, cmap_name=cmap_name, box_size=box_size, fmin=spec_freq_min, fmax=spec_freq_max)
-    #     mainwin.windows.append(psv)
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
