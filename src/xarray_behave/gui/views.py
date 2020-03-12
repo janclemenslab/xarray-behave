@@ -17,7 +17,7 @@ from . import app
 logging.basicConfig(level=logging.INFO)
 
 
-# add io etc. 
+# add io etc.
 class Model():
 
     def __init__(self, ds):
@@ -25,19 +25,19 @@ class Model():
 
     def save(self, filename):
         xb.save(filename, self.ds)
-    
+
     @classmethod
     def from_file(cls, filename):
         ds = xb.load(filename)
         return cls(ds)
 
-     
+
 class SegmentItem(pg.LinearRegionItem):
 
     def __init__(self, bounds: Tuple[float, float], event_index: int, xrange,
                  time_bounds: Tuple[float, float]=None, movable=True, pen=None, brush=None, **kwargs):
         """[summary]
-        
+
         Args:
             bounds (Tuple[float, float]): (onset, offset) in seconds.
             event_index (int): for directly indexing event_types in ds.song_events
@@ -64,7 +64,7 @@ class EventItem(pg.InfiniteLine):
     def __init__(self, position: float, event_index: int, xrange,
                  time_pos=None, movable=True, pen=None, **kwargs):
         """[summary]
-        
+
         Args:
             position (float): in axis coords).
             event_index (int): for directly indexing event_types in ds.song_events
@@ -74,7 +74,7 @@ class EventItem(pg.InfiniteLine):
             pen ([type], optional): [description]. Defaults to None.
             brush ([type], optional): [description]. Defaults to None.
             **kwargs passed to pg.LinearRegionItem
-        """                
+        """
         super().__init__(pos=position, movable=movable, pen=pen, **kwargs)
         if time_pos is None:
             self.position = position
@@ -96,7 +96,7 @@ class Draggable(pg.GraphItem):
         self.focalFly = None
         super().__init__()
         self.callback = callback
-    
+
     def setData(self, **kwds):
         self.text = kwds.pop('text', [])
         self.data = kwds
@@ -113,7 +113,7 @@ class Draggable(pg.GraphItem):
             self.focalFly = None
 
         self.updateGraph()
-        
+
     def setTexts(self, text):
         for i in self.textItems:
             i.scene().removeItem(i)
@@ -122,22 +122,22 @@ class Draggable(pg.GraphItem):
             item = pg.TextItem(t)
             self.textItems.append(item)
             item.setParentItem(self)
-        
+
     def updateGraph(self):
         pg.GraphItem.setData(self, **self.data)
         for i,item in enumerate(self.textItems):
             item.setPos(*self.data['pos'][i])
-        
-        
+
+
     def mouseDragEvent(self, ev):
         if ev.button() != QtCore.Qt.LeftButton or not self.acceptDrags:
             ev.ignore()
             return
         # breakpoint()
-        
+
         if ev.isStart():
             # We are already one step into the drag.
-            # Find the point(s) at the mouse cursor when the button was first 
+            # Find the point(s) at the mouse cursor when the button was first
             # pressed:
             pos = ev.buttonDownPos()
             pts = self.scatter.pointsAt(pos)
@@ -179,7 +179,7 @@ class Draggable(pg.GraphItem):
         ev.accept()
 
 
-# the viewer is getting data from the Model (ds) but does not change it 
+# the viewer is getting data from the Model (ds) but does not change it
 # (so make ds-ref in View read-only via @property)
 class TraceView(pg.PlotWidget):
 
@@ -190,7 +190,7 @@ class TraceView(pg.PlotWidget):
         # this should be just a link/ref so changes in ds made by the controller will propagate
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
         self.disableAutoRange()
-        
+
         self._m = model
         self.callback = callback
         self.getPlotItem().mouseClickEvent = self._click
@@ -216,12 +216,13 @@ class TraceView(pg.PlotWidget):
         if self.m.show_all_channels and self.m.y_other is not None:
             for chan in range(self.m.nb_channels - 1):
                         self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
-                                                      self.m.y_other[::self.m.step, chan]))
+                                                      self.m.y_other[::self.m.step, chan],
+                                                      pen=pg.mkPen(color=[128, 128, 128])))
         # plot selected trace
-        self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step], 
+        self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
                                       np.array(self.m.y[::self.m.step])))
-        self.autoRange(padding=0)                    
-        # time of current frame in tracec
+        self.autoRange(padding=0)
+        # time of current frame in trace
         self.addItem(pg.InfiniteLine(movable=False, angle=90,
                                      pos=self.m.x[int(self.m.span / 2)],
                                      pen=pg.mkPen(color='r', width=1)))
@@ -232,8 +233,8 @@ class TraceView(pg.PlotWidget):
         self.addItem(region)
         if movable:
             region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
-        
-    def add_event(self, xx, event_type, pen, movable=False):        
+
+    def add_event(self, xx, event_type, pen, movable=False):
         if not movable:
             xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
             yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
@@ -245,7 +246,7 @@ class TraceView(pg.PlotWidget):
                 self.addItem(line)
 
     def time_to_pos(self, time):
-        return np.interp(time, self.m.trange, self.xrange) 
+        return np.interp(time, self.m.trange, self.xrange)
 
     def pos_to_time(self, pos):
         return np.interp(pos, self.xrange, self.m.trange)
@@ -254,7 +255,7 @@ class TraceView(pg.PlotWidget):
         event.accept()
         pos = event.pos()
         mouseT = self.getPlotItem().getViewBox().mapSceneToView(pos).x()
-        self.callback(mouseT, event.button())   
+        self.callback(mouseT, event.button())
 
 
 class SpecView(pg.ImageView):
@@ -270,11 +271,11 @@ class SpecView(pg.ImageView):
         self._m = model
         self.callback = callback
         self.imageItem.mouseClickEvent = self._click
-        
+
         if colormap is not None:
             self.imageItem.setLookupTable(colormap)  # apply the colormap
         self.old_items = []
-        
+
     @property
     def m(self):  # read only access to the model
         return self._m
@@ -284,22 +285,22 @@ class SpecView(pg.ImageView):
         try:  # to prevent failure on init
             return np.array(self.view.viewRange()[0])
         except AttributeError:
-            return None        
-    
+            return None
+
     @property
     def yrange(self):
         try:  # to prevent failure on init
             return np.array(self.view.viewRange()[1])
         except AttributeError:
-            return None        
-    
+            return None
+
     def clear_annotations(self):
         [self.removeItem(item) for item in self.old_items]  # remove annotations
-        
+
     def update_spec(self, x, y):
         # hash x to avoid re-calculation? only useful when annotating
         self.clear_annotations()
-        
+
         S, f, t = self._calc_spec(y)
         self.setImage(S.T[:, ::-1])
         self.view.setLimits(xMin=0, xMax=S.shape[1], yMin=0, yMax=S.shape[0])
@@ -323,12 +324,12 @@ class SpecView(pg.ImageView):
         f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=self.spec_win,
                                              noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
         self.spec_t = t
-        
+
         if self.m.fmax is not None:
-            f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)  
+            f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
         else:
             f_idx1 = -1
-        
+
         if self.m.fmin is not None:
             f_idx0 = np.argmax(f >= self.m.fmin)
         else:
@@ -339,14 +340,14 @@ class SpecView(pg.ImageView):
         return S, f[f_idx0:f_idx1], t
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
-        onset_spec, offset_spec = self.time_to_pos((onset, offset)) 
-        region = SegmentItem((onset_spec, offset_spec), region_typeindex, self.xrange, 
+        onset_spec, offset_spec = self.time_to_pos((onset, offset))
+        region = SegmentItem((onset_spec, offset_spec), region_typeindex, self.xrange,
                              time_bounds=(onset, offset), brush=brush, movable=movable)
         self.addItem(region)
         self.old_items.append(region)
         if movable:
             region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
-    
+
     def add_event(self, xx, event_type, pen, movable=False):
         xx0 = xx.copy()
         xx = self.time_to_pos(xx)
@@ -360,9 +361,9 @@ class SpecView(pg.ImageView):
                 line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
                 self.addItem(line)
                 self.old_items.append(line)
-    
+
     def time_to_pos(self, time):
-        return np.interp(time, self.m.trange, self.xrange) 
+        return np.interp(time, self.m.trange, self.xrange)
 
     def pos_to_time(self, pos):
         return np.interp(pos, self.xrange, self.m.trange)
@@ -381,10 +382,10 @@ class MovieView(_ui_utils.FastImageWidget):
         self._m = model
         self.callback = callback
         self.registerMouseClickEvent(self._click)
-        
+
         self.image_view_framenumber_text = pg.TextItem(color=(200, 0, 0), anchor=(-2, 1))
         self.viewBox.addItem(self.image_view_framenumber_text)
-        
+
         self.fly_positions = Draggable(self.m.on_position_dragged, acceptDrags=not self.m.move_poses)
         self.viewBox.addItem(self.fly_positions)
         self.fly_poses = Draggable(self.m.on_poses_dragged, acceptDrags=self.m.move_poses)
@@ -399,7 +400,7 @@ class MovieView(_ui_utils.FastImageWidget):
         for bodypart in range(self.m.nb_bodyparts):
             self.pose_brushes.append(pg.mkBrush(*self.m.bodypart_colors[bodypart], alpha))
         self.pose_brushes = self.pose_brushes * self.m.nb_flies
-        
+
         self.fly_pens = []
         for dot_fly in range(self.m.nb_flies):
             for bodypart in range(self.m.nb_bodyparts):
@@ -438,19 +439,19 @@ class MovieView(_ui_utils.FastImageWidget):
 
             self.setImage(frame, auto_scale=True)
             self.viewBox.setRange(xRange=y_range, yRange=x_range)
-            if self.m.show_framenumber:                    
+            if self.m.show_framenumber:
                 self.image_view_framenumber_text.setPlainText(f'frame {self.m.framenumber}')
             else:
                 self.image_view_framenumber_text.setPlainText('')
-        
+
     def annotate_dot(self, frame):
         # mark each fly with uniquely colored dots
         pos = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, self.m.thorax_index])
-        self.fly_positions.setData(pos=pos[:,::-1], 
+        self.fly_positions.setData(pos=pos[:,::-1],
                                    symbolBrush=self.brushes, pen=None, size=10,
                                    acceptDrags=not self.m.move_poses,
                                    focalFly=self.m.focal_fly)
-        
+
         # mark *focal* and *other* fly with circle
         for this_fly, color in zip((self.m.focal_fly, self.m.other_fly), self.m.bodypart_colors[[2, 6]]):
             fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other,
@@ -466,8 +467,8 @@ class MovieView(_ui_utils.FastImageWidget):
         poses = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, :])
         poses = poses.reshape(-1, 2)  # flatten
         self.fly_poses.setData(pos=poses[:,::-1],
-                               adj=self.skeletons, 
-                               symbolBrush=self.pose_brushes, size=6, 
+                               adj=self.skeletons,
+                               symbolBrush=self.pose_brushes, size=6,
                                acceptDrags=self.m.move_poses)
         return frame
 
@@ -482,7 +483,7 @@ class MovieView(_ui_utils.FastImageWidget):
         # frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
         # return frame, x_range, y_range
         return x_range, y_range
-        
+
 
     def _click(self, event):
         event.accept()
