@@ -7,7 +7,7 @@ conda install numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz 
 conda install pysoundfile -c conda-forge
 pip install simpleaudio
 pip install flammkuchen
-pip install git+http://github.com/janclemenslab/samplestamps
+pip install samplestamps
 ```
 
 Install with GUI (requires extra dependencies):
