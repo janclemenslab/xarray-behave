@@ -87,21 +87,17 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         filepath_poses_leap = Path(root, res_path, datename, f'{datename}_poses.h5')
         if os.path.exists(filepath_poses):
             pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_deepposekit(filepath_poses)
-            with_poses = True
+            with_poses = pose_pos.shape[0]>0  # ensure non-empty poses
             poses_from = 'DeepPoseKit'
             logging.debug(f'  {filepath_poses} loaded.')
         elif os.path.exists(filepath_poses_leap):
             logging.debug(f'  {filepath_poses} not found.')
             pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses_leap)
-            with_poses = True
+            with_poses = pose_pos.shape[0]>0  # ensure non-empty poses
             poses_from = 'LEAP'
         else:
             logging.debug(f'  {filepath_poses_leap} not found.')
             logging.info(f'   Could not load pose from {filepath_poses} or {filepath_poses_leap} or .')
-
-        if pose_pos.shape[0] == 0:
-            logging.debug(f'  Poses are empty...')
-            with_poses = False
 
     # instead of these flags - just check for existence of dict keys??
     with_segmentation = False
