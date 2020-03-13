@@ -328,7 +328,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
         if resample_video_data:  # resample to common grid at target_sampling_rate.
             frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-            breakpoint()
             interpolator = scipy.interpolate.interp1d(
                 frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
             pose_pos = interpolator(target_samples)
