@@ -1087,7 +1087,7 @@ class PSV(MainWindow):
             cats = self.ds.event_types.coords['event_categories'].data
             table_data = [[typ, cat] for typ, cat in zip(types, cats)]
         else:
-            table_data = None
+            table_data = []
 
         dialog = table.Table(table_data)
         dialog.show()
