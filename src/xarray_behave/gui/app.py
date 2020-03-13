@@ -386,9 +386,6 @@ class PSV(MainWindow):
         self.fly_colors = _ui_utils.make_colors(self.nb_flies)
         self.bodypart_colors = _ui_utils.make_colors(self.nb_bodyparts)
 
-        self.nb_eventtypes = len(self.ds.event_types)
-        self.eventype_colors = _ui_utils.make_colors(self.nb_eventtypes)
-
         self.STOP = True
         self.swap_events = []
         self.show_spec = True
@@ -400,11 +397,16 @@ class PSV(MainWindow):
         self.select_loudest_channel = False
         self.nb_channels = self.ds.song_raw.shape[-1]
         self.sinet0 = None
-        # FIXME: will fail for datasets w/o song
+
         if 'song_events' in self.ds:
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            self.nb_eventtypes = len(self.ds.event_types)
+            self.eventype_colors = _ui_utils.make_colors(self.nb_eventtypes)
         else:
             self.fs_other = ds.attrs['target_sampling_rate_Hz']
+            self.nb_eventtypes = 0
+            self.eventype_colors = []
+
 
         if 'song' in self.ds:
             self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
@@ -501,9 +503,11 @@ class PSV(MainWindow):
         # EVENT TYPE selector
         self.cb = pg.QtGui.QComboBox()
         self.cb.addItem("No annotation")
-        self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
-        for event_type in self.eventList:
-            self.cb.addItem("Add " + event_type[1])
+        self.eventList = []
+        if 'song_events' in ds:
+            self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
+            for event_type in self.eventList:
+                self.cb.addItem("Add " + event_type[1])
         self.cb.currentIndexChanged.connect(self.update_xy)
         self.cb.setCurrentIndex(0)
         self.hl.addWidget(self.cb)
@@ -812,9 +816,12 @@ class PSV(MainWindow):
             if self.ds.event_categories.data[event_type] == 'segment':
                 event_onset_indices = this[np.logical_and(this[:,0]>x[0], this[:,0]<x[-1]), 0]
                 event_offset_indices = this[np.logical_and(this[:,1]>x[0], this[:,1]<x[-1]), 1]
+                # event_onset_indices = np.clip(this[:, 0], x[0], x[-1])
+                # event_offset_indices = np.clip(this[:, 1], x[0], x[-1])
                 # ensure onsets and offsets match
                 # TODO plot partial segments
                 if len(event_onset_indices) and len(event_offset_indices):
+                    # FIXME safe error when showing empty song (?) or incomplete sine song (?)
                     event_offset_indices = event_offset_indices[event_offset_indices>np.min(event_onset_indices)]
                     event_onset_indices = event_onset_indices[event_onset_indices<np.max(event_offset_indices)]
                     for onset, offset in zip(event_onset_indices, event_offset_indices):
@@ -1074,6 +1081,7 @@ class PSV(MainWindow):
         dialog.show()
 
     def edit_annotation_types(self, qt_keycode):
+
         if 'event_types' in self.ds:
             types = self.ds.event_types.coords['event_types'].data
             cats = self.ds.event_types.coords['event_categories'].data
@@ -1086,8 +1094,9 @@ class PSV(MainWindow):
         result = dialog.exec_()
         if result == QtGui.QDialog.Accepted:
             data = dialog.get_table_data()
-            # # make sure event times are up to date
-            self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
+            # make sure event times are up to date
+            if 'song_events' in self.ds:
+                self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
 
             event_names = []
             event_names_old = []
@@ -1115,20 +1124,32 @@ class PSV(MainWindow):
                     elif event_category=='event':
                         self.event_times[event_name] = np.zeros((0,))
             # make new song_events DataArray
-            old_values = self.ds.song_events.values.copy()
+            if 'song_events' in self.ds:
+                old_values = self.ds.song_events.values.copy()
+                attrs = self.ds.song_events.attrs.copy()
+            else:
+                old_values = np.zeros((self.ds.time.shape[0], 0))
+                attrs = {'sampling_rate_Hz': self.ds.attrs['target_sampling_rate_Hz']}
+
             new_values = np.zeros_like(old_values, shape=(old_values.shape[0], len(self.event_times)))
             song_events = xr.DataArray(data=new_values,
                                 dims=['time', 'event_types'],
-                                coords={'time': self.ds.song_events.time,
+                                coords={'time': self.ds.time,
                                         'event_types': list(self.event_times.keys()),
                                         'event_categories': (('event_types'), list(event_categories))},
-                                attrs=self.ds.song_events.attrs)
+                                attrs=attrs)
             # delete old
-            del self.ds['song_events']
-            del self.ds.coords['event_types']
-            del self.ds.coords['event_categories']
+            if 'song_events' in self.ds:
+                del self.ds['song_events']
+                del self.ds.coords['event_types']
+                del self.ds.coords['event_categories']
             # add new
             self.ds = xr.merge((self.ds, song_events.to_dataset(name='song_events')))
+
+            # update event-related attrs
+            self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            self.nb_eventtypes = len(self.ds.event_types)
+            self.eventype_colors = _ui_utils.make_colors(self.nb_eventtypes)
 
             # update EVENT TYPE selector
             # remove old
