@@ -28,4 +28,4 @@ For playback of sound you need a working installation of [pysimpleaudio](https:/
 ## Usage
 See `demo.ipynb`.
 
-Use `python -m xarray_behave.ui datename` for starting the UI. `python -m xarray_behave.ui --help` for usage/arguments/keys.
+Use `xb datename` for starting the UI. `xb --help` for usage/arguments/keys.

@@ -18,8 +18,9 @@ setup(name='xarray_behave',
       packages=find_packages('src'),
       package_dir={'': 'src'},
       package_data = {'xarray_behave': ['gui/forms/*']},
-      install_requires=['PySide2', 'numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen', 'pysoundfile'],
+      install_requires=['pyside2', 'numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen', 'soundfile'],
       extras_require={'gui': ['pyside2', 'pyqtgraph', 'simpleaudio', 'scikit-image', 'opencv-python']},
       include_package_data=True,
-      zip_safe=False
+      zip_safe=False,
+      entry_points = { 'console_scripts': ['xb=xarray_behave.gui.app:cli'],}
      )
