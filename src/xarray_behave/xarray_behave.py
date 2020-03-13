@@ -99,6 +99,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             logging.debug(f'  {filepath_poses_leap} not found.')
             logging.info(f'   Could not load pose from {filepath_poses} or {filepath_poses_leap} or .')
 
+        if pose_pos.shape[0] == 0:
+            logging.debug(f'  Poses are empty...')
+            with_poses = False
+
     # instead of these flags - just check for existence of dict keys??
     with_segmentation = False
     with_segmentation_matlab = False
@@ -324,7 +328,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
         if resample_video_data:  # resample to common grid at target_sampling_rate.
             frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-
+            breakpoint()
             interpolator = scipy.interpolate.interp1d(
                 frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
             pose_pos = interpolator(target_samples)
