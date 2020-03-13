@@ -52,15 +52,15 @@ class MainApp(QtGui.QApplication):
 
 class MainWindow(pg.QtGui.QMainWindow):
 
-    def __init__(self, app=None, parent=None, title="xb.gui"):
+    def __init__(self, parent=None, title="xb.gui"):
         super().__init__(parent)
 
         self.windows = []
         self.parent = parent
-        if app is None:
+
+        self.app = QtWidgets.QApplication.instance()
+        if self.app is None:
             self.app = QtGui.QApplication([])
-        else:
-            self.app = app
 
         self.resize(1000, 800)
         self.setWindowTitle(title)
@@ -156,7 +156,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
         fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-        return PSV(ds, app=app, title=wav_filename, fmin=fmin, fmax=fmax)
+        return PSV(ds, title=wav_filename, fmin=fmin, fmax=fmax)
 
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None):
@@ -222,8 +222,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         if form_data['load_cues']=='yes':
             cue_points = cls.load_cues(form_data['cues_file'],
                                         form_data['cues_delimiter'])
-
-        return PSV(ds, app=app, title=dirname, cue_points=cue_points, vr=vr, fmin=fmin, fmax=fmax)
+        return PSV(ds, title=dirname, cue_points=cue_points, vr=vr, fmin=fmin, fmax=fmax)
 
     @classmethod
     def from_zarr(cls, filename=None, app=None, qt_keycode=None):
@@ -288,7 +287,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 cue_points = cls.load_cues(form_data['cues_file'],
                                            form_data['cues_delimiter'])
 
-            return PSV(ds, app=app, vr=vr, cue_points=cue_points, title=filename, fmin=fmin, fmax=fmax)
+            return PSV(ds, vr=vr, cue_points=cue_points, title=filename, fmin=fmin, fmax=fmax)
         else:
             return None
 
@@ -338,9 +337,9 @@ class PSV(MainWindow):
 
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(self, ds, app=None, vr=None, cue_points=[], title='xb.ui', cmap_name: str = 'turbo', box_size: int = 200,
+    def __init__(self, ds, vr=None, cue_points=[], title='xb.ui', cmap_name: str = 'turbo', box_size: int = 200,
                  fmin=None, fmax=None):
-        super().__init__(app=app, title=title)
+        super().__init__(title=title)
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         # build model:
         self.ds = ds
@@ -1220,16 +1219,16 @@ def main(datename: str = '', *,
     """
 
     app = MainApp()
-    mainwin = MainWindow(app=app)
+    mainwin = MainWindow()
     mainwin.show()
     if not len(datename):
         pass
     elif datename.endswith('.wav'):
-        mainwin.windows.append(MainWindow.from_wav(datename, app=app))
+        mainwin.windows.append(MainWindow.from_wav(datename))
     elif datename.endswith('.zarr'):
-        mainwin.windows.append(MainWindow.from_zarr(filename=datename, app=app))
+        mainwin.windows.append(MainWindow.from_zarr(filename=datename))
     elif os.path.isdir(datename):
-        mainwin.windows.append(MainWindow.from_dir(datename, app=app))
+        mainwin.windows.append(MainWindow.from_dir(datename))
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
