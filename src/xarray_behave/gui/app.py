@@ -189,7 +189,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                         keep_multi_channel=True,
                         target_sampling_rate=form_data['target_samplingrate'],
                         resample_video_data=resample_video_data)
-
         # add event categories if they are missing in the dataset
         if 'song_events' in ds and 'event_categories' not in ds:
             event_categories = ['segment'
@@ -525,7 +524,6 @@ class PSV(MainWindow):
                                                key)
             self.event_items.append(menu_item)
 
-
         # CHANNEL selector
         self.cb2 = pg.QtGui.QComboBox()
         if 'song' in self.ds:
@@ -814,16 +812,25 @@ class PSV(MainWindow):
 
             this = self.event_times[event_name]
             if self.ds.event_categories.data[event_type] == 'segment':
-                event_onset_indices = this[np.logical_and(this[:,0]>x[0], this[:,0]<x[-1]), 0]
-                event_offset_indices = this[np.logical_and(this[:,1]>x[0], this[:,1]<x[-1]), 1]
-                # event_onset_indices = np.clip(this[:, 0], x[0], x[-1])
-                # event_offset_indices = np.clip(this[:, 1], x[0], x[-1])
-                # ensure onsets and offsets match
-                # TODO plot partial segments
+                event_onset_indices = np.sort(this[np.logical_and(this[:,0]>=x[0], this[:,0]<x[-1]), 0])
+                event_offset_indices = np.sort(this[np.logical_and(this[:,1]>x[0], this[:,1]<=x[-1]), 1])
+                # make sure we plot partial segments
+                if len(event_offset_indices) > len(event_onset_indices):  # first onset missing
+                    # find nearest onset
+                    missing_onset = np.max(this[this[:,0]<x[0], 0])
+                    event_onset_indices = np.insert(event_onset_indices, 0, missing_onset)
+                if len(event_onset_indices) > len(event_offset_indices):  # last offset missing
+                    missing_offset = np.min(this[this[:,1]>x[-1], 1])
+                    event_offset_indices = np.append(event_offset_indices, missing_offset)
+                if len(event_onset_indices) == 0 and len(event_offset_indices) == 0 and this.shape[0] > 0:
+                    # check if we're fully within a segment
+                    last_onset = np.max(this[this[:, 0] < x[0], 0], initial=-np.inf)  # initial=np.inf - np.max then works with empty arrays and returns -np.inf
+                    last_offset = np.max(this[this[:, 1] < x[0], 1], initial=-np.inf)
+                    if last_onset > last_offset:   # we're spanning a segment!
+                        event_onset_indices = [last_onset]  # last onset
+                        event_offset_indices = [np.min(this[this[:,1]>x[-1], 1])]  # next offset
+
                 if len(event_onset_indices) and len(event_offset_indices):
-                    # FIXME safe error when showing empty song (?) or incomplete sine song (?)
-                    event_offset_indices = event_offset_indices[event_offset_indices>np.min(event_onset_indices)]
-                    event_onset_indices = event_onset_indices[event_onset_indices<np.max(event_offset_indices)]
                     for onset, offset in zip(event_onset_indices, event_offset_indices):
                         self.slice_view.add_segment(onset, offset, event_type, event_brush, movable=movable)
                         if self.show_spec:
