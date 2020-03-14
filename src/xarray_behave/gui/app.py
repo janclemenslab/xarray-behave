@@ -1255,8 +1255,11 @@ def main(datename: str = '', *,
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
 
-if __name__ == '__main__':
+def cli():
     import warnings
     warnings.filterwarnings("ignore")
     logging.basicConfig(level=logging.INFO)
     defopt.run(main)
+
+if __name__ == '__main__':
+    cli()
