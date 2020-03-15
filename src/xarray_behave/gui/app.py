@@ -115,8 +115,6 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     @classmethod
     def from_wav(cls, wav_filename=None, app=None, qt_keycode=None):
-        def make_dataset(form_data):
-            dialog.close()
         if wav_filename is None:
             wav_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None,
                                                                     caption='Select audio file')
@@ -124,123 +122,122 @@ class MainWindow(pg.QtGui.QMainWindow):
         wave_fileinfo = soundfile.info(wav_filename)
         logging.info(wave_fileinfo)
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
-                            title='Make new dataset from wave file',
-                            main_callback=make_dataset)
+                            title='Make new dataset from wave file')
         dialog.form['event_samplerate'] = wave_fileinfo.samplerate
         dialog.form['wav_filename'] = wav_filename
         dialog.form['spec_freq_max'] = wave_fileinfo.samplerate / 2
         dialog.show()
-        dialog.exec_()  # stop here until dialog is closed
 
-        form_data = dialog.form.get_form_data()
-        logging.info(f"Making new dataset from {form_data['wav_filename']}.")
-        if form_data['event_samplerate'] < 1:
-            form_data['event_samplerate'] = None
+        result = dialog.exec_()
+        if result == QtGui.QDialog.Accepted and len(wav_filename):
+            form_data = dialog.form.get_form_data()
 
-        event_names = []
-        event_classes = []
-        for pair in form_data['events'].split(';'):
-            items = pair.strip().split(',')
-            if len(items)>0:
-                event_names.append(items[0].strip())
-            if len(items)>1:
-                event_classes.append(items[1].strip())
-            else:
-                event_classes.append('segment')
+            form_data = dialog.form.get_form_data()
+            logging.info(f"Making new dataset from {form_data['wav_filename']}.")
+            if form_data['event_samplerate'] < 1:
+                form_data['event_samplerate'] = None
 
-        ds = xb.from_wav(filepath=form_data['wav_filename'],
-                            target_samplerate=form_data['event_samplerate'],
-                            event_names=event_names,
-                            event_classes=event_classes)
+            event_names = []
+            event_classes = []
+            for pair in form_data['events'].split(';'):
+                items = pair.strip().split(',')
+                if len(items)>0:
+                    event_names.append(items[0].strip())
+                if len(items)>1:
+                    event_classes.append(items[1].strip())
+                else:
+                    event_classes.append('segment')
 
-        fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-        fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+            ds = xb.from_wav(filepath=form_data['wav_filename'],
+                                target_samplerate=form_data['event_samplerate'],
+                                event_names=event_names,
+                                event_classes=event_classes)
 
-        return PSV(ds, title=wav_filename, fmin=fmin, fmax=fmax)
+            fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
+            fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+
+            return PSV(ds, title=wav_filename, fmin=fmin, fmax=fmax)
+        else:
+            return None
 
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None):
-        def make_dataset():
-            dialog.close()
-
         if dirname is None:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                                     caption='Select data directory')
 
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
-                               title='Make new dataset from data directory',
-                               main_callback=make_dataset)
+                               title='Make new dataset from data directory')
 
         dialog.form['data_dir'] = dirname
         dialog.show()
-        dialog.exec_()
-        form_data = dialog.form.get_form_data()
-        logging.info(f"Making new dataset from directory {form_data['data_dir']}.")
 
-        if form_data['target_samplingrate'] == 0:
-            resample_video_data = False
-        else:
-            resample_video_data = True
+        result = dialog.exec_()
+        if result == QtGui.QDialog.Accepted and len(dirname):
+            form_data = dialog.form.get_form_data()
+            logging.info(f"Making new dataset from directory {form_data['data_dir']}.")
 
-        base, datename = os.path.split(form_data['data_dir'])
-        root, dat_path = os.path.split(base)
-        ds = xb.assemble(datename, root, dat_path, res_path='res',
-                        fix_fly_indices=False, include_song=~form_data['ignore_song'],
-                        keep_multi_channel=True,
-                        target_sampling_rate=form_data['target_samplingrate'],
-                        resample_video_data=resample_video_data)
-        # add event categories if they are missing in the dataset
-        if 'song_events' in ds and 'event_categories' not in ds:
-            event_categories = ['segment'
-                                if 'sine' in evt or 'syllable' in evt
-                                else 'event'
-                                for evt in ds.event_types.values]
-            ds = ds.assign_coords({'event_categories':
-                                (('event_types'),
-                                event_categories)})
+            if form_data['target_samplingrate'] == 0:
+                resample_video_data = False
+            else:
+                resample_video_data = True
+            base, datename = os.path.split(os.path.normpath(form_data['data_dir']))  # normpath removes trailing pathsep
+            root, dat_path = os.path.split(base)
+            ds = xb.assemble(datename, root, dat_path, res_path='res',
+                            fix_fly_indices=False, include_song=~form_data['ignore_song'],
+                            keep_multi_channel=True,
+                            target_sampling_rate=form_data['target_samplingrate'],
+                            resample_video_data=resample_video_data)
+            # add event categories if they are missing in the dataset
+            if 'song_events' in ds and 'event_categories' not in ds:
+                event_categories = ['segment'
+                                    if 'sine' in evt or 'syllable' in evt
+                                    else 'event'
+                                    for evt in ds.event_types.values]
+                ds = ds.assign_coords({'event_categories':
+                                    (('event_types'),
+                                    event_categories)})
 
-        # add video file
-        vr = None
-        try:
+            # add video file
+            vr = None
             try:
-                video_filename = os.path.join(form_data['data_dir'], datename + '.mp4')
-                vr = _ui_utils.VideoReaderNP(video_filename)
+                try:
+                    video_filename = os.path.join(form_data['data_dir'], datename + '.mp4')
+                    vr = _ui_utils.VideoReaderNP(video_filename)
+                except:
+                    video_filename = os.path.join(form_data['data_dir'], datename + '.avi')
+                    vr = _ui_utils.VideoReaderNP(video_filename)
+                logging.info(vr)
+            except FileNotFoundError:
+                logging.info(f'Video "{video_filename}" not found. Continuing without.')
             except:
-                video_filename = os.path.join(form_data['data_dir'], datename + '.avi')
-                vr = _ui_utils.VideoReaderNP(video_filename)
-            logging.info(vr)
-        except FileNotFoundError:
-            logging.info(f'Video "{video_filename}" not found. Continuing without.')
-        except:
-            logging.info(f'Something went wrong when loading the video. Continuing without.')
+                logging.info(f'Something went wrong when loading the video. Continuing without.')
 
-        fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-        fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+            fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
+            fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-        cue_points = []
-        if form_data['load_cues']=='yes':
-            cue_points = cls.load_cues(form_data['cues_file'],
-                                        form_data['cues_delimiter'])
-        return PSV(ds, title=dirname, cue_points=cue_points, vr=vr, fmin=fmin, fmax=fmax)
+            cue_points = []
+            if form_data['load_cues']=='yes':
+                cue_points = cls.load_cues(form_data['cues_file'],
+                                            form_data['cues_delimiter'])
+            return PSV(ds, title=dirname, cue_points=cue_points, vr=vr, fmin=fmin, fmax=fmax)
+        else:
+            return None
 
     @classmethod
     def from_zarr(cls, filename=None, app=None, qt_keycode=None):
-        def make_dataset():
-            dialog.close()
-        logging.info('   Updating song events')
         if filename is None:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select dataset')
 
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_zarr.yaml",
-                               title='Load dataset from zarr file',
-                               main_callback=make_dataset)
+                               title='Load dataset from zarr file')
 
         dialog.form['zarr_filename'] = filename
         dialog.show()
-        dialog.exec_()
-        form_data = dialog.form.get_form_data()
 
-        if len(filename):
+        result = dialog.exec_()
+        if result == QtGui.QDialog.Accepted and len(filename):
+            form_data = dialog.form.get_form_data()
             logging.info(f'Loading {filename}.')
             ds = xb.load(filename, lazy=True)
             if 'song_events' in ds:
@@ -324,6 +321,11 @@ class YamlDialog(QtGui.QDialog):
         super().__init__(parent=parent)
         self.setWindowTitle(title)
         self.form = formbuilder.YamlFormWidget(yaml_file)
+        if main_callback is None:
+            def main_callback():
+                """Accepts and closes dialog."""
+                self.accept()
+                self.close()
         self.form.mainAction.connect(main_callback)
         layout = pg.QtGui.QVBoxLayout()
         layout.addWidget(self.form)
@@ -405,7 +407,6 @@ class PSV(MainWindow):
             self.fs_other = ds.attrs['target_sampling_rate_Hz']
             self.nb_eventtypes = 0
             self.eventype_colors = []
-
 
         if 'song' in self.ds:
             self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
