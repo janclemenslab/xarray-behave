@@ -16,6 +16,7 @@ import scipy
 import skimage.draw
 import scipy.interpolate
 import soundfile
+from dataclasses import dataclass
 
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
@@ -49,6 +50,11 @@ class MainApp(QtGui.QApplication):
     def __init__(self, args=[]):
         super().__init__(args)
 
+
+@dataclass
+class DataSource:
+    type: str
+    name: str
 
 class MainWindow(pg.QtGui.QMainWindow):
 
@@ -156,7 +162,8 @@ class MainWindow(pg.QtGui.QMainWindow):
             fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
             fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-            return PSV(ds, title=wav_filename, fmin=fmin, fmax=fmax)
+            return PSV(ds, title=wav_filename,
+                       fmin=fmin, fmax=fmax, data_source=DataSource('wav', wav_filename))
         else:
             return None
 
@@ -220,7 +227,8 @@ class MainWindow(pg.QtGui.QMainWindow):
             if form_data['load_cues']=='yes':
                 cue_points = cls.load_cues(form_data['cues_file'],
                                             form_data['cues_delimiter'])
-            return PSV(ds, title=dirname, cue_points=cue_points, vr=vr, fmin=fmin, fmax=fmax)
+            return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
+                       fmin=fmin, fmax=fmax, data_source=DataSource('dir', dirname))
         else:
             return None
 
@@ -242,7 +250,6 @@ class MainWindow(pg.QtGui.QMainWindow):
             ds = xb.load(filename, lazy=True)
             if 'song_events' in ds:
                 ds.song_events.load()
-            lazy = True
             if not form_data['lazy']:
                 logging.info(f'   Loading data from ds.')
                 if 'song' in ds:
@@ -283,7 +290,8 @@ class MainWindow(pg.QtGui.QMainWindow):
                 cue_points = cls.load_cues(form_data['cues_file'],
                                            form_data['cues_delimiter'])
 
-            return PSV(ds, vr=vr, cue_points=cue_points, title=filename, fmin=fmin, fmax=fmax)
+            return PSV(ds, vr=vr, cue_points=cue_points, title=filename,
+                       fmin=fmin, fmax=fmax, data_source=DataSource('zarr', filename))
         else:
             return None
 
@@ -304,15 +312,38 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     def save_dataset(self, qt_keycode=None):
         logging.info('   Updating song events')
-        self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}.zarr")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save dataset to', str(savefilename),
                                                                 filter="zarr files (*.zarr);;all files (*)")
+
         if len(savefilename):
-            logging.info(f'   Saving dataset to {savefilename}.')
-            xb.save(savefilename, self.ds)
-            logging.info(f'   Done.')
+            file_exists = os.path.exists(savefilename)
+
+            retval = QtWidgets.QMessageBox.Ignore
+            if self.data_source.type=='zarr' and file_exists:
+                retval = ZarrOverwriteWarning().exec_()
+
+            if retval == QtWidgets.QMessageBox.Ignore:
+                if 'song_events' in self.ds:
+                    self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
+                logging.info(f'   Saving dataset to {savefilename}.')
+                xb.save(savefilename, self.ds)
+                logging.info(f'   Done.')
+            else:
+                logging.info(f'   Saving aborted.')
+
+
+class ZarrOverwriteWarning(QtWidgets.QMessageBox):
+
+    def __init__(self):
+        super().__init__()
+        self.setIcon(QtWidgets.QMessageBox.Warning)
+        self.setText('Attempting to overwrite existing zarr file.')
+        self.setInformativeText("This can corrupt the file and lead to data loss. ABORT unless you know what you're doing.")
+        self.setStandardButtons(QtWidgets.QMessageBox.Ignore | QtWidgets.QMessageBox.Abort)
+        self.setDefaultButton(QtWidgets.QMessageBox.Abort)
+        self.setEscapeButton(QtWidgets.QMessageBox.Abort)
 
 
 class YamlDialog(QtGui.QDialog):
@@ -339,11 +370,12 @@ class PSV(MainWindow):
     MAX_AUDIO_AMP = 3.0
 
     def __init__(self, ds, vr=None, cue_points=[], title='xb.ui', cmap_name: str = 'turbo', box_size: int = 200,
-                 fmin=None, fmax=None):
+                 fmin=None, fmax=None, data_source: DataSource=None):
         super().__init__(title=title)
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         # build model:
         self.ds = ds
+        self.data_source = data_source
         # self.m = views.Model(ds)
         self.vr = vr
         self.cue_points = cue_points
