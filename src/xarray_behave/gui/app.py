@@ -157,7 +157,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             ds = xb.from_wav(filepath=form_data['wav_filename'],
                                 target_samplerate=form_data['event_samplerate'],
                                 event_names=event_names,
-                                event_classes=event_classes)
+                                event_categories=event_classes)
 
             fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
             fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
