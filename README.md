@@ -1,6 +1,18 @@
 # xarray-behave
 
 ## Installation
+Install a working conda installation with python 3.7 (see [here](https://docs.conda.io/en/latest/miniconda.html)).
+
+Then in a terminal run:
+```shell
+conda create -n xb python=3.7 -y
+conda activate xb
+conda install pyqtgraph -c conda-forge -y
+conda install -c conda-forge python-sounddevice
+pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[gui]
+```
+
+## Old:
 First, manually install dependencies:
 ```shell
 conda install numpy scipy pandas xarray zarr h5py dask netCDF4 bottleneck toolz pytables
