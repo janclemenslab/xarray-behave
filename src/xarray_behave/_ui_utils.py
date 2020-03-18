@@ -2,9 +2,7 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets
-# from PySide2.QtGui import QImage, QPixmap
-# from PySide2.QtWidgets import QGraphicsPixmapItem
-
+import logging
 from videoreader import VideoReader
 
 
@@ -171,7 +169,9 @@ def eventtimes_to_traces(ds, event_times):
     """
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
+    logging.info('Extracting event times from song_events:')
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
+        logging.info(f'   {event_name}')
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
         if event_category == 'event':
             times = ds.song_events.time.sel(time=event_times[event_name].ravel(), method='nearest').data
@@ -183,6 +183,7 @@ def eventtimes_to_traces(ds, event_times):
             if event_times[event_name].shape[0] > 0:
                 for onset, offset in zip(event_times[event_name][:, 0], event_times[event_name][:, 1]):
                     ds.song_events.sel(time=slice(onset, offset), event_types=event_name).data[:] = 1
+    logging.info(f'Done.')
     return ds
 
 
