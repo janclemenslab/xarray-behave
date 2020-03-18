@@ -504,8 +504,10 @@ class PSV(MainWindow):
                                 checkable=True, checked=self.show_songevents)
         self.add_keyed_menuitem(view_audio, "Show all channels", partial(self.toggle, 'show_all_channels'), None,
                                 checkable=True, checked=self.show_all_channels)
-        self.add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), None,
+        self.add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), QtCore.Qt.Key_Q,
                                 checkable=True, checked=self.select_loudest_channel)
+        self.add_keyed_menuitem(view_audio, "Select previous channel", self.set_next_channel, "Shift+Up")
+        self.add_keyed_menuitem(view_audio, "Select next channel", self.set_prev_channel, "Shift+Down")
         view_audio.addSeparator()
         self.add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), QtCore.Qt.Key_G,
                                 checkable=True, checked=self.show_spec)
@@ -712,6 +714,18 @@ class PSV(MainWindow):
         logging.info(f'   Deleted all events in view.')
         if self.STOP:
             self.update_xy()
+
+    def set_prev_channel(self, qt_keycode):
+        idx = self.cb2.currentIndex()
+        idx -= 1
+        idx  = idx % len(self.cb2)
+        self.cb2.setCurrentIndex(idx)
+
+    def set_next_channel(self, qt_keycode):
+        idx = self.cb2.currentIndex()
+        idx += 1
+        idx  = idx % len(self.cb2)
+        self.cb2.setCurrentIndex(idx)
 
     def inc_freq_res(self, qt_keycode):
         self.spec_win = int(self.spec_win * 2)
