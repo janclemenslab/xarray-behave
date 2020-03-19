@@ -1055,14 +1055,15 @@ class PSV(MainWindow):
                               \
                               Trying to fall back to simpleaudio, which may be buggy.')
 
-            try:
-                import simpleaudio
-                has_simpleaudio = True
+            if not has_sounddevice:
+                try:
+                    import simpleaudio
+                    has_simpleaudio = True
 
-            except (ImportError, ModuleNotFoundError):
-                logging.info('Could not import simpleaudio. Maybe you need to install it.\
-                              See https://simpleaudio.readthedocs.io/en/latest/installation.html for instructions.')
-                return
+                except (ImportError, ModuleNotFoundError):
+                    logging.info('Could not import simpleaudio. Maybe you need to install it.\
+                                See https://simpleaudio.readthedocs.io/en/latest/installation.html for instructions.')
+                    return
 
             if has_sounddevice or has_simpleaudio:
                 if 'song' in self.ds and self.current_channel_name == 'Merged channels':
