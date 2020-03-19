@@ -8,7 +8,7 @@ Then in a terminal run:
 conda create -n xb python=3.7 -y
 conda activate xb
 conda install pyqtgraph python-sounddevice -c conda-forge -y
-pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[gui]
+pip install xarray-behave
 ```
 
 ## Old:
