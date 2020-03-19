@@ -543,6 +543,12 @@ def save(savepath, dataset):
         savepath ([type]): [description]
         dataset ([type]): [description]
     """
+    # xarray can't save attrs with dict values.
+    # Delete event_times prior to saving.
+    # Should make event_times a sparse xr.DataArray in the future.
+    if 'event_times' in dataset.song_events.attrs:
+        del dataset.song_events.attrs['event_times']
+
     with zarr.ZipStore(savepath, mode='w') as zarr_store:
         ## re-chunking does not seem to help with IO speed upon lazy loading
         # chunks = dict(dataset.dims)
