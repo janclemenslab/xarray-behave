@@ -7,8 +7,7 @@ Then in a terminal run:
 ```shell
 conda create -n xb python=3.7 -y
 conda activate xb
-conda install pyqtgraph -c conda-forge -y
-conda install -c conda-forge python-sounddevice
+conda install pyqtgraph python-sounddevice -c conda-forge -y
 pip install git+http://github.com/janclemenslab/xarray-behave#egg=xarray-behave[gui]
 ```
 
