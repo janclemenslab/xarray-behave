@@ -136,7 +136,9 @@ def detect_events(ds):
     ds.song_events.data = ds.song_events.data.astype(np.float)  # make sure this is non-bool so diff works
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
+    logging.info('Extracting event times from song_events:')
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
+        logging.info(f'   {event_name}')
         if event_category == 'event':
             event_times[event_name] = ds.song_events.time.where(ds.song_events[:, event_idx] == 1, drop=True).data.ravel()
         elif event_category == 'segment':
@@ -169,7 +171,7 @@ def eventtimes_to_traces(ds, event_times):
     """
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
-    logging.info('Extracting event times from song_events:')
+    logging.info('Updating song_events from event_times:')
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         logging.info(f'   {event_name}')
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
