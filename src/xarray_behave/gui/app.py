@@ -699,7 +699,7 @@ class PSV(MainWindow):
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
-            # TODO currently not functional - needs to work on event_times
+            # TODO currently not functional - needs to work on event_times (really??)
             self.ds.song_events.data[int(self.index_other - self.span_index):
                                      int(self.index_other + self.span_index), self.current_event_index] = False
             logging.info(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
@@ -709,6 +709,7 @@ class PSV(MainWindow):
             self.update_xy()
 
     def delete_all_events(self, qt_keycode):
+        # TODO currently not functional - needs to work on event_times (really??)
         self.ds.song_events.data[int(self.index_other - self.span_index):
                                  int(self.index_other + self.span_index), :] = False
         logging.info(f'   Deleted all events in view.')
@@ -719,13 +720,21 @@ class PSV(MainWindow):
         idx = self.cb2.currentIndex()
         idx -= 1
         idx  = idx % len(self.cb2)
+
+        old_status = self.select_loudest_channel
+        self.select_loudest_channel = False
         self.cb2.setCurrentIndex(idx)
+        self.select_loudest_channel = old_status
 
     def set_next_channel(self, qt_keycode):
         idx = self.cb2.currentIndex()
         idx += 1
         idx  = idx % len(self.cb2)
+
+        old_status = self.select_loudest_channel
+        self.select_loudest_channel = False
         self.cb2.setCurrentIndex(idx)
+        self.select_loudest_channel = old_status
 
     def inc_freq_res(self, qt_keycode):
         self.spec_win = int(self.spec_win * 2)
