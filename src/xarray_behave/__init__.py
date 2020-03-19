@@ -1,3 +1,4 @@
+"""xarray tools for behaviorl data."""
 __version__ = "0.4.0"
 
 from .ui import main as ui
