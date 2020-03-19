@@ -17,6 +17,7 @@ import skimage.draw
 import scipy.interpolate
 import soundfile
 from dataclasses import dataclass
+from typing import Callable
 
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
@@ -68,22 +69,38 @@ class MainWindow(pg.QtGui.QMainWindow):
         if self.app is None:
             self.app = QtGui.QApplication([])
 
-        self.resize(1000, 800)
+        self.resize(400, 400)
         self.setWindowTitle(title)
 
         # build menu
         self.bar = self.menuBar()
         file = self.bar.addMenu("File")
         self.add_keyed_menuitem(file, "New from wav", self.from_wav)
-        self.add_keyed_menuitem(file, "New from folder", self.from_dir)
+        self.add_keyed_menuitem(file, "New from data or results folder", self.from_dir)
         file.addSeparator()
-        self.add_keyed_menuitem(file, "Load dataset", self.from_zarr)
+        self.add_keyed_menuitem(file, "Load existing dataset", self.from_zarr)
         file.addSeparator()
         self.add_keyed_menuitem(file, "Save swap files", self.save_swaps)
         self.add_keyed_menuitem(file, "Save annotations", self.save_annotations)
         self.add_keyed_menuitem(file, "Save dataset", self.save_dataset)
         file.addSeparator()
         file.addAction("Exit")
+
+        # add initial buttons
+        self.hb = pg.QtGui.QVBoxLayout()
+        self.hb.addWidget(self.add_button("New from wav", self.from_wav))
+        self.hb.addWidget(self.add_button("New from data or results folder", self.from_dir))
+        self.hb.addWidget(self.add_button("Load existing dataset (zarr)", self.from_zarr))
+
+        self.cb = pg.GraphicsLayoutWidget()
+        self.cb.setLayout(self.hb)
+        self.setCentralWidget(self.cb)
+
+    def add_button(self, text: str, callback: Callable) -> QtWidgets.QPushButton:
+        button = QtWidgets.QPushButton(self)
+        button.setText(text)
+        button.clicked.connect(callback)
+        return button
 
     def add_keyed_menuitem(self, parent, label: str, callback, qt_keycode=None, checkable=False, checked=True):
         """Add new action to menu and register key press."""
@@ -121,179 +138,174 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     @classmethod
     def from_wav(cls, wav_filename=None, app=None, qt_keycode=None):
-        if wav_filename is None:
+        if not wav_filename:
             wav_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None,
                                                                     caption='Select audio file')
         # get samplerate
-        wave_fileinfo = soundfile.info(wav_filename)
-        logging.info(wave_fileinfo)
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
-                            title='Make new dataset from wave file')
-        dialog.form['event_samplerate'] = wave_fileinfo.samplerate
-        dialog.form['wav_filename'] = wav_filename
-        dialog.form['spec_freq_max'] = wave_fileinfo.samplerate / 2
-        dialog.show()
+        if wav_filename:
+            wave_fileinfo = soundfile.info(wav_filename)
+            logging.info(wave_fileinfo)
+            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
+                                title='Make new dataset from wave file')
+            dialog.form['event_samplerate'] = wave_fileinfo.samplerate
+            dialog.form['wav_filename'] = wav_filename
+            dialog.form['spec_freq_max'] = wave_fileinfo.samplerate / 2
+            dialog.show()
+            result = dialog.exec_()
 
-        result = dialog.exec_()
-        if result == QtGui.QDialog.Accepted and len(wav_filename):
-            form_data = dialog.form.get_form_data()
+            if result == QtGui.QDialog.Accepted:
+                form_data = dialog.form.get_form_data()
 
-            form_data = dialog.form.get_form_data()
-            logging.info(f"Making new dataset from {form_data['wav_filename']}.")
-            if form_data['event_samplerate'] < 1:
-                form_data['event_samplerate'] = None
+                form_data = dialog.form.get_form_data()
+                logging.info(f"Making new dataset from {form_data['wav_filename']}.")
+                if form_data['event_samplerate'] < 1:
+                    form_data['event_samplerate'] = None
 
-            event_names = []
-            event_classes = []
-            for pair in form_data['events'].split(';'):
-                items = pair.strip().split(',')
-                if len(items)>0:
-                    event_names.append(items[0].strip())
-                if len(items)>1:
-                    event_classes.append(items[1].strip())
-                else:
-                    event_classes.append('segment')
+                event_names = []
+                event_classes = []
+                for pair in form_data['events'].split(';'):
+                    items = pair.strip().split(',')
+                    if len(items)>0:
+                        event_names.append(items[0].strip())
+                    if len(items)>1:
+                        event_classes.append(items[1].strip())
+                    else:
+                        event_classes.append('segment')
 
-            ds = xb.from_wav(filepath=form_data['wav_filename'],
-                                target_samplerate=form_data['event_samplerate'],
-                                event_names=event_names,
-                                event_categories=event_classes)
+                ds = xb.from_wav(filepath=form_data['wav_filename'],
+                                    target_samplerate=form_data['event_samplerate'],
+                                    event_names=event_names,
+                                    event_categories=event_classes)
 
-            fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-            fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+                fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
+                fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-            return PSV(ds, title=wav_filename,
-                       fmin=fmin, fmax=fmax, data_source=DataSource('wav', wav_filename))
-        else:
-            return None
+                return PSV(ds, title=wav_filename,
+                        fmin=fmin, fmax=fmax, data_source=DataSource('wav', wav_filename))
 
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None):
-        if dirname is None:
+        if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                                     caption='Select data directory')
+        if dirname:
+            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
+                                title='Make new dataset from data directory')
 
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
-                               title='Make new dataset from data directory')
+            dialog.form['data_dir'] = dirname
+            dialog.show()
 
-        dialog.form['data_dir'] = dirname
-        dialog.show()
+            result = dialog.exec_()
+            if result == QtGui.QDialog.Accepted:
+                form_data = dialog.form.get_form_data()
+                logging.info(f"Making new dataset from directory {form_data['data_dir']}.")
 
-        result = dialog.exec_()
-        if result == QtGui.QDialog.Accepted and len(dirname):
-            form_data = dialog.form.get_form_data()
-            logging.info(f"Making new dataset from directory {form_data['data_dir']}.")
+                if form_data['target_samplingrate'] == 0:
+                    resample_video_data = False
+                else:
+                    resample_video_data = True
+                base, datename = os.path.split(os.path.normpath(form_data['data_dir']))  # normpath removes trailing pathsep
+                root, dat_path = os.path.split(base)
+                ds = xb.assemble(datename, root, dat_path, res_path='res',
+                                fix_fly_indices=False, include_song=~form_data['ignore_song'],
+                                keep_multi_channel=True,
+                                target_sampling_rate=form_data['target_samplingrate'],
+                                resample_video_data=resample_video_data)
+                # add event categories if they are missing in the dataset
+                if 'song_events' in ds and 'event_categories' not in ds:
+                    event_categories = ['segment'
+                                        if 'sine' in evt or 'syllable' in evt
+                                        else 'event'
+                                        for evt in ds.event_types.values]
+                    ds = ds.assign_coords({'event_categories':
+                                        (('event_types'),
+                                        event_categories)})
 
-            if form_data['target_samplingrate'] == 0:
-                resample_video_data = False
-            else:
-                resample_video_data = True
-            base, datename = os.path.split(os.path.normpath(form_data['data_dir']))  # normpath removes trailing pathsep
-            root, dat_path = os.path.split(base)
-            ds = xb.assemble(datename, root, dat_path, res_path='res',
-                            fix_fly_indices=False, include_song=~form_data['ignore_song'],
-                            keep_multi_channel=True,
-                            target_sampling_rate=form_data['target_samplingrate'],
-                            resample_video_data=resample_video_data)
-            # add event categories if they are missing in the dataset
-            if 'song_events' in ds and 'event_categories' not in ds:
-                event_categories = ['segment'
-                                    if 'sine' in evt or 'syllable' in evt
-                                    else 'event'
-                                    for evt in ds.event_types.values]
-                ds = ds.assign_coords({'event_categories':
-                                    (('event_types'),
-                                    event_categories)})
-
-            # add video file
-            vr = None
-            try:
+                # add video file
+                vr = None
                 try:
-                    video_filename = os.path.join(form_data['data_dir'], datename + '.mp4')
-                    vr = _ui_utils.VideoReaderNP(video_filename)
+                    try:
+                        video_filename = os.path.join(form_data['data_dir'], datename + '.mp4')
+                        vr = _ui_utils.VideoReaderNP(video_filename)
+                    except:
+                        video_filename = os.path.join(form_data['data_dir'], datename + '.avi')
+                        vr = _ui_utils.VideoReaderNP(video_filename)
+                    logging.info(vr)
+                except FileNotFoundError:
+                    logging.info(f'Video "{video_filename}" not found. Continuing without.')
                 except:
-                    video_filename = os.path.join(form_data['data_dir'], datename + '.avi')
-                    vr = _ui_utils.VideoReaderNP(video_filename)
-                logging.info(vr)
-            except FileNotFoundError:
-                logging.info(f'Video "{video_filename}" not found. Continuing without.')
-            except:
-                logging.info(f'Something went wrong when loading the video. Continuing without.')
+                    logging.info(f'Something went wrong when loading the video. Continuing without.')
 
-            fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-            fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+                fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
+                fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-            cue_points = []
-            if form_data['load_cues']=='yes':
-                cue_points = cls.load_cues(form_data['cues_file'],
-                                            form_data['cues_delimiter'])
-            return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
-                       fmin=fmin, fmax=fmax, data_source=DataSource('dir', dirname))
-        else:
-            return None
+                cue_points = []
+                if form_data['load_cues']=='yes':
+                    cue_points = cls.load_cues(form_data['cues_file'],
+                                                form_data['cues_delimiter'])
+                return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
+                        fmin=fmin, fmax=fmax, data_source=DataSource('dir', dirname))
 
     @classmethod
     def from_zarr(cls, filename=None, app=None, qt_keycode=None):
-        if filename is None:
+        if not filename:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select dataset')
+        if filename:
+            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_zarr.yaml",
+                                title='Load dataset from zarr file')
 
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_zarr.yaml",
-                               title='Load dataset from zarr file')
+            dialog.form['zarr_filename'] = filename
+            dialog.show()
 
-        dialog.form['zarr_filename'] = filename
-        dialog.show()
+            result = dialog.exec_()
+            if result == QtGui.QDialog.Accepted:
+                form_data = dialog.form.get_form_data()
+                logging.info(f'Loading {filename}.')
+                ds = xb.load(filename, lazy=True)
+                if 'song_events' in ds:
+                    ds.song_events.load()
+                if not form_data['lazy']:
+                    logging.info(f'   Loading data from ds.')
+                    if 'song' in ds:
+                        ds.song.load()  # non-lazy load song for faster updates
+                    if 'pose_positions_allo' in ds:
+                        ds.pose_positions_allo.load()  # non-lazy load song for faster updates
+                    if 'sampletime' in ds:
+                        ds.sampletime.load()
+                    if 'song_raw' in ds:  # this will take a long time:
+                        ds.song_raw.load()  # non-lazy load song for faster updates
 
-        result = dialog.exec_()
-        if result == QtGui.QDialog.Accepted and len(filename):
-            form_data = dialog.form.get_form_data()
-            logging.info(f'Loading {filename}.')
-            ds = xb.load(filename, lazy=True)
-            if 'song_events' in ds:
-                ds.song_events.load()
-            if not form_data['lazy']:
-                logging.info(f'   Loading data from ds.')
-                if 'song' in ds:
-                    ds.song.load()  # non-lazy load song for faster updates
-                if 'pose_positions_allo' in ds:
-                    ds.pose_positions_allo.load()  # non-lazy load song for faster updates
-                if 'sampletime' in ds:
-                    ds.sampletime.load()
-                if 'song_raw' in ds:  # this will take a long time:
-                    ds.song_raw.load()  # non-lazy load song for faster updates
+                # add event categories if they are missing in the dataset
+                if 'song_events' in ds and 'event_categories' not in ds:
+                    event_categories = ['segment'
+                                        if 'sine' in evt or 'syllable' in evt
+                                        else 'event'
+                                        for evt in ds.event_types.values]
+                    ds = ds.assign_coords({'event_categories':
+                                        (('event_types'),
+                                        event_categories)})
+                logging.info(ds)
+                vr = None
+                try:
+                    video_filename = ds.attrs['video_filename']
+                    vr = _ui_utils.VideoReaderNP(video_filename)
+                    logging.info(vr)
+                except FileNotFoundError:
+                    logging.info(f'Video "{video_filename}" not found. Continuing without.')
+                except:
+                    logging.info(f'Something went wrong when loading the video. Continuing without.')
 
-            # add event categories if they are missing in the dataset
-            if 'song_events' in ds and 'event_categories' not in ds:
-                event_categories = ['segment'
-                                    if 'sine' in evt or 'syllable' in evt
-                                    else 'event'
-                                    for evt in ds.event_types.values]
-                ds = ds.assign_coords({'event_categories':
-                                    (('event_types'),
-                                    event_categories)})
-            logging.info(ds)
-            vr = None
-            try:
-                video_filename = ds.attrs['video_filename']
-                vr = _ui_utils.VideoReaderNP(video_filename)
-                logging.info(vr)
-            except FileNotFoundError:
-                logging.info(f'Video "{video_filename}" not found. Continuing without.')
-            except:
-                logging.info(f'Something went wrong when loading the video. Continuing without.')
+                fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
+                fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
-            fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-            fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+                # load cues
+                cue_points = []
+                if form_data['load_cues']=='yes':
+                    cue_points = cls.load_cues(form_data['cues_file'],
+                                            form_data['cues_delimiter'])
 
-            # load cues
-            cue_points = []
-            if form_data['load_cues']=='yes':
-                cue_points = cls.load_cues(form_data['cues_file'],
-                                           form_data['cues_delimiter'])
-
-            return PSV(ds, vr=vr, cue_points=cue_points, title=filename,
-                       fmin=fmin, fmax=fmax, data_source=DataSource('zarr', filename))
-        else:
-            return None
+                return PSV(ds, vr=vr, cue_points=cue_points, title=filename,
+                        fmin=fmin, fmax=fmax, data_source=DataSource('zarr', filename))
 
     @classmethod
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
