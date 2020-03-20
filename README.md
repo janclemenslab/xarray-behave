@@ -15,9 +15,9 @@ See `demo.ipynb` for usage examples.
 ### GUI
 For using the GUI
 ```shell
-conda create -n xb python=3.7 -y
-conda activate xb
-conda install pyqtgraph python-sounddevice -c conda-forge -y
+conda create -n xb_gui python=3.7 -y
+conda activate xb_gui
+conda install pyside2 pyqtgraph python-sounddevice -c conda-forge -y
 pip install xarray-behave[gui]
 ```
 
