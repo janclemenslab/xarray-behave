@@ -880,24 +880,11 @@ class PSV(MainWindow):
 
             this = self.event_times[event_name]
             if self.ds.event_categories.data[event_type] == 'segment':
-                event_onset_indices = np.sort(this[np.logical_and(this[:,0]>=x[0], this[:,0]<x[-1]), 0])
-                event_offset_indices = np.sort(this[np.logical_and(this[:,1]>x[0], this[:,1]<=x[-1]), 1])
-                # make sure we plot partial segments
-                if len(event_offset_indices) > len(event_onset_indices):  # first onset missing
-                    # find nearest onset
-                    missing_onset = np.max(this[this[:,0]<x[0], 0])
-                    event_onset_indices = np.insert(event_onset_indices, 0, missing_onset)
-                if len(event_onset_indices) > len(event_offset_indices):  # last offset missing
-                    missing_offset = np.min(this[this[:,1]>x[-1], 1])
-                    event_offset_indices = np.append(event_offset_indices, missing_offset)
-                if len(event_onset_indices) == 0 and len(event_offset_indices) == 0 and this.shape[0] > 0:
-                    # check if we're fully within a segment
-                    last_onset = np.max(this[this[:, 0] < x[0], 0], initial=-np.inf)  # initial=np.inf - np.max then works with empty arrays and returns -np.inf
-                    last_offset = np.max(this[this[:, 1] < x[0], 1], initial=-np.inf)
-                    if last_onset > last_offset:   # we're spanning a segment!
-                        event_onset_indices = [last_onset]  # last onset
-                        event_offset_indices = [np.min(this[this[:,1]>x[-1], 1])]  # next offset
-
+                onsets_in_view = np.logical_and(this[:,0]>=x[0], this[:,0]<x[-1])
+                offsets_in_view = np.logical_and(this[:,1]>x[0], this[:,1]<=x[-1])
+                events_in_view = np.logical_or(onsets_in_view, offsets_in_view)
+                event_onset_indices = np.sort(this[events_in_view, 0])
+                event_offset_indices = np.sort(this[events_in_view, 1])
                 if len(event_onset_indices) and len(event_offset_indices):
                     for onset, offset in zip(event_onset_indices, event_offset_indices):
                         self.slice_view.add_segment(onset, offset, event_type, event_brush, movable=movable)
