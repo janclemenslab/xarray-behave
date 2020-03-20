@@ -10,10 +10,14 @@ author-email = "clemensjan@googlemail.com"
 home-page = "https://github.com/janclemenslab/xarray-behave"
 classifiers = ["License :: OSI Approved :: MIT License"]
 requires-python = ">=3.7"
-requires=['pyside2', 'numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
+requires = ['pyside2', 'numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
                   'soundfile', 'samplestamps', 'pyvideoreader', 'pyyaml', 'dask', 'toolz',
                   'pyqtgraph', 'sounddevice', 'scikit-image', 'opencv-python', 'defopt']
 description-file = "README.md"
+
+[tool.flit.metadata.requires-extra]
+gui = ['pyside2', 'pyqtgraph', 'pyside2', 'pyqtgraph', 'pyvideoreader',
+       'sounddevice', 'scikit-image', 'opencv-python', 'pyyaml']
 
 [tool.flit.scripts]
 xb = "xarray_behave.gui.app:cli"
