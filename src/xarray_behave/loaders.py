@@ -16,7 +16,7 @@ import xarray as xr
 import zarr
 import math
 from . import xarray_behave as xb
-from . import _ui_utils
+from . import event_utils
 from typing import Sequence
 
 
@@ -287,7 +287,7 @@ def load_manual_annotation(filepath):
         manual_events_ds = manual_events_ds.assign_coords(
                                 {'event_categories': (('event_types'), event_categories_List)})
 
-    event_seconds = _ui_utils.detect_events(manual_events_ds)
+    event_seconds = event_utils.detect_events(manual_events_ds)
 
     event_categories = {}
     for typ, cat in zip(manual_events_ds.event_types.data, manual_events_ds.event_categories.data):

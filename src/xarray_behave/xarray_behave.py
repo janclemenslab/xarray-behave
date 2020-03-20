@@ -9,7 +9,7 @@ import os.path
 from pathlib import Path
 from . import loaders as ld
 from . import metrics as mt
-from . import _ui_utils
+from . import event_utils
 
 
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
@@ -274,7 +274,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                           'event_times': event_seconds})
 
         # now populate from event_times attribute
-        song_events_ds = _ui_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
+        song_events_ds = event_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
                                                         song_events.attrs['event_times'])
         dataset_data['song_events'] = song_events_ds.song_events
 

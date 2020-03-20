@@ -13,6 +13,10 @@ my_function will get called with form data when user clicks the main button
 # modified from https://sleap.ai/_modules/sleap/gui/formbuilder.html
 import yaml
 from typing import Any, Dict, List, Optional
+try:
+    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
+except ImportError:
+    pass
 from pyqtgraph.Qt import QtWidgets, QtCore
 
 
@@ -194,7 +198,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
 
               * name: used as key when we return form data as dict
               * label: string to show in form
-              * type: supports double, int, bool, list, button, stack, 
+              * type: supports double, int, bool, list, button, stack,
                       file_dir, file_open
               * default: default value for form field
               * [options]: comma separated list of options,

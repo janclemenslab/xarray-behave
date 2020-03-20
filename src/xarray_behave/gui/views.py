@@ -1,3 +1,8 @@
+try:
+    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
+except ImportError:
+    pass
+
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 # from PySide2.QtGui import QImage, QPixmap
@@ -10,7 +15,7 @@ from functools import partial
 from typing import Tuple
 
 from .. import xarray_behave as xb
-from .. import _ui_utils
+from . import utils
 from . import formbuilder
 from . import app
 
@@ -238,7 +243,7 @@ class TraceView(pg.PlotWidget):
         if not movable:
             xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
             yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
-            _ui_utils.fast_plot(self, xx.T, yy.T, pen)
+            utils.fast_plot(self, xx.T, yy.T, pen)
         else:
             for x in xx:
                 line = EventItem(x, event_type, self.xrange, movable=True, angle=90, pen=pen)
@@ -354,7 +359,7 @@ class SpecView(pg.ImageView):
         if not movable:
             xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
             yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
-            self.old_items.append(_ui_utils.fast_plot(self, xx.T, yy.T, pen))
+            self.old_items.append(utils.fast_plot(self, xx.T, yy.T, pen))
         else:
             for (x, x0) in zip(xx, xx0):
                 line = EventItem(x, event_type, self.xrange, time_pos=x0, movable=True, angle=90, pen=pen)
@@ -375,7 +380,7 @@ class SpecView(pg.ImageView):
         self.callback(mouseT, event.button())
 
 
-class MovieView(_ui_utils.FastImageWidget):
+class MovieView(utils.FastImageWidget):
 
     def __init__(self, model, callback):
         super().__init__()

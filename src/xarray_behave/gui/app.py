@@ -31,14 +31,14 @@ import xarray_behave
 import xarray as xr
 from .. import xarray_behave as xb
 from .. import loaders as ld
-from .. import _ui_utils
+from .. import event_utils
 try:
     from .. import dss
 except ImportError:
     pass
 
-from .. import colormaps
-
+from . import colormaps
+from . import utils
 from . import views
 from . import formbuilder
 from . import table
@@ -124,7 +124,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     def save_annotations(self, qt_keycode=None):
         logging.info('   Updating song events')
-        self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
+        self.ds = utils.eventtimes_to_traces(self.ds, self.event_times)
         # TODO save as csv: eventname,(segmentonset, segmentoffset) or (pulsetime), confidence (nan if missing), channel (nan if missing - means on all channels)
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
                             f"{self.ds.attrs['datename']}_songmanual.zarr")
@@ -226,10 +226,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                 try:
                     try:
                         video_filename = os.path.join(form_data['data_dir'], datename + '.mp4')
-                        vr = _ui_utils.VideoReaderNP(video_filename)
+                        vr = utils.VideoReaderNP(video_filename)
                     except:
                         video_filename = os.path.join(form_data['data_dir'], datename + '.avi')
-                        vr = _ui_utils.VideoReaderNP(video_filename)
+                        vr = utils.VideoReaderNP(video_filename)
                     logging.info(vr)
                 except FileNotFoundError:
                     logging.info(f'Video "{video_filename}" not found. Continuing without.')
@@ -288,7 +288,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 vr = None
                 try:
                     video_filename = ds.attrs['video_filename']
-                    vr = _ui_utils.VideoReaderNP(video_filename)
+                    vr = utils.VideoReaderNP(video_filename)
                     logging.info(vr)
                 except FileNotFoundError:
                     logging.info(f'Video "{video_filename}" not found. Continuing without.')
@@ -338,7 +338,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
             if retval == QtWidgets.QMessageBox.Ignore:
                 if 'song_events' in self.ds:
-                    self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
+                    self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
                 logging.info(f'   Saving dataset to {savefilename}.')
                 xb.save(savefilename, self.ds)
                 logging.info(f'   Done.')
@@ -393,7 +393,7 @@ class PSV(MainWindow):
         self.cue_points = cue_points
         # detect all event times and segment on/offsets
         if 'song_events' in ds:
-            self.event_times = _ui_utils.detect_events(ds)
+            self.event_times = event_utils.detect_events(ds)
         else:
             self.event_times = dict()
 
@@ -428,8 +428,8 @@ class PSV(MainWindow):
         self.other_fly = 1 if self.nb_flies > 1 else 0
         self.nb_bodyparts = len(self.ds.poseparts) if 'poseparts' in self.ds else 1
 
-        self.fly_colors = _ui_utils.make_colors(self.nb_flies)
-        self.bodypart_colors = _ui_utils.make_colors(self.nb_bodyparts)
+        self.fly_colors = utils.make_colors(self.nb_flies)
+        self.bodypart_colors = utils.make_colors(self.nb_bodyparts)
 
         self.STOP = True
         self.swap_events = []
@@ -446,7 +446,7 @@ class PSV(MainWindow):
         if 'song_events' in self.ds:
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
             self.nb_eventtypes = len(self.ds.event_types)
-            self.eventype_colors = _ui_utils.make_colors(self.nb_eventtypes)
+            self.eventype_colors = utils.make_colors(self.nb_eventtypes)
         else:
             self.fs_other = ds.attrs['target_sampling_rate_Hz']
             self.nb_eventtypes = 0
@@ -471,68 +471,68 @@ class PSV(MainWindow):
 
         # build UI/controller
         edit = self.bar.addMenu("Edit")
-        self.add_keyed_menuitem(edit, "Swap flies", self.swap_flies, QtCore.Qt.Key_X)
+        self.add_keyed_menuitem(edit, "Swap flies", self.swap_flies, "X") #"X)
 
         view_play = self.bar.addMenu("Playback")
-        self.add_keyed_menuitem(view_play, "Play video", self.toggle_playvideo, QtCore.Qt.Key_Space,
+        self.add_keyed_menuitem(view_play, "Play video", self.toggle_playvideo, "Space",
                                 checkable=True, checked=not self.STOP)
         view_play.addSeparator()
-        self.add_keyed_menuitem(view_play, " < Reverse one frame", self.single_frame_reverse, QtCore.Qt.Key_Left),
-        self.add_keyed_menuitem(view_play, "<< Reverse jump", self.jump_reverse, QtCore.Qt.Key_A)
-        self.add_keyed_menuitem(view_play, ">> Forward jump", self.jump_forward, QtCore.Qt.Key_D)
-        self.add_keyed_menuitem(view_play, " > Forward one frame", self.single_frame_advance, QtCore.Qt.Key_Right)
+        self.add_keyed_menuitem(view_play, " < Reverse one frame", self.single_frame_reverse, "Left"),
+        self.add_keyed_menuitem(view_play, "<< Reverse jump", self.jump_reverse, "A")
+        self.add_keyed_menuitem(view_play, ">> Forward jump", self.jump_forward, "D")
+        self.add_keyed_menuitem(view_play, " > Forward one frame", self.single_frame_advance, "Right")
         view_play.addSeparator()
         self.add_keyed_menuitem(view_play, "Load cue list", print)  # text file with comma separated seconds or frames...
-        self.add_keyed_menuitem(view_play, "Move to previous cue", self.set_prev_cuepoint, QtCore.Qt.Key_K)
-        self.add_keyed_menuitem(view_play, "Move to next cue", self.set_next_cuepoint, QtCore.Qt.Key_L)
+        self.add_keyed_menuitem(view_play, "Move to previous cue", self.set_prev_cuepoint, "K")
+        self.add_keyed_menuitem(view_play, "Move to next cue", self.set_next_cuepoint, "L")
         view_play.addSeparator()
-        self.add_keyed_menuitem(view_play, "Zoom in song", self.zoom_in_song, QtCore.Qt.Key_W)
-        self.add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, QtCore.Qt.Key_S)
+        self.add_keyed_menuitem(view_play, "Zoom in song", self.zoom_in_song, "W")
+        self.add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, "S")
         view_play.addSeparator()
         self.add_keyed_menuitem(view_play, "Go to frame", self.go_to_frame)
         self.add_keyed_menuitem(view_play, "Go to time", self.go_to_time)
 
         view_video = self.bar.addMenu("Video")
-        self.add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), QtCore.Qt.Key_C,
+        self.add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), "C",
                                 checkable=True, checked=self.crop)
-        self.add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, QtCore.Qt.Key_F)
+        self.add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, "F")
         view_video.addSeparator()
-        self.add_keyed_menuitem(view_video, "Move poses", partial(self.toggle, 'move_poses'), QtCore.Qt.Key_B,
+        self.add_keyed_menuitem(view_video, "Move poses", partial(self.toggle, 'move_poses'), "B",
                                 checkable=True, checked=self.move_poses)
         view_video.addSeparator()
-        self.add_keyed_menuitem(view_video, "Show fly position", partial(self.toggle, 'show_dot'), QtCore.Qt.Key_O,
+        self.add_keyed_menuitem(view_video, "Show fly position", partial(self.toggle, 'show_dot'), "O",
                                 checkable=True, checked=self.show_dot)
-        self.add_keyed_menuitem(view_video, "Show poses", partial(self.toggle, 'show_poses'), QtCore.Qt.Key_P,
+        self.add_keyed_menuitem(view_video, "Show poses", partial(self.toggle, 'show_poses'), "P",
                                 checkable=True, checked=self.show_poses)
         self.add_keyed_menuitem(view_video, "Show framenumber", partial(self.toggle, 'show_framenumber'), None,
                                 checkable=True, checked=self.show_framenumber)
 
         view_audio = self.bar.addMenu("Audio")
-        self.add_keyed_menuitem(view_audio, "Play waveform as audio", self.play_audio, QtCore.Qt.Key_E)
+        self.add_keyed_menuitem(view_audio, "Play waveform as audio", self.play_audio, "E")
         view_audio.addSeparator()
         self.add_keyed_menuitem(view_audio, "Initialize or edit annotation types", self.edit_annotation_types)
         view_audio.addSeparator()
-        self.add_keyed_menuitem(view_audio, "Show annotations", partial(self.toggle, 'show_songevents'), QtCore.Qt.Key_V,
+        self.add_keyed_menuitem(view_audio, "Show annotations", partial(self.toggle, 'show_songevents'), "V",
                                 checkable=True, checked=self.show_songevents)
         self.add_keyed_menuitem(view_audio, "Show all channels", partial(self.toggle, 'show_all_channels'), None,
                                 checkable=True, checked=self.show_all_channels)
-        self.add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), QtCore.Qt.Key_Q,
+        self.add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), "Q",
                                 checkable=True, checked=self.select_loudest_channel)
         self.add_keyed_menuitem(view_audio, "Select previous channel", self.set_next_channel, "Shift+Up")
         self.add_keyed_menuitem(view_audio, "Select next channel", self.set_prev_channel, "Shift+Down")
         view_audio.addSeparator()
-        self.add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), QtCore.Qt.Key_G,
+        self.add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), "G",
                                 checkable=True, checked=self.show_spec)
-        self.add_keyed_menuitem(view_audio, "Increase frequency resolution", self.dec_freq_res, QtCore.Qt.Key_R)
-        self.add_keyed_menuitem(view_audio, "Increase temporal resolution", self.inc_freq_res, QtCore.Qt.Key_T)
+        self.add_keyed_menuitem(view_audio, "Increase frequency resolution", self.dec_freq_res, "R")
+        self.add_keyed_menuitem(view_audio, "Increase temporal resolution", self.inc_freq_res, "T")
         view_audio.addSeparator()
-        self.add_keyed_menuitem(view_audio, "Move events", partial(self.toggle, 'movable_events'), QtCore.Qt.Key_M,
+        self.add_keyed_menuitem(view_audio, "Move events", partial(self.toggle, 'movable_events'), "M",
                                 checkable=True, checked=self.movable_events)
         self.add_keyed_menuitem(view_audio, "Move only selected events", partial(self.toggle, 'move_only_current_events'), None,
                                 checkable=True, checked=self.move_only_current_events)
         self.add_keyed_menuitem(view_audio, "Delete events of selected type in view",
-                                self.delete_current_events, QtCore.Qt.Key_U)
-        self.add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, QtCore.Qt.Key_Y)
+                                self.delete_current_events, "U")
+        self.add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, "Y")
 
         view_train = self.bar.addMenu("Training/Inference")
         self.add_keyed_menuitem(view_train, "Train", self.dss_train, None)
@@ -564,7 +564,8 @@ class PSV(MainWindow):
         self.event_items = []
         for ii in range(self.cb.count()):
             self.cb.itemText(ii)
-            key = eval(f'QtCore.Qt.Key_{ii}') if ii<10 else None
+            # key = eval(f'"{ii}') if ii<10 else None
+            key = str(ii) if ii<10 else None
             menu_item =self.add_keyed_menuitem(self.view_audio,
                                                self.cb.itemText(ii),
                                                self.change_event_type,
@@ -704,10 +705,13 @@ class PSV(MainWindow):
             pass
 
     def toggle(self, var_name, qt_keycode):
-        self.__setattr__(var_name, not self.__getattribute__(var_name))
-        if self.STOP:
-            self.update_frame()
-            self.update_xy()
+        try:
+            self.__dict__[var_name] = not self.__dict__[var_name]
+            if self.STOP:
+                self.update_frame()
+                self.update_xy()
+        except KeyError as e:
+            logging.exception(e)
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
@@ -731,7 +735,7 @@ class PSV(MainWindow):
     def set_prev_channel(self, qt_keycode):
         idx = self.cb2.currentIndex()
         idx -= 1
-        idx  = idx % len(self.cb2)
+        idx  = idx % self.cb2.count()
 
         old_status = self.select_loudest_channel
         self.select_loudest_channel = False
@@ -741,7 +745,7 @@ class PSV(MainWindow):
     def set_next_channel(self, qt_keycode):
         idx = self.cb2.currentIndex()
         idx += 1
-        idx  = idx % len(self.cb2)
+        idx  = idx % self.cb2.count()
 
         old_status = self.select_loudest_channel
         self.select_loudest_channel = False
@@ -1023,7 +1027,7 @@ class PSV(MainWindow):
             self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             this = self.event_times[self.current_event_name]
             if self.ds.event_categories.data[self.current_event_index] == 'segment':
-                nearest_onset = float(_ui_utils.find_nearest(this[:,0], mouseT))
+                nearest_onset = float(utils.find_nearest(this[:,0], mouseT))
                 event_idx = np.where(this[:, 0]==nearest_onset)[0]
                 matching_offset = float(this[event_idx, 1])
                 event_at_mouseT = matching_offset > mouseT
@@ -1032,7 +1036,7 @@ class PSV(MainWindow):
                     logging.info(f'  Deleted {self.current_event_name} from {nearest_onset:1.4f} to {matching_offset:1.4f} seconds.')
             elif self.ds.event_categories.data[self.current_event_index] == 'event':
                 tol = 0.05
-                nearest_event = _ui_utils.find_nearest(this, mouseT)
+                nearest_event = utils.find_nearest(this, mouseT)
                 event_at_mouseT = np.abs(mouseT - nearest_event) < tol
                 if event_at_mouseT:
                     self.event_times[self.current_event_name] = np.delete(this, np.where(this==nearest_event)[0])
@@ -1176,7 +1180,7 @@ class PSV(MainWindow):
             data = dialog.get_table_data()
             # make sure event times are up to date
             if 'song_events' in self.ds:
-                self.ds = _ui_utils.eventtimes_to_traces(self.ds, self.event_times)
+                self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
 
             event_names = []
             event_names_old = []
@@ -1229,7 +1233,7 @@ class PSV(MainWindow):
             # update event-related attrs
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
             self.nb_eventtypes = len(self.ds.event_types)
-            self.eventype_colors = _ui_utils.make_colors(self.nb_eventtypes)
+            self.eventype_colors = utils.make_colors(self.nb_eventtypes)
 
             # update EVENT TYPE selector
             # remove old
@@ -1256,7 +1260,7 @@ class PSV(MainWindow):
             self.event_items = []
             for ii in range(self.cb.count()):
                 self.cb.itemText(ii)
-                key = eval(f'QtCore.Qt.Key_{ii}') if ii<10 else None
+                key = eval(f'"{ii}') if ii<10 else None
                 menu_item =self.add_keyed_menuitem(self.view_audio,
                                                    self.cb.itemText(ii),
                                                    self.change_event_type,

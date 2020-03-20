@@ -1,3 +1,7 @@
+try:
+    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
+except ImportError:
+    pass
 from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
 
 if not hasattr(QtCore, 'Slot'):
