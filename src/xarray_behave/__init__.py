@@ -1,5 +1,4 @@
 """xarray tools for behavioral data."""
-__version__ = "0.4.3"
+__version__ = "0.5.0"
 
-# from .ui import main as ui
 from .xarray_behave import assemble, assemble_metrics, load, save, from_wav
