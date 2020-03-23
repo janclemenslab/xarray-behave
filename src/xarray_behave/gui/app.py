@@ -47,15 +47,11 @@ sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when ke
 package_dir = xarray_behave.__path__[0]
 
 
-class MainApp(QtGui.QApplication):
-    def __init__(self, args=[]):
-        super().__init__(args)
-
-
 @dataclass
 class DataSource:
     type: str
     name: str
+
 
 class MainWindow(pg.QtGui.QMainWindow):
 
@@ -76,7 +72,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.bar = self.menuBar()
         file = self.bar.addMenu("File")
         self.add_keyed_menuitem(file, "New from wav", self.from_wav)
-        self.add_keyed_menuitem(file, "New from data or results folder", self.from_dir)
+        self.add_keyed_menuitem(file, "New from data folder", self.from_dir)
         file.addSeparator()
         self.add_keyed_menuitem(file, "Load existing dataset", self.from_zarr)
         file.addSeparator()
@@ -89,7 +85,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
         self.hb.addWidget(self.add_button("New from wav", self.from_wav))
-        self.hb.addWidget(self.add_button("New from data or results folder", self.from_dir))
+        self.hb.addWidget(self.add_button("New from data folder", self.from_dir))
         self.hb.addWidget(self.add_button("Load existing dataset (zarr)", self.from_zarr))
 
         self.cb = pg.GraphicsLayoutWidget()
@@ -441,7 +437,6 @@ class PSV(MainWindow):
         self.move_only_current_events = True
         self.show_all_channels = True
         self.select_loudest_channel = False
-        self.nb_channels = self.ds.song_raw.shape[-1]
         self.sinet0 = None
 
         if 'song_events' in self.ds:
