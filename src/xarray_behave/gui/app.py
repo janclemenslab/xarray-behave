@@ -349,7 +349,9 @@ class ZarrOverwriteWarning(QtWidgets.QMessageBox):
         super().__init__()
         self.setIcon(QtWidgets.QMessageBox.Warning)
         self.setText('Attempting to overwrite existing zarr file.')
-        self.setInformativeText("This can corrupt the file and lead to data loss. ABORT unless you know what you're doing.")
+        self.setInformativeText("This can corrupt the file and lead to data loss. \
+                                 ABORT unless you know what you're doing.\
+                                 Save to a file with a different name.")
         self.setStandardButtons(QtWidgets.QMessageBox.Ignore | QtWidgets.QMessageBox.Abort)
         self.setDefaultButton(QtWidgets.QMessageBox.Abort)
         self.setEscapeButton(QtWidgets.QMessageBox.Abort)
