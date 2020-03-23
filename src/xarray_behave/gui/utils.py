@@ -114,7 +114,9 @@ class FastImageWidget(pg.GraphicsLayoutWidget):
             image_format ([type], optional): [description]. Defaults to QtGui.QImage.Format_RGB888.
             auto_scale (bool, optional): [description]. Defaults to False.
         """
-        qimg = QtGui.QImage(image.ctypes.data, image.shape[1], image.shape[0], image_format)
+        qimg = QtGui.QImage(image, image.shape[1], image.shape[0], image_format)
+        # qimg = QtGui.QImage(image.ctypes.data, image.shape[1], image.shape[0], image_format)
+
         qpix = QtGui.QPixmap(qimg)
         self.pixmapItem.setPixmap(qpix)
         if auto_scale:
