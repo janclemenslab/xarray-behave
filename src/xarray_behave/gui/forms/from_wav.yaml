@@ -1,16 +1,11 @@
 main:
-  
-- name: wav_filename
-  label: Wave file
-  type: file_open
-  default: " "
-  
+
 - name: load_csv_annotations
   label: Load annotations from csv
   type: stacked
   default: "no"
   options: "no,yes"
-  
+
   "no":
 
   "yes":
@@ -18,7 +13,7 @@ main:
       label: CSV file
       type: file_open
       default: " "
-    
+
 - name: events
   label: Event names and categories (event, segment)
   type: string

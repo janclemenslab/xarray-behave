@@ -1,15 +1,16 @@
 main:
 
-- name: data_dir
-  label: data directory
-  type: file_dir
-  default: " "
-
 - name: target_samplingrate
   label: Target sampling rate (0=use frametimes)
   type: int
   range: 0,1000000
   default: 1000
+
+- name: box_size
+  label: Crop width and height
+  type: int
+  range: 0, 1000
+  default: 200
 
 - name: spec_freq_min
   label: Min freq in spec display

@@ -146,9 +146,9 @@ class MainWindow(pg.QtGui.QMainWindow):
             wave_fileinfo = soundfile.info(wav_filename)
             logging.info(wave_fileinfo)
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
-                                title='Make new dataset from wave file')
+                                title=f'Make new dataset from wave file {wav_filename}')
             dialog.form['event_samplerate'] = wave_fileinfo.samplerate
-            dialog.form['wav_filename'] = wav_filename
+            # dialog.form['wav_filename'] = wav_filename
             dialog.form['spec_freq_max'] = wave_fileinfo.samplerate / 2
             dialog.show()
             result = dialog.exec_()
@@ -157,7 +157,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 form_data = dialog.form.get_form_data()
 
                 form_data = dialog.form.get_form_data()
-                logging.info(f"Making new dataset from {form_data['wav_filename']}.")
+                logging.info(f"Making new dataset from {wav_filename}.")
                 if form_data['event_samplerate'] < 1:
                     form_data['event_samplerate'] = None
 
@@ -172,7 +172,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     else:
                         event_classes.append('segment')
 
-                ds = xb.from_wav(filepath=form_data['wav_filename'],
+                ds = xb.from_wav(filepath=wav_filename,
                                     target_samplerate=form_data['event_samplerate'],
                                     event_names=event_names,
                                     event_categories=event_classes)
@@ -190,21 +190,21 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                                     caption='Select data directory')
         if dirname:
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
-                                title='Make new dataset from data directory')
+                                title=f'Make new dataset from data directory {dirname}')
 
-            dialog.form['data_dir'] = dirname
+            # dialog.form['data_dir'] = dirname
             dialog.show()
 
             result = dialog.exec_()
             if result == QtGui.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
-                logging.info(f"Making new dataset from directory {form_data['data_dir']}.")
+                logging.info(f"Making new dataset from directory {dirname}.")
 
                 if form_data['target_samplingrate'] == 0:
                     resample_video_data = False
                 else:
                     resample_video_data = True
-                base, datename = os.path.split(os.path.normpath(form_data['data_dir']))  # normpath removes trailing pathsep
+                base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
                                 fix_fly_indices=False, include_song=~form_data['ignore_song'],
@@ -225,10 +225,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                 vr = None
                 try:
                     try:
-                        video_filename = os.path.join(form_data['data_dir'], datename + '.mp4')
+                        video_filename = os.path.join(dirname, datename + '.mp4')
                         vr = utils.VideoReaderNP(video_filename)
                     except:
-                        video_filename = os.path.join(form_data['data_dir'], datename + '.avi')
+                        video_filename = os.path.join(dirname, datename + '.avi')
                         vr = utils.VideoReaderNP(video_filename)
                     logging.info(vr)
                 except FileNotFoundError:
@@ -238,13 +238,14 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
                 fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+                box_size = float(dialog.form['box_size'])
 
                 cue_points = []
                 if form_data['load_cues']=='yes':
                     cue_points = cls.load_cues(form_data['cues_file'],
                                                 form_data['cues_delimiter'])
                 return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
-                        fmin=fmin, fmax=fmax, data_source=DataSource('dir', dirname))
+                        fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('dir', dirname))
 
     @classmethod
     def from_zarr(cls, filename=None, app=None, qt_keycode=None):
@@ -252,9 +253,9 @@ class MainWindow(pg.QtGui.QMainWindow):
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select dataset')
         if filename:
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_zarr.yaml",
-                                title='Load dataset from zarr file')
+                                title=f'Load dataset from zarr file {filename}')
 
-            dialog.form['zarr_filename'] = filename
+            # dialog.form['zarr_filename'] = filename
             dialog.show()
 
             result = dialog.exec_()
@@ -297,7 +298,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
                 fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
-
+                box_size = float(dialog.form['box_size'])
                 # load cues
                 cue_points = []
                 if form_data['load_cues']=='yes':
@@ -305,7 +306,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                             form_data['cues_delimiter'])
 
                 return PSV(ds, vr=vr, cue_points=cue_points, title=filename,
-                        fmin=fmin, fmax=fmax, data_source=DataSource('zarr', filename))
+                        fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('zarr', filename))
 
     @classmethod
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
