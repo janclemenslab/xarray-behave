@@ -218,7 +218,7 @@ class TraceView(pg.PlotWidget):
 
     def update_trace(self):
         self.clear()
-        if self.m.show_all_channels and self.m.y_other is not None:
+        if self.m.nb_channels is not None and self.m.show_all_channels and self.m.y_other is not None:
             for chan in range(self.m.nb_channels - 1):
                         self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
                                                       self.m.y_other[::self.m.step, chan],

@@ -453,10 +453,12 @@ class PSV(MainWindow):
             self.nb_eventtypes = 0
             self.eventype_colors = []
 
+        self.nb_channels = None
         if 'song' in self.ds:
             self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
         elif 'song_raw' in self.ds:
             self.fs_song = self.ds.song_raw.attrs['sampling_rate_Hz']
+            self.nb_channels = self.ds.song_raw.shape[-1]
         else:
             self.fs_song = self.fs_other  # not sure this would work?
 
@@ -841,7 +843,7 @@ class PSV(MainWindow):
 
         if 'song' in self.ds and self.current_channel_name == 'Merged channels':
             self.y = self.ds.song.data[self.time0:self.time1]
-        else:
+        elif 'song_raw' in self.ds:
             # load song for current channel
             try:
                 y_all = self.ds.song_raw.data[self.time0:self.time1, :].compute()
