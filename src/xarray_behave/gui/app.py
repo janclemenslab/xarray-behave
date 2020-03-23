@@ -1271,72 +1271,26 @@ class PSV(MainWindow):
                 self.event_items.append(menu_item)
 
 
-def main(datename: str = '', *,
-         root: str = '', dat_path='dat', res_path='res',
-         ignore_existing: bool = False, lazy: bool = False,
-         create_manual_segmentation: bool = False,
-         save: bool = False, savefolder: str = '',
-         resample_video_data: bool = True, target_sampling_rate: int = 10_000,
-         with_song: bool = True, cue_points: str = '[]',
-         spec_freq_min = None, spec_freq_max = None,
-         box_size: int = 200, cmap_name: str = 'turbo'):
+def main(source: str = ''):
     """
     Args:
-        datename (str): Experiment id.
-                        If "datename" or "datename.zarr" exists: Open dataset file with that name.
-                        Otherwise: Experiment id - will assemble new dataset from files in
-                        root/dat_path/datename and root/res_path/datename.
-        root (str): Path containing the `dat` and `res` folders for the experiment.
-                    Defaults to '' (current directory).
-        dat_path (str): Subdirectory in root holding the experiment data.
-                        Defaults to 'dat'.
-        res_path (str): Subdirectory in root holding the tracking etc results.
-                        Defaults to 'res'.
-        ignore_existing (bool): Ignore existing dataset file.
-                                Forces assembly of dataset even if "datename.zarr" exists.
-                                Defaults to False.
-        create_manual_segmentation (bool): Create empty segmentation data structure for annotating song.
-                                    Song types currently default to ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
-                                    Defaults to False.
-        lazy (bool): Whether to load full dataset into memory or read on demand from disk
-                     (only applicable if opening an existing dataset).
-                     This can greatly speeds up loading - the dataset opens much more quickly
-                     but this comes at the price of slower access to the data
-                     while using the GUI. Use if you only want to quickly check things,
-                     but not if you plan to annotate the full data set.
-                     Defaults to False.
-        save (bool): Save to the newly assembled dataset as a zarr.ZipStore.
-                     Slows down assembly but useful if you plan to work with the dataset again
-                     since loading is faster than assembly (and can be done lazily).
-                     Use judiciously to avoid cluttering and filling up the data storage.
-        savefolder (str): Folder in which created dataset to save to. Defaults to ''.
-        with_song (bool): whether or not to include song data
-        cue_points (str): List of cue points (indices) for quickly jumping around time. Defaults to '[]'.
-        target_sampling_rate (int): Sampling rate for the pose data and sound annotations. Defaults to 10_000 Hz.
-        resample_video_data (bool): Whether to resample the video data to the target_sampling_rate
-                                    or to the sample grid defined by each frame.
-                                    Useful for checking poses, since this will preserve accurate frame-by-frame positions.
-                                    Defaults to True.
-        box_size (int): Size of the crop box around flies, in pixels Defaults to 200px.
-        spec_freq_min (int): Smallest frequency to display in the spectrogram view.
-                             Defaults to None (smallest possible frequency in the spectrogram).
-        spec_freq_max (int): Greatest frequency to display in the spectrogram view.
-                             Defaults to None (greatest possible frequency in the spectrogram).
-        cmap_name (str): Name of the colormap (one of ['magma', 'inferno', 'plasma', 'viridis', 'parula', 'turbo']).
-                         Defaults to 'turbo'.
+        source (str): Data source to load.
+            Optional - will open an empty file if omitted.
+            Source can be the path to a wav audio file,
+            to an xarray-behave dataset saved as a zarr file,
+            or to a data folder (e.g. 'dat/localhost-xxx').
     """
-
-    app = MainApp()
+    app = QtGui.QApplication([])
     mainwin = MainWindow()
     mainwin.show()
-    if not len(datename):
+    if not len(source):
         pass
-    elif datename.endswith('.wav'):
-        mainwin.windows.append(MainWindow.from_wav(datename))
-    elif datename.endswith('.zarr'):
-        mainwin.windows.append(MainWindow.from_zarr(filename=datename))
-    elif os.path.isdir(datename):
-        mainwin.windows.append(MainWindow.from_dir(datename))
+    elif source.endswith('.wav'):
+        mainwin.windows.append(MainWindow.from_wav(source))
+    elif source.endswith('.zarr'):
+        mainwin.windows.append(MainWindow.from_zarr(filename=source))
+    elif os.path.isdir(source):
+        mainwin.windows.append(MainWindow.from_dir(source))
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
