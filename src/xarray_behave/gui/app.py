@@ -120,17 +120,18 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     def save_annotations(self, qt_keycode=None):
         logging.info('   Updating song events')
-        self.ds = utils.eventtimes_to_traces(self.ds, self.event_times)
-        # TODO save as csv: eventname,(segmentonset, segmentoffset) or (pulsetime), confidence (nan if missing), channel (nan if missing - means on all channels)
-        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
-                            f"{self.ds.attrs['datename']}_songmanual.zarr")
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save annotations to', str(savefilename),
-                                                                filter="zarr files (*.zarr);;all files (*)")
-        if len(savefilename):
-            logging.info(f'   Saving annotations to {savefilename}.')
-            # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
-            xb.save(savefilename, self.ds.song_events.to_dataset())
-            logging.info(f'   Done.')
+        if 'song_events' in self.ds:
+            self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
+            # TODO save as csv: eventname,(segmentonset, segmentoffset) or (pulsetime), confidence (nan if missing), channel (nan if missing - means on all channels)
+            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
+                                f"{self.ds.attrs['datename']}_songmanual.zarr")
+            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save annotations to', str(savefilename),
+                                                                    filter="zarr files (*.zarr);;all files (*)")
+            if len(savefilename):
+                logging.info(f'   Saving annotations to {savefilename}.')
+                # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
+                xb.save(savefilename, self.ds.song_events.to_dataset())
+                logging.info(f'   Done.')
 
     @classmethod
     def from_wav(cls, wav_filename=None, app=None, qt_keycode=None):
