@@ -74,7 +74,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.add_keyed_menuitem(file, "New from wav", self.from_wav)
         self.add_keyed_menuitem(file, "New from data folder", self.from_dir)
         file.addSeparator()
-        self.add_keyed_menuitem(file, "Load existing dataset", self.from_zarr)
+        self.add_keyed_menuitem(file, "Load dataset", self.from_zarr)
         file.addSeparator()
         self.add_keyed_menuitem(file, "Save swap files", self.save_swaps)
         self.add_keyed_menuitem(file, "Save annotations", self.save_annotations)
@@ -84,9 +84,9 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
-        self.hb.addWidget(self.add_button("New from wav", self.from_wav))
-        self.hb.addWidget(self.add_button("New from data folder", self.from_dir))
-        self.hb.addWidget(self.add_button("Load existing dataset (zarr)", self.from_zarr))
+        self.hb.addWidget(self.add_button("New dataset from wav", self.from_wav))
+        self.hb.addWidget(self.add_button("New dataset from data folder", self.from_dir))
+        self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
 
         self.cb = pg.GraphicsLayoutWidget()
         self.cb.setLayout(self.hb)
