@@ -714,11 +714,32 @@ class PSV(MainWindow):
         except KeyError as e:
             logging.exception(e)
 
+    def _delete_events_from_interval(self, event_name, t0, t1):
+        """[summary]
+
+        Args:
+            event_name ([type]): [description]
+            t0 ([type]): [description], seconds
+            t1 ([type]): [description], seconds
+        """
+        this_event_times = self.event_times[event_name]
+        if this_event_times.ndim == 1:  # event
+            before = this_event_times<t0
+            after = this_event_times>t1
+        elif this_event_times.ndim == 2:  # segment
+            # use any here to match both on and offsets (axis=1) - will leave partially displayed segments
+            before = np.any(this_event_times < t0, axis=1)
+            after = np.any(this_event_times > t1, axis=1)
+        outside_of_view = np.logical_or(before, after)
+        this_event_times = this_event_times[outside_of_view]
+        self.event_times[event_name] = this_event_times
+
+
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
-            # TODO currently not functional - needs to work on event_times (really??)
-            self.ds.song_events.data[int(self.index_other - self.span_index):
-                                     int(self.index_other + self.span_index), self.current_event_index] = False
+            self._delete_events_from_interval(self.current_event_name,
+                                              self.time0 / self.fs_song,
+                                              self.time1 / self.fs_song)
             logging.info(f'   Deleted all {self.ds.event_types[self.current_event_index].values} in view.')
         else:
             logging.info(f'   No event type selected. Not deleting anything.')
@@ -727,8 +748,10 @@ class PSV(MainWindow):
 
     def delete_all_events(self, qt_keycode):
         # TODO currently not functional - needs to work on event_times (really??)
-        self.ds.song_events.data[int(self.index_other - self.span_index):
-                                 int(self.index_other + self.span_index), :] = False
+        for event_name in self.event_times.keys():
+            self._delete_events_from_interval(event_name,
+                                              self.time0 / self.fs_song,
+                                              self.time1 / self.fs_song)
         logging.info(f'   Deleted all events in view.')
         if self.STOP:
             self.update_xy()
