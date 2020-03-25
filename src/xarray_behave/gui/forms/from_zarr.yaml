@@ -42,6 +42,6 @@ main:
     default: ","
 
 - name: generate
-  label: Load dataset
+  label: Okay
   type: button
   default: main action

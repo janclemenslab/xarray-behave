@@ -14,12 +14,17 @@ main:
       type: file_open
       default: " "
 
-- name: events
+- name: init_annotations
+  label: Initialize annotations
+  type: bool
+  default: True
+
+- name: events_string
   label: Event names and categories (event, segment)
   type: string
   default: "syllable,segment"
 
-- name: event_samplerate
+- name: target_samplingrate
   label: Samplerate for events in Hz (Defaults to samplerate of the recording)
   type: int
   range: 1,1000000
@@ -37,6 +42,6 @@ main:
   range: 1.0, 1000000.0
 
 - name: generate
-  label: Load data and generate dataset
+  label: Okay
   type: button
   default: main action

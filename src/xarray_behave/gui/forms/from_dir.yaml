@@ -30,17 +30,13 @@ main:
 
 - name: init_annotations
   label: Initialize annotations
-  type: stacked
-  default: "no"
-  options: "no,yes"
+  type: bool
+  default: True
 
-  "no":
-
-  "yes":
-  - name: events
-    label: Event names and categories (event, segment)
-    type: string
-    default: "syllable,segment"
+- name: events_string
+  label: Initialize event names and categories (event, segment)
+  type: string
+  default: ""
 
 - name: load_cues
   label: Load cue points
@@ -62,6 +58,6 @@ main:
     default: ","
 
 - name: generate
-  label: Load data and generate dataset
+  label: Okay
   type: button
   default: main action
