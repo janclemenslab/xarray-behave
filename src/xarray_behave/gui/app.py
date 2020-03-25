@@ -134,7 +134,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 logging.info(f'   Done.')
 
     @classmethod
-    def from_wav(cls, wav_filename=None, app=None, qt_keycode=None):
+    def from_wav(cls, wav_filename=None, app=None, qt_keycode=None, events_string='',
+                 spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
+                 skip_dialog: bool = False):
         if not wav_filename:
             wav_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None,
                                                                     caption='Select audio file')
@@ -144,23 +146,38 @@ class MainWindow(pg.QtGui.QMainWindow):
             logging.info(wave_fileinfo)
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
                                 title=f'Make new dataset from wave file {wav_filename}')
-            dialog.form['event_samplerate'] = wave_fileinfo.samplerate
-            # dialog.form['wav_filename'] = wav_filename
+            dialog.form['target_samplingrate'] = wave_fileinfo.samplerate
             dialog.form['spec_freq_max'] = wave_fileinfo.samplerate / 2
-            dialog.show()
-            result = dialog.exec_()
+
+
+            # initialize form data with cli args
+            if spec_freq_min is not None:
+                dialog.form['spec_freq_min'] = spec_freq_min
+            if spec_freq_max is not None:
+                dialog.form['spec_freq_max'] = spec_freq_max
+            if target_samplingrate is not None:
+                dialog.form['target_samplingrate'] = target_samplingrate
+            if len(events_string):
+                dialog.form['init_annotations'] = True
+                dialog.form['events_string'] = events_string
+
+            if not skip_dialog:
+                dialog.show()
+                result = dialog.exec_()
+            else:
+                result = QtGui.QDialog.Accepted
 
             if result == QtGui.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
 
                 form_data = dialog.form.get_form_data()
                 logging.info(f"Making new dataset from {wav_filename}.")
-                if form_data['event_samplerate'] < 1:
-                    form_data['event_samplerate'] = None
+                if form_data['target_samplingrate'] < 1:
+                    form_data['target_samplingrate'] = None
 
                 event_names = []
                 event_classes = []
-                for pair in form_data['events'].split(';'):
+                for pair in form_data['events_string'].split(';'):
                     items = pair.strip().split(',')
                     if len(items)>0:
                         event_names.append(items[0].strip())
@@ -170,7 +187,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                         event_classes.append('segment')
 
                 ds = xb.from_wav(filepath=wav_filename,
-                                    target_samplerate=form_data['event_samplerate'],
+                                    target_samplerate=form_data['target_samplingrate'],
                                     event_names=event_names,
                                     event_categories=event_classes)
 
@@ -181,7 +198,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                         fmin=fmin, fmax=fmax, data_source=DataSource('wav', wav_filename))
 
     @classmethod
-    def from_dir(cls, dirname=None, app=None, qt_keycode=None):
+    def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
+                 spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
+                 box_size=None, skip_dialog: bool = False):
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                                     caption='Select data directory')
@@ -189,10 +208,25 @@ class MainWindow(pg.QtGui.QMainWindow):
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
                                 title=f'Make new dataset from data directory {dirname}')
 
-            # dialog.form['data_dir'] = dirname
-            dialog.show()
+            # initialize form data with cli args
+            if spec_freq_min is not None:
+                dialog.form['spec_freq_min'] = spec_freq_min
+            if spec_freq_max is not None:
+                dialog.form['spec_freq_max'] = spec_freq_max
+            if box_size is not None:
+                dialog.form['box_size'] = box_size
+            if target_samplingrate is not None:
+                dialog.form['target_samplingrate'] = target_samplingrate
+            if len(events_string):
+                dialog.form['init_annotations'] = True
+                dialog.form['events_string'] = events_string
 
-            result = dialog.exec_()
+            if not skip_dialog:
+                dialog.show()
+                result = dialog.exec_()
+            else:
+                result = QtGui.QDialog.Accepted
+
             if result == QtGui.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
                 logging.info(f"Making new dataset from directory {dirname}.")
@@ -201,6 +235,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     resample_video_data = False
                 else:
                     resample_video_data = True
+
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
@@ -208,6 +243,18 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 keep_multi_channel=True,
                                 target_sampling_rate=form_data['target_samplingrate'],
                                 resample_video_data=resample_video_data)
+
+                if form_data['init_annotations']:
+                    # parse events_string
+                    event_types = []
+                    event_categories = []
+                    for event in form_data['events_string'].split(';'):
+                        event_types.append(event.split(',')[0])
+                        event_categories.append(event.split(',')[1])
+                    # add new event types
+                    ds = ld.initialize_manual_song_events(ds, False, False,
+                                                          event_types, event_categories)
+
                 # add event categories if they are missing in the dataset
                 if 'song_events' in ds and 'event_categories' not in ds:
                     event_categories = ['segment'
@@ -245,17 +292,30 @@ class MainWindow(pg.QtGui.QMainWindow):
                         fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('dir', dirname))
 
     @classmethod
-    def from_zarr(cls, filename=None, app=None, qt_keycode=None):
+    def from_zarr(cls, filename=None, app=None, qt_keycode=None,
+                  spec_freq_min=None, spec_freq_max=None,
+                  box_size=None, skip_dialog: bool = False):
         if not filename:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select dataset')
         if filename:
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_zarr.yaml",
                                 title=f'Load dataset from zarr file {filename}')
 
-            # dialog.form['zarr_filename'] = filename
-            dialog.show()
+            # initialize form data with cli args
+            if spec_freq_min is not None:
+                dialog.form['spec_freq_min'] = spec_freq_min
+            if spec_freq_max is not None:
+                dialog.form['spec_freq_max'] = spec_freq_max
+            if box_size is not None:
+                dialog.form['box_size'] = box_size
 
-            result = dialog.exec_()
+
+            if not skip_dialog:
+                dialog.show()
+                result = dialog.exec_()
+            else:
+                result = QtGui.QDialog.Accepted
+
             if result == QtGui.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
                 logging.info(f'Loading {filename}.')
@@ -908,8 +968,8 @@ class PSV(MainWindow):
 
             this = self.event_times[event_name]
             if self.ds.event_categories.data[event_type] == 'segment':
-                onsets_in_view = np.logical_and(this[:,0]>=x[0], this[:,0]<x[-1])
-                offsets_in_view = np.logical_and(this[:,1]>x[0], this[:,1]<=x[-1])
+                onsets_in_view = np.logical_and(this[:,0] >= x[0], this[:,0] < x[-1])
+                offsets_in_view = np.logical_and(this[:,1] > x[0], this[:,1] <= x[-1])
                 events_in_view = np.logical_or(onsets_in_view, offsets_in_view)
                 event_onset_indices = np.sort(this[events_in_view, 0])
                 event_offset_indices = np.sort(this[events_in_view, 1])
@@ -1292,7 +1352,9 @@ class PSV(MainWindow):
                 self.event_items.append(menu_item)
 
 
-def main(source: str = ''):
+def main(source: str = '', *, events_string: str = '', target_samplingrate: float = None,
+         spec_freq_min: float = None, spec_freq_max: float=None, box_size: int = 200,
+         skip_dialog: bool = False):
     """
     Args:
         source (str): Data source to load.
@@ -1300,18 +1362,43 @@ def main(source: str = ''):
             Source can be the path to a wav audio file,
             to an xarray-behave dataset saved as a zarr file,
             or to a data folder (e.g. 'dat/localhost-xxx').
+        events_string (str): "event_name,event_category;event_name,event_category".
+                             Avoid spaces or trailing ';'.
+                             Need to wrap the string in "..." in the terminal
+                             "event_name" can be any string w/o space, ",", or ";"
+                             "event_category" can by event (pulse) or segment (sine, syllable)
+                             Only used if source is a data folder or a wav audio file.
+        target_samplingrate (float): [description]. If 0, will use frame times. Defaults to None.
+                                     Only used if source is a data folder or a wav audio file.
+        spec_freq_min (float): [description].
+        spec_freq_max (float): [description].
+        box_size (int): desc.
+                        Not used for wav audio files (no videos).
+        skip_dialog (bool): If True, skips the opening dialog and goes straight to opening the data.
     """
+
     app = QtGui.QApplication([])
     mainwin = MainWindow()
     mainwin.show()
     if not len(source):
         pass
     elif source.endswith('.wav'):
-        mainwin.windows.append(MainWindow.from_wav(source))
+        mainwin.windows.append(MainWindow.from_wav(wav_filename=source,
+                                                   events_string=events_string,
+                                                   target_samplingrate=target_samplingrate,
+                                                   spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+                                                   skip_dialog=skip_dialog))
     elif source.endswith('.zarr'):
-        mainwin.windows.append(MainWindow.from_zarr(filename=source))
+        mainwin.windows.append(MainWindow.from_zarr(filename=source,
+                                                    box_size=box_size,
+                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+                                                    skip_dialog=skip_dialog))
     elif os.path.isdir(source):
-        mainwin.windows.append(MainWindow.from_dir(source))
+        mainwin.windows.append(MainWindow.from_dir(dirname=source,
+                                                   events_string=events_string,
+                                                   target_samplingrate=target_samplingrate, box_size=box_size,
+                                                   spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+                                                   skip_dialog=skip_dialog))
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
