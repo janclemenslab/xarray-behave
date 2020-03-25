@@ -524,7 +524,8 @@ def load_times(filepath_timestamps, filepath_daq):
 
 
 def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = False, force_overwrite: bool = False,
-                                  new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']) -> xr.Dataset:
+                                  new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual'],
+                                  new_manual_event_categories = ['segment', 'event', 'event', 'event']) -> xr.Dataset:
     """[summary]
 
     Args:
@@ -537,17 +538,16 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
         force_overwrite (bool, optional): Overwrite existing manual events.
                                           Defaults to False.
         new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
-
+        new_manual_event_categories = ['segment', 'event', 'event', 'event']
     Returns:
         xarray.Dataset: [description]
     """
-    # ????!!!! no!!
+
+    # only add new ones
     if 'song_events' in ds:
-        new_manual_event_types = [evt for evt in new_manual_event_types
+        new_manual_event_types = [evt for evt in new_manual_event_types if evt not in ds.song_events.event_types]
+        new_manual_event_categories = [cat for evt, cat in zip(new_manual_event_types, new_manual_event_categories)
                                       if evt not in ds.song_events.event_types]
-    # else:
-    #     # set time axis at target_sampling_rate
-    #     ds['time'] = np.arange(ds.sampletime[0], ds.sampletime[-1], 1/ds.attrs['target_sampling_rate'])
 
     song_events_manual = None
     if 'song_events' not in ds or new_manual_event_types:
@@ -558,6 +558,7 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
                                           dims=['time', 'event_types'],
                                           coords={'time': ds.time,
                                                   'event_types': new_manual_event_types,
+                                                  'event_categories': (('event_types'), new_manual_event_categories),
                                                   'nearest_frame': (('time'), ds.nearest_frame), },
                                           attrs={'description': 'Event times as boolean arrays.',
                                                  'sampling_rate_Hz': ds.attrs['target_sampling_rate_Hz'],
