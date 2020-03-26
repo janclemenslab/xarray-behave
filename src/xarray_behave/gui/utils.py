@@ -14,9 +14,10 @@ from videoreader import VideoReader
 
 def make_colors(nb_colors):
     colors = np.zeros((1, nb_colors, 3), np.uint8)
-    colors[0, :, 1:] = 220  # set saturation and brightness to 220
-    colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_colors)  # set range of hues
-    colors = cv2.cvtColor(colors, cv2.COLOR_HSV2BGR)[0].astype(np.uint8)[..., ::-1]
+    if nb_colors > 0:
+        colors[0, :, 1:] = 220  # set saturation and brightness to 220
+        colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_colors)  # set range of hues
+        colors = cv2.cvtColor(colors, cv2.COLOR_HSV2BGR)[0].astype(np.uint8)[..., ::-1]
     return colors
 
 
