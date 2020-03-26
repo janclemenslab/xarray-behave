@@ -17,7 +17,7 @@ main:
 - name: init_annotations
   label: Initialize annotations
   type: bool
-  default: True
+  default: False
 
 - name: events_string
   label: Event names and categories (event, segment)
