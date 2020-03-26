@@ -1298,7 +1298,7 @@ class PSV(MainWindow):
                         self.event_times[event_name] = np.zeros((0, 2))
                     elif event_category=='event':
                         self.event_times[event_name] = np.zeros((0,))
-            print(self.event_times.keys())
+
             # make new song_events DataArray
             if 'song_events' in self.ds:
                 old_values = self.ds.song_events.values.copy()
