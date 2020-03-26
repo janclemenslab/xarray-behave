@@ -678,6 +678,7 @@ class PSV(MainWindow):
 
         self.update_xy()
         self.update_frame()
+        logging.info("xb gui initialized.")
 
     @property
     def fs_ratio(self):
