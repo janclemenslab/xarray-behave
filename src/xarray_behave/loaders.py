@@ -212,7 +212,11 @@ def infer_event_categories(data):
     """
     event_categories = []
     for evt in range(data.shape[1]):
-        dt = np.median(np.diff(np.where(data[:, evt])[0]))
+        if np.any(data[:, evt]):
+            dt = np.nanmedian(np.diff(np.where(data[:, evt])[0]))
+        else:
+            dt = 10  # fall back to events w/o annotations
+
         if dt > 1:
             event_categories.append('event')
         else:
@@ -284,6 +288,15 @@ def load_manual_annotation(filepath):
 
     if 'event_categories' not in manual_events_ds:
         event_categories_List = infer_event_categories(manual_events_ds.song_events.data)
+
+        # force these to be the correct types even if they are empty and
+        # the event_cat inference does not work
+        for cnt, event_type in enumerate(manual_events_ds.event_types.data):
+            if event_type in ['pulse_manual', 'vibration_manual', 'aggression_manual']:
+                event_categories_List[cnt] = 'event'
+            if event_type == 'sine_manual':
+                event_categories_List[cnt] = 'segment'
+
         manual_events_ds = manual_events_ds.assign_coords(
                                 {'event_categories': (('event_types'), event_categories_List)})
 
@@ -545,9 +558,9 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
 
     # only add new ones
     if 'song_events' in ds:
-        new_manual_event_types = [evt for evt in new_manual_event_types if evt not in ds.song_events.event_types]
         new_manual_event_categories = [cat for evt, cat in zip(new_manual_event_types, new_manual_event_categories)
                                       if evt not in ds.song_events.event_types]
+        new_manual_event_types = [evt for evt in new_manual_event_types if evt not in ds.song_events.event_types]
 
     song_events_manual = None
     if 'song_events' not in ds or new_manual_event_types:
