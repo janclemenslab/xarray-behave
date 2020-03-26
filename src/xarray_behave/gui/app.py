@@ -243,7 +243,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 keep_multi_channel=True,
                                 target_sampling_rate=form_data['target_samplingrate'],
                                 resample_video_data=resample_video_data)
-
                 if form_data['init_annotations']:
                     # parse events_string
                     event_types = []
@@ -1291,6 +1290,7 @@ class PSV(MainWindow):
                         self.event_times[event_name] = np.zeros((0, 2))
                     elif event_category=='event':
                         self.event_times[event_name] = np.zeros((0,))
+            print(self.event_times.keys())
             # make new song_events DataArray
             if 'song_events' in self.ds:
                 old_values = self.ds.song_events.values.copy()
@@ -1321,7 +1321,7 @@ class PSV(MainWindow):
 
             # update EVENT TYPE selector
             # remove old
-            while len(self.cb):
+            while self.cb.count():
                 self.cb.removeItem(0)
 
             # add new (make this function)
@@ -1344,7 +1344,7 @@ class PSV(MainWindow):
             self.event_items = []
             for ii in range(self.cb.count()):
                 self.cb.itemText(ii)
-                key = eval(f'"{ii}') if ii<10 else None
+                key = eval(f'"{ii}"') if ii<10 else None
                 menu_item =self.add_keyed_menuitem(self.view_audio,
                                                    self.cb.itemText(ii),
                                                    self.change_event_type,
