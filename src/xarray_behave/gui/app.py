@@ -119,15 +119,17 @@ class MainWindow(pg.QtGui.QMainWindow):
             logging.info(f'   Done.')
 
     def save_annotations(self, qt_keycode=None):
-        logging.info('   Updating song events')
         if 'song_events' in self.ds:
-            self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
-            # TODO save as csv: eventname,(segmentonset, segmentoffset) or (pulsetime), confidence (nan if missing), channel (nan if missing - means on all channels)
-            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
-                                f"{self.ds.attrs['datename']}_songmanual.zarr")
+            try:
+                savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
+                                    f"{self.ds.attrs['datename']}_songmanual.zarr")
+            except KeyError:
+                savefilename = ''
             savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save annotations to', str(savefilename),
                                                                     filter="zarr files (*.zarr);;all files (*)")
             if len(savefilename):
+                logging.info('   Updating song events')
+                self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
                 logging.info(f'   Saving annotations to {savefilename}.')
                 # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
                 xb.save(savefilename, self.ds.song_events.to_dataset())
@@ -381,9 +383,12 @@ class MainWindow(pg.QtGui.QMainWindow):
         return cues
 
     def save_dataset(self, qt_keycode=None):
-        logging.info('   Updating song events')
-        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
-                            f"{self.ds.attrs['datename']}.zarr")
+        try:
+            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
+                                f"{self.ds.attrs['datename']}.zarr")
+        except KeyError:
+            savefilename = ""
+
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save dataset to', str(savefilename),
                                                                 filter="zarr files (*.zarr);;all files (*)")
 
@@ -396,6 +401,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
             if retval == QtWidgets.QMessageBox.Ignore:
                 if 'song_events' in self.ds:
+                    logging.info('   Updating song events')
                     self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
                 logging.info(f'   Saving dataset to {savefilename}.')
                 xb.save(savefilename, self.ds)
