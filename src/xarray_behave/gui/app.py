@@ -177,14 +177,15 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 event_names = []
                 event_classes = []
-                for pair in form_data['events_string'].split(';'):
-                    items = pair.strip().split(',')
-                    if len(items)>0:
-                        event_names.append(items[0].strip())
-                    if len(items)>1:
-                        event_classes.append(items[1].strip())
-                    else:
-                        event_classes.append('segment')
+                if form_data['init_annotations'] and len(form_data['events_string']):
+                    for pair in form_data['events_string'].split(';'):
+                        items = pair.strip().split(',')
+                        if len(items)>0:
+                            event_names.append(items[0].strip())
+                        if len(items)>1:
+                            event_classes.append(items[1].strip())
+                        else:
+                            event_classes.append('segment')
 
                 ds = xb.from_wav(filepath=wav_filename,
                                     target_samplerate=form_data['target_samplingrate'],
@@ -243,7 +244,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 keep_multi_channel=True,
                                 target_sampling_rate=form_data['target_samplingrate'],
                                 resample_video_data=resample_video_data)
-                if form_data['init_annotations']:
+                if form_data['init_annotations'] and len(form_data['events_string']):
                     # parse events_string
                     event_types = []
                     event_categories = []
