@@ -471,8 +471,8 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         # wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
         # wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
         # wing_angle_sum = mt.internal_angle(wing_left,thoraces,wing_right)
-        wing_angle_left = mt.internal_angle(wing_left,thoraces,heads)
-        wing_angle_right = mt.internal_angle(wing_right,thoraces,heads)
+        wing_angle_left = 180-mt.internal_angle(wing_left,thoraces,heads)
+        wing_angle_right = 180-mt.internal_angle(wing_right,thoraces,heads)
         wing_angle_sum = wing_angle_left + wing_angle_right
 
         list_absolute = [
