@@ -585,8 +585,8 @@ class PSV(MainWindow):
                                 checkable=True, checked=self.show_all_channels)
         self.add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), "Q",
                                 checkable=True, checked=self.select_loudest_channel)
-        self.add_keyed_menuitem(view_audio, "Select previous channel", self.set_next_channel, "Shift+Up")
-        self.add_keyed_menuitem(view_audio, "Select next channel", self.set_prev_channel, "Shift+Down")
+        self.add_keyed_menuitem(view_audio, "Select previous channel", self.set_next_channel, "Up")
+        self.add_keyed_menuitem(view_audio, "Select next channel", self.set_prev_channel, "Down")
         view_audio.addSeparator()
         self.add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), "G",
                                 checkable=True, checked=self.show_spec)
