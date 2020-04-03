@@ -135,7 +135,7 @@ class Draggable(pg.GraphItem):
 
     def updateGraph(self):
         pg.GraphItem.setData(self, **self.data)
-        for i,item in enumerate(self.textItems):
+        for i, item in enumerate(self.textItems):
             item.setPos(*self.data['pos'][i])
 
 
@@ -435,8 +435,10 @@ class MovieView(utils.FastImageWidget):
             if 'pose_positions_allo' in self.m.ds:
                 if self.m.show_poses:
                     frame = self.annotate_poses(frame)
+                    self.fly_poses.setVisible(True)
                 else:
-                    self.fly_poses.setData(pos=None, adj=np.array((0, 2)))
+                    self.fly_poses.setData(pos=None)
+                    self.fly_poses.setVisible(False)
 
                 if self.m.show_dot:
                     frame = self.annotate_dot(frame)
@@ -479,7 +481,6 @@ class MovieView(utils.FastImageWidget):
         return frame
 
     def annotate_poses(self, frame):
-        # TODO use (non-draggable) GraphItem here as well - could even plot skeleton
         poses = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, :])
         poses = poses.reshape(-1, 2)  # flatten
         self.fly_poses.setData(pos=poses[:,::-1],
