@@ -471,8 +471,11 @@ class MovieView(utils.FastImageWidget):
                                                        this_fly,
                                                        self.m.thorax_index].astype(np.uintp)
             fly_pos = np.array(fly_pos)  # in case this is a dask.array
-            xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, method='bresenham')
-            frame[xx, yy, :] = color
+            # only plot circle if fly is within the frame (also prevents overflow errors
+            # for tracking errors that lead to VERY large position values)
+            if fly_pos[0] <= frame.shape[0] and fly_pos[1] <= frame.shape[1]:
+                xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, method='bresenham')
+                frame[xx, yy, :] = color
         return frame
 
     def annotate_poses(self, frame):
