@@ -106,12 +106,17 @@ class Draggable(pg.GraphItem):
         self.text = kwds.pop('text', [])
         self.data = kwds
         if 'pos' in self.data:
-            npts = self.data['pos'].shape[0]
-            self.data['data'] = np.empty(npts, dtype=[('index', int)])
-            self.data['data']['index'] = np.arange(npts)
+            if self.data['pos'] is None:
+                self.data = {}
+            else:
+                npts = self.data['pos'].shape[0]
+                self.data['data'] = np.empty(npts, dtype=[('index', int)])
+                self.data['data']['index'] = np.arange(npts)
         self.setTexts(self.text)
+
         if 'acceptDrags' in kwds:
             self.acceptDrags = kwds['acceptDrags']
+
         if 'focalFly' in kwds:
             self.focalFly = kwds['focalFly']
         else:
@@ -138,7 +143,6 @@ class Draggable(pg.GraphItem):
         if ev.button() != QtCore.Qt.LeftButton or not self.acceptDrags:
             ev.ignore()
             return
-        # breakpoint()
 
         if ev.isStart():
             # We are already one step into the drag.
@@ -433,8 +437,12 @@ class MovieView(utils.FastImageWidget):
                     frame = self.annotate_poses(frame)
                 else:
                     self.fly_poses.setData(adj=np.array((0, 2)))
+
                 if self.m.show_dot:
                     frame = self.annotate_dot(frame)
+                else:
+                    self.fly_positions.setData(pos=None)  # this deletes the graph
+
                 if self.m.crop:
                     x_range, y_range = self.crop_frame(frame)
                 else:
