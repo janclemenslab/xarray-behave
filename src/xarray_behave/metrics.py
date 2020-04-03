@@ -235,7 +235,7 @@ def project_velocity(vx, vy, radians):
 
 
 def internal_angle(A: np.array, B: np.array, C: np.array, deg:bool=True, array_logic: str='tfc'):
-    """Calculates internal angle (∠ABC) between three points. If A,B,C are lists or arrays, calculation happens element-wise.
+    """Calculates internal angle (∠ABC) between three points (aka, angle between lines AB and BC). If A,B,C are lists or arrays, calculation happens element-wise.
     
     Args:
         A, B, C ([type]): position of points between which the angle is calculated.
@@ -245,8 +245,8 @@ def internal_angle(A: np.array, B: np.array, C: np.array, deg:bool=True, array_l
         angles ([type]): internal angle between lines AB and BC.
     """
 
-    v1s = B-A
-    v2s = C-A
+    v1s = B-A # vector from point B to A
+    v2s = B-C # vector from point B to C
 
     # reshape vector arrays to be [time, coordinates, ...]
     if A.ndim == 3:
@@ -266,7 +266,9 @@ def internal_angle(A: np.array, B: np.array, C: np.array, deg:bool=True, array_l
 
     dot_v1_v2 = np.einsum('ij...,ij...->i...', v1s, v2s)
     dot_v1_v1 = np.einsum('ij...,ij...->i...', v1s, v1s)
+    dot_v1_v1[dot_v1_v1 == 0] = 0.0001 # small values for dot products which happen to be zero (shouldn't happen)
     dot_v2_v2 = np.einsum('ij...,ij...->i...', v2s, v2s)
+    dot_v2_v2[dot_v2_v2 == 0] = 0.0001 # small values for dot products which happen to be zero (shouldn't happen)
 
     angles = np.arccos(dot_v1_v2/np.sqrt(dot_v1_v1*dot_v2_v2))
 
