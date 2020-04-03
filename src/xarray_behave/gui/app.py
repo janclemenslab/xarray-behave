@@ -1017,6 +1017,7 @@ class PSV(MainWindow):
         # this could be done by the view:
         f = scipy.interpolate.interp1d(region.xrange, self.trange,
                                        bounds_error=False, fill_value='extrapolate')
+        # FIXME should get the nearest onset/offset, not the bounds as currently displayed I think
         new_region = f(region.getRegion())
         # replace segment in events
         this = self.event_times[self.current_event_name]
@@ -1225,21 +1226,19 @@ class PSV(MainWindow):
         dialog.show()
 
     def dss_predict(self, qt_keycode):
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_predict.yaml",
+                                title='Predict labels using DeepSS')
+        dialog.show()
+        result = dialog.exec_()
 
-        def predict():
-            print('predict')
-            dialog.close()
+        if result == QtGui.QDialog.Accepted:
+            print('running inference in terminal window.')
             # load model and params
             # make data-gen from ds.song_raw
             # predict with progressbar
+            # add the raw probabilities to the ds so we can easily play around with the detection threshold and postprocessing parameters
             # post process probabilities and generate labels
             # add or update original (non-post processed) probabilities and final labels to ds.song_events
-
-        dialog = YamlDialog(yaml_file="src/xarray_behave/gui/forms/predict.yaml",
-                               title='Predict',
-                               main_callback=predict)
-        dialog.show()
-
 
     def dss_update_predictions(self, qt_keycode):
 
