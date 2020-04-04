@@ -15,6 +15,7 @@ import numpy as np
 import scipy
 import skimage.draw
 import scipy.interpolate
+import scipy.signal as ss
 import soundfile
 from dataclasses import dataclass
 from typing import Callable
@@ -194,6 +195,11 @@ class MainWindow(pg.QtGui.QMainWindow):
                                     event_names=event_names,
                                     event_categories=event_classes)
 
+                if form_data['filter_song'] == 'yes':
+                    f_low = eval(form_data['f_low'])
+                    f_high = eval(form_data['f_high'])
+                    ds = cls.filter_song(ds, f_low, f_high)
+
                 fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
                 fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
 
@@ -246,6 +252,12 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 keep_multi_channel=True,
                                 target_sampling_rate=form_data['target_samplingrate'],
                                 resample_video_data=resample_video_data)
+
+                if form_data['filter_song'] == 'yes':
+                    f_low = eval(form_data['f_low'])
+                    f_high = eval(form_data['f_high'])
+                    ds = cls.filter_song(ds, f_low, f_high)
+
                 if form_data['init_annotations'] and len(form_data['events_string']):
                     # parse events_string
                     event_types = []
@@ -335,6 +347,11 @@ class MainWindow(pg.QtGui.QMainWindow):
                     if 'song_raw' in ds:  # this will take a long time:
                         ds.song_raw.load()  # non-lazy load song for faster updates
 
+                if form_data['filter_song'] == 'yes':
+                    f_low = eval(form_data['f_low'])
+                    f_high = eval(form_data['f_high'])
+                    ds = cls.filter_song(ds, f_low, f_high)
+
                 # add event categories if they are missing in the dataset
                 if 'song_events' in ds and 'event_categories' not in ds:
                     event_categories = ['segment'
@@ -366,6 +383,24 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 return PSV(ds, vr=vr, cue_points=cue_points, title=filename,
                         fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('zarr', filename))
+
+    @classmethod
+    def filter_song(cls, ds, f_low, f_high):
+        if 'song_raw' in ds:  # this will take a long time:
+            if f_high is None:
+                f_high = ds.song_raw.attrs['sampling_rate_Hz'] / 2 - 1
+            logging.info(f'Filtering `song_raw` between {f_low} and {f_high} Hz.')
+            sos_bp = ss.butter(5, [f_low, f_high], 'bandpass', output='sos',
+                                fs=ds.song_raw.attrs['sampling_rate_Hz'])
+            ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
+        if 'song' in ds:
+            if f_high is None:
+                f_high = ds.song.attrs['sampling_rate_Hz'] / 2 - 1
+            logging.info(f'Filtering `song` between {f_low} and {f_high} Hz.')
+            sos_bp = ss.butter(5, [f_low, f_high], 'bandpass', output='sos',
+                                fs=ds.song.attrs['sampling_rate_Hz'])
+            ds.song.data = ss.sosfiltfilt(sos_bp, ds.song.data, axis=0)
+        return ds
 
     @classmethod
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
@@ -1400,7 +1435,7 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
         skip_dialog (bool): If True, skips the opening dialog and goes straight to opening the data.
     """
 
-    app = QtGui.QApplication([])
+    QtGui.QApplication([])
     mainwin = MainWindow()
     mainwin.show()
     if not len(source):
