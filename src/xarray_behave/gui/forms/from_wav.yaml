@@ -41,6 +41,27 @@ main:
   type: float
   range: 1.0, 1000000.0
 
+
+- name: filter_song
+  label: Bandpass filter song
+  type: stacked
+  default: "no"
+  options: "no,yes"
+
+  "no":
+
+  "yes":
+  - name: f_low
+    label: Lower cutoff
+    type: float
+    default: 1.0
+
+  - name: f_high
+    label: Upper cutoff
+    type: float
+    default: None
+
+
 - name: generate
   label: Okay
   type: button

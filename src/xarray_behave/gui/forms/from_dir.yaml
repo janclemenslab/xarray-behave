@@ -38,6 +38,27 @@ main:
   type: string
   default: ""
 
+
+- name: filter_song
+  label: Bandpass filter song
+  type: stacked
+  default: "no"
+  options: "no,yes"
+
+  "no":
+
+  "yes":
+  - name: f_low
+    label: Lower cutoff
+    type: float
+    default: 1.0
+
+  - name: f_high
+    label: Upper cutoff
+    type: float
+    default: None
+
+
 - name: load_cues
   label: Load cue points
   type: stacked
@@ -56,6 +77,8 @@ main:
     label: Delimiter
     type: string
     default: ","
+
+
 
 - name: generate
   label: Okay
