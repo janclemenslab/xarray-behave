@@ -630,9 +630,10 @@ class PSV(MainWindow):
         self.view_audio = view_audio
         self.event_items = []
         for ii in range(self.cb.count()):
-            self.cb.itemText(ii)
             # key = eval(f'"{ii}') if ii<10 else None
             key = str(ii) if ii<10 else None
+            key_label = f"({key})" if key is not None else ''
+            self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
             menu_item =self.add_keyed_menuitem(self.view_audio,
                                                self.cb.itemText(ii),
                                                self.change_event_type,
@@ -1364,8 +1365,9 @@ class PSV(MainWindow):
             # add new ones (make this function)
             self.event_items = []
             for ii in range(self.cb.count()):
-                self.cb.itemText(ii)
-                key = eval(f'"{ii}"') if ii<10 else None
+                key = str(ii) if ii<10 else None
+                key_label = f"({key})" if key is not None else ''
+                self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
                 menu_item =self.add_keyed_menuitem(self.view_audio,
                                                    self.cb.itemText(ii),
                                                    self.change_event_type,
