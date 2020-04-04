@@ -1017,13 +1017,27 @@ class PSV(MainWindow):
         # this could be done by the view:
         f = scipy.interpolate.interp1d(region.xrange, self.trange,
                                        bounds_error=False, fill_value='extrapolate')
-        # FIXME should get the nearest onset/offset, not the bounds as currently displayed I think
-        new_region = f(region.getRegion())
-        # replace segment in events
+
+
+        # find the moved segment in events
         this = self.event_times[self.current_event_name]
         event_idx = np.where(np.logical_and(this[:,0]==region.bounds[0],
                                             this[:,1]==region.bounds[1]))
+
+        # get the new region bounds
+        new_region = f(region.getRegion())
+
+        # fixes editing segments that are only partially displayed
+        # if the region bounds after editing match the bounds of the view,
+        # keep the old region bounds
+        if region.getRegion()[0] == region.xrange[0]:
+            new_region[0] = this[event_idx, 0]
+        if region.getRegion()[1] == region.xrange[1]:
+            new_region[1] = this[event_idx, 1]
+
+        # replace the move segment
         this[event_idx, :] = new_region
+
         logging.info(f'  Moved {self.current_event_name} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
         self.update_xy()
 
