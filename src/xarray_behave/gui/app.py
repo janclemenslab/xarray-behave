@@ -555,9 +555,9 @@ class PSV(MainWindow):
         self.nb_channels = None
         if 'song' in self.ds:
             self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
-        elif 'song_raw' in self.ds:
+        if 'song_raw' in self.ds:
             self.fs_song = self.ds.song_raw.attrs['sampling_rate_Hz']
-            self.nb_channels = self.ds.song_raw.shape[-1]
+            self.nb_channels = self.ds.song_raw.shape[1]
         else:
             self.fs_song = self.fs_other  # not sure this would work?
 
