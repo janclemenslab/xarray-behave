@@ -202,9 +202,12 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
                 fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
+                cue_points = []
+                if form_data['load_cues']=='yes':
+                    cue_points = cls.load_cuepoints(form_data['cues_file'])
 
-                return PSV(ds, title=wav_filename,
-                        fmin=fmin, fmax=fmax, data_source=DataSource('wav', wav_filename))
+                return PSV(ds, title=wav_filename, cue_points=cue_points,
+                           fmin=fmin, fmax=fmax, data_source=DataSource('wav', wav_filename))
 
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
@@ -300,8 +303,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 cue_points = []
                 if form_data['load_cues']=='yes':
-                    cue_points = cls.load_cues(form_data['cues_file'],
-                                                form_data['cues_delimiter'])
+                    cue_points = cls.load_cuepoints(form_data['cues_file'])
                 return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
                         fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('dir', dirname))
 
@@ -333,7 +335,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             if result == QtGui.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
                 logging.info(f'Loading {filename}.')
-                ds = xb.load(filename, lazy=True)
+                ds = xb.load(filename, lazy=True, use_temp=True)
                 if 'song_events' in ds:
                     ds.song_events.load()
                 if not form_data['lazy']:
@@ -378,8 +380,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 # load cues
                 cue_points = []
                 if form_data['load_cues']=='yes':
-                    cue_points = cls.load_cues(form_data['cues_file'],
-                                            form_data['cues_delimiter'])
+                    cue_points = cls.load_cuepoints(form_data['cues_file'])
 
                 return PSV(ds, vr=vr, cue_points=cue_points, title=filename,
                         fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('zarr', filename))
@@ -408,7 +409,9 @@ class MainWindow(pg.QtGui.QMainWindow):
         pass
 
     @staticmethod
-    def load_cues(filename, delimiter=','):
+    def load_cuepoints(filename=None, delimiter=','):
+        if filename is None or not len(filename):
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select file with cue points')
         cues = []
         try:
             cues = np.loadtxt(fname=filename,
@@ -522,7 +525,7 @@ class PSV(MainWindow):
         self.circle_size = 8
         self.show_framenumber = False
 
-        self.cue_index = 0
+        self.cue_index = -1  # set this to -1 not to 0 so that upon first increase we will jump to 0, not to 1
 
         self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds.dims else 1
         self.focal_fly = 0
@@ -584,7 +587,7 @@ class PSV(MainWindow):
         self.add_keyed_menuitem(view_play, ">> Forward jump", self.jump_forward, "D")
         self.add_keyed_menuitem(view_play, " > Forward one frame", self.single_frame_advance, "Right")
         view_play.addSeparator()
-        self.add_keyed_menuitem(view_play, "Load cue list", print)  # text file with comma separated seconds or frames...
+        self.add_keyed_menuitem(view_play, "Load cue points", self.reload_cuepoints)  # text file with comma separated seconds or frames...
         self.add_keyed_menuitem(view_play, "Move to previous cue", self.set_prev_cuepoint, "K")
         self.add_keyed_menuitem(view_play, "Move to next cue", self.set_next_cuepoint, "L")
         view_play.addSeparator()
@@ -928,6 +931,10 @@ class PSV(MainWindow):
             self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index] * self.fs_song # jump to PREV cue point
+
+    def reload_cuepoints(self, qt_keycode):
+        self.cue_points = PSV.load_cuepoints()
+        self.cue_index = -1
 
     def zoom_in_song(self, qt_keycode):
         self.span /= 2

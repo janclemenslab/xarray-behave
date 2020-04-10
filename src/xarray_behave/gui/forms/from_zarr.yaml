@@ -54,14 +54,9 @@ main:
 
   "yes":
   - name: cues_file
-    label: File name with cue times (seconds)
+    label: cues file
     type: file_open
-    default: " "
-
-  - name: cues_delimiter
-    label: Delimiter
-    type: string
-    default: ","
+    default: ""
 
 - name: generate
   label: Okay

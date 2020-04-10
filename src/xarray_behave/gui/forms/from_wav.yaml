@@ -62,6 +62,21 @@ main:
     default: None
 
 
+- name: load_cues
+  label: Load cue points
+  type: stacked
+  default: "no"
+  options: "no,yes"
+
+  "no":
+
+  "yes":
+  - name: cues_file
+    label: cues file
+    type: file_open
+    default: ""
+
+
 - name: generate
   label: Okay
   type: button
