@@ -19,8 +19,6 @@ from . import utils
 from . import formbuilder
 from . import app
 
-logging.basicConfig(level=logging.INFO)
-
 
 # add io etc.
 class Model():
