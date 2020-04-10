@@ -569,18 +569,25 @@ def _normalize_strings(dataset):
     return dataset
 
 
-def load(savepath, lazy: bool = False, normalize_strings: bool = True):
+def load(savepath, lazy: bool = False, normalize_strings: bool = True,
+         use_temp: bool = False):
     """[summary]
 
     Args:
         savepath ([type]): [description]
         lazy (bool, optional): [description]. Defaults to True.
         normalize_strings (bool, optional): [description]. Defaults to True.
-
+        use_temp (bool, optional): Unpack zip to temp file - potentially speeds up loading and allows overwriting existing zarr file.
+                                   Defaults to True.
     Returns:
         [type]: [description]
     """
     zarr_store = zarr.ZipStore(savepath, mode='r')
+    if use_temp:
+        dest = zarr.TempStore()
+        zarr.copy_store(zarr_store, dest)
+        zarr_store.close()
+        zarr_store = dest
     dataset = xr.open_zarr(zarr_store)
     if not lazy:
         dataset.load()
