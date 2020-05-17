@@ -107,13 +107,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     with_song = False
     with_song_raw = False
     merge_raw_recording = False
+    auto_event_seconds = {}
+    auto_event_categories = {}
+    manual_event_seconds = {}
+    manual_event_categories = {}
+
     if include_song:
         logging.info('Attempting to load automatic segmentation:')
         # load AUTOMATIC SEGMENTATION - currently produced by matlab
         filepath_segmentation_matlab = Path(root, res_path, datename, f'{datename}_song.mat')
         filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.h5')
-        auto_event_seconds = {}
-        auto_event_categories = {}
         if os.path.exists(filepath_segmentation):
             # res = ld.load_segmentation(filepath_segmentation)
             auto_event_seconds, auto_event_categories = ld.load_segmentation(filepath_segmentation)
@@ -138,8 +141,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         logging.info('Attempting to load manual segmentation:')
         filepath_segmentation_manual = Path(root, res_path, datename, f'{datename}_songmanual.zarr')
         filepath_segmentation_manual_matlab = Path(root, res_path, datename, f'{datename}_songmanual.mat')
-        manual_event_seconds = {}
-        manual_event_categories = {}
         if os.path.exists(filepath_segmentation_manual):
             manual_event_seconds, manual_event_categories = ld.load_manual_annotation(filepath_segmentation_manual)  # need to extract event_seconds and categories from that one
             with_segmentation_manual = True
