@@ -127,7 +127,7 @@ def interpolate_binary(x0, y0, x1):
     fs1 = 1/np.mean(np.diff(x1))
     ratio = fs0/fs1
 
-    if ratio > 1:  #  we are downsampling
+    if ratio > 1:  # we are downsampling
         # if we downsample - spread out events so we catch all of them
         y0 = scipy.ndimage.maximum_filter(y0, size=(ratio, 1))
         # use 'nearest' here - why? could we just use linear, too?
@@ -298,7 +298,7 @@ def load_manual_annotation(filepath):
                 event_categories_List[cnt] = 'segment'
 
         manual_events_ds = manual_events_ds.assign_coords(
-                                {'event_categories': (('event_types'), event_categories_List)})
+            {'event_categories': (('event_types'), event_categories_List)})
 
     event_seconds = event_utils.detect_events(manual_events_ds)
 
@@ -325,9 +325,9 @@ def load_manual_annotation_matlab(filepath):
         if len(val) and hasattr(val, 'ndim') and val.ndim == 2 and not key.startswith('_'):  # ignore matfile metadata
             manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
             if val.shape[1] == 2:  # pulse times
-               event_categories[key.lower() + '_manual'] = 'event'
+                event_categories[key.lower() + '_manual'] = 'event'
             else:  # sine on and offset
-               event_categories[key.lower() + '_manual'] = 'segment'
+                event_categories[key.lower() + '_manual'] = 'segment'
     return manual_events_seconds, event_categories
 
 
@@ -447,7 +447,7 @@ def load_poses_deepposekit(filepath):
     last_pose_frame = int(np.argmin(~np.isnan(ds.poses[first_pose_frame:, 0, 0, 0])) + first_pose_frame)
     if last_pose_frame == 0:
         last_pose_frame = ds.poses.shape[0]
-        
+
     # CUT to first/last frame with poses
     poses_ego = ds.poses[first_pose_frame:last_pose_frame, ...]
     poses_allo = poses_allo[first_pose_frame:last_pose_frame, ...]
@@ -513,7 +513,14 @@ def load_times(filepath_timestamps, filepath_daq):
         cam_stamps = f['timeStamps'][:]
 
     # time stamps at idx 0 can be a little wonky - so use the information embedded in the image
-    shutter_times = cam_stamps[:,1] + cam_stamps[:,2]/1000000;  # time of "Shutter OFF"
+        if cam_stamps.shape[1] == 2:  # time stamps from Spinnaker cam
+            shutter_times = cam_stamps[:, 1] / 1_000_000_000  # convert ns to seconds
+            # time stamps do not correspond to computer clock - so need to correct for offset
+            valid_idx = np.logical_and(cam_stamps[:, 0] > 0, cam_stamps[:, 1] > 0)
+            offset = shutter_times[valid_idx] - cam_stamps[valid_idx, 0]
+            shutter_times = shutter_times - np.nanmedian(offset)
+        else:  # time stamps from point grey cam
+            shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2]/1_000_000  # time of "Shutter OFF"
 
     # DAQ time stamps
     with h5py.File(filepath_daq, 'r') as f:
@@ -539,8 +546,8 @@ def load_times(filepath_timestamps, filepath_daq):
 
 
 def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = False, force_overwrite: bool = False,
-                                  new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual'],
-                                  new_manual_event_categories = ['segment', 'event', 'event', 'event']) -> xr.Dataset:
+                                  new_manual_event_types=['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual'],
+                                  new_manual_event_categories=['segment', 'event', 'event', 'event']) -> xr.Dataset:
     """[summary]
 
     Args:
@@ -561,14 +568,14 @@ def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = Fals
     # only add new ones
     if 'song_events' in ds:
         new_manual_event_categories = [cat for evt, cat in zip(new_manual_event_types, new_manual_event_categories)
-                                      if evt not in ds.song_events.event_types]
+                                       if evt not in ds.song_events.event_types]
         new_manual_event_types = [evt for evt in new_manual_event_types if evt not in ds.song_events.event_types]
 
     song_events_manual = None
     if 'song_events' not in ds or new_manual_event_types:
         new_manual_events = np.zeros((ds.time.shape[0],
                                       len(new_manual_event_types)),
-                                      dtype=np.bool)
+                                     dtype=np.bool)
         song_events_manual = xr.DataArray(data=new_manual_events,
                                           dims=['time', 'event_types'],
                                           coords={'time': ds.time,
@@ -613,12 +620,12 @@ def fix_keys(d):
     for eventtype in d.keys():
         # convert all from b'..' to str
         try:
-            d_new[eventtype.decode()]  = d[eventtype]
+            d_new[eventtype.decode()] = d[eventtype]
         except AttributeError:
             d_new[eventtype] = d[eventtype]
 
     for eventtype in d_new:
         if eventtype in fix_dict.keys():
             # logging.info(f'   Renaming {eventtype} to {fix_dict[eventtype]}.')
-            d_new[fix_dict[eventtype]]  = d_new.pop(eventtype)
+            d_new[fix_dict[eventtype]] = d_new.pop(eventtype)
     return d_new
