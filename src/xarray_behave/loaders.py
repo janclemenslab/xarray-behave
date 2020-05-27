@@ -445,7 +445,9 @@ def load_poses_deepposekit(filepath):
 
     first_pose_frame = int(np.argmin(np.isnan(ds.poses[:, 0, 0, 0])))
     last_pose_frame = int(np.argmin(~np.isnan(ds.poses[first_pose_frame:, 0, 0, 0])) + first_pose_frame)
-
+    if last_pose_frame == 0:
+        last_pose_frame = ds.poses.shape[0]
+        
     # CUT to first/last frame with poses
     poses_ego = ds.poses[first_pose_frame:last_pose_frame, ...]
     poses_allo = poses_allo[first_pose_frame:last_pose_frame, ...]
