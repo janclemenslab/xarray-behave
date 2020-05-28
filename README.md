@@ -8,7 +8,7 @@ If you do not want to use the GUI, e.g. if just want to create, load, save datas
 ```shell
 conda create -n xb python=3.7 -y
 conda activate xb
-pip install xarray-behave
+python -m pip install xarray-behave
 ```
 See `demo.ipynb` for usage examples.
 
