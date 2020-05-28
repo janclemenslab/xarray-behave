@@ -514,11 +514,7 @@ def load_times(filepath_timestamps, filepath_daq):
 
     # time stamps at idx 0 can be a little wonky - so use the information embedded in the image
         if cam_stamps.shape[1] == 2:  # time stamps from Spinnaker cam
-            shutter_times = cam_stamps[:, 1] / 1_000_000_000  # convert ns to seconds
-            # time stamps do not correspond to computer clock - so need to correct for offset
-            valid_idx = np.logical_and(cam_stamps[:, 0] > 0, cam_stamps[:, 1] > 0)
-            offset = shutter_times[valid_idx] - cam_stamps[valid_idx, 0]
-            shutter_times = shutter_times - np.nanmedian(offset)
+            shutter_times = cam_stamps[:, 1]
         else:  # time stamps from point grey cam
             shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2]/1_000_000  # time of "Shutter OFF"
 
