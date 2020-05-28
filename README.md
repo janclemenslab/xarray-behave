@@ -18,7 +18,7 @@ For using the GUI
 conda create -n xb_gui python=3.7 -y
 conda activate xb_gui
 conda install pyside2 pyqtgraph python-sounddevice -c conda-forge -y
-pip install xarray-behave[gui]
+python -m pip install xarray-behave[gui]
 ```
 
 The gui can be started by typing `xb` in a terminal. See `xb --help` for usage/arguments/keys.
