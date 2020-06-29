@@ -5,6 +5,7 @@ import os
 
 here = os.path.abspath(os.path.dirname(__file__))
 
+
 def read(*parts):
     with codecs.open(os.path.join(here, *parts), 'r') as fp:
         return fp.read()
@@ -24,11 +25,6 @@ this_directory = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-# read the contents of your README file
-this_directory = os.path.abspath(os.path.dirname(__file__))
-with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
-    long_description = f.read()
-
 setup(name='xarray_behave',
       version=find_version("src/xarray_behave/__init__.py"),
       description='xarray_behave',
@@ -40,12 +36,12 @@ setup(name='xarray_behave',
       license='MIT',
       packages=find_packages('src'),
       package_dir={'': 'src'},
-      package_data = {'xarray_behave': ['gui/forms/*']},
+      package_data={'xarray_behave': ['gui/forms/*']},
       install_requires=['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
                         'dask', 'toolz', 'samplestamps', 'soundfile'],
-      extras_require={'gui': ['pyside2', 'pyqtgraph', 'pyside2', 'pyqtgraph', 'pyvideoreader',
+      extras_require={'gui': ['pyside2', 'pyqtgraph', 'pyvideoreader',
                               'sounddevice', 'scikit-image', 'opencv-python', 'pyyaml', 'defopt']},
       include_package_data=True,
       zip_safe=False,
-      entry_points = { 'console_scripts': ['xb=xarray_behave.gui.app:cli'],}
+      entry_points={'console_scripts': ['xb=xarray_behave.gui.app:cli'], }
      )
