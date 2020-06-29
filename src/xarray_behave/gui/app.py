@@ -33,10 +33,10 @@ import xarray as xr
 from .. import xarray_behave as xb
 from .. import loaders as ld
 from .. import event_utils
-try:
-    from .. import dss
-except ImportError:
-    pass
+# try:
+#     from .. import deepss
+# except ImportError:
+#     pass
 
 from . import colormaps
 from . import utils
@@ -44,7 +44,7 @@ from . import views
 from . import formbuilder
 from .formbuilder import YamlDialog
 from . import table
-from . import dss
+from . import deepss
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir = xarray_behave.__path__[0]
@@ -623,12 +623,8 @@ class PSV(MainWindow):
         self.add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, "Y")
 
         view_train = self.bar.addMenu("Training/Inference")
-        self.add_keyed_menuitem(view_train, "Train", self.dss_train, None)
-
-        view_train.addSeparator()
-        self.add_keyed_menuitem(view_train, "Predict", self.dss_predict, None)
-        self.add_keyed_menuitem(view_train, "Update predicted labels", self.dss_update_predictions, None)
-
+        self.add_keyed_menuitem(view_train, "Train", self.deepss_train, None)
+        self.add_keyed_menuitem(view_train, "Predict", self.deepss_predict, None)
 
         self.bar.addMenu("View")
 
@@ -1248,7 +1244,7 @@ class PSV(MainWindow):
                 self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
             self.update_frame()
 
-    def dss_train(self, qt_keycode):
+    def deepss_train(self, qt_keycode):
 
         def train(form_data):
             print(form_data)
@@ -1269,9 +1265,9 @@ class PSV(MainWindow):
                                callbacks={'save':save, 'load':load})
         dialog.show()
 
-    def dss_predict(self, qt_keycode):
+    def deepss_predict(self, qt_keycode):
         logging.info('DeepSS...')
-        ret = dss.predict(self.ds)
+        ret = deepss.predict(self.ds)
         if ret is not None:
             events, segments = ret
 
@@ -1303,19 +1299,6 @@ class PSV(MainWindow):
             logging.info('  done.')
             self.update_eventtype_selector()
 
-    def dss_update_predictions(self, qt_keycode):
-
-        def update_predictions():
-            print('update_predictions')
-            dialog.close()
-            # get probabilities
-            # generate labels with post-processing
-            # add or update probabilities and labels to ds.song_events
-
-        dialog = YamlDialog(yaml_file="src/xarray_behave/gui/forms/update_predictions.yaml",
-                               title='Update predictions',
-                               main_callback=update_predictions)
-        dialog.show()
 
     def edit_annotation_types(self, qt_keycode):
 
