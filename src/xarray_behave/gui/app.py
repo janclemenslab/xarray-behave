@@ -42,7 +42,9 @@ from . import colormaps
 from . import utils
 from . import views
 from . import formbuilder
+from .formbuilder import YamlDialog
 from . import table
+from . import dss
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir = xarray_behave.__path__[0]
@@ -462,25 +464,6 @@ class ZarrOverwriteWarning(QtWidgets.QMessageBox):
         self.setEscapeButton(QtWidgets.QMessageBox.Abort)
 
 
-class YamlDialog(QtGui.QDialog):
-    def __init__(self, yaml_file, parent=None, title=None,
-                 main_callback=None, callbacks={}):
-        super().__init__(parent=parent)
-        self.setWindowTitle(title)
-        self.form = formbuilder.YamlFormWidget(yaml_file)
-        if main_callback is None:
-            def main_callback():
-                """Accepts and closes dialog."""
-                self.accept()
-                self.close()
-        self.form.mainAction.connect(main_callback)
-        layout = pg.QtGui.QVBoxLayout()
-        layout.addWidget(self.form)
-        for button, callback in callbacks.items():
-            self.form.buttons[button].clicked.connect(callback)
-        self.setLayout(layout)
-
-
 class PSV(MainWindow):
 
     MAX_AUDIO_AMP = 3.0
@@ -652,31 +635,32 @@ class PSV(MainWindow):
         self.hl = pg.QtGui.QHBoxLayout()
 
         # EVENT TYPE selector
+
         self.cb = pg.QtGui.QComboBox()
-        self.cb.addItem("No annotation")
-        self.eventList = []
-        if 'song_events' in ds:
-            self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
-            for event_type in self.eventList:
-                self.cb.addItem("Add " + event_type[1])
         self.cb.currentIndexChanged.connect(self.update_xy)
         self.cb.setCurrentIndex(0)
         self.hl.addWidget(self.cb)
 
-        # populate menu with event types so we can catch keys for them - allows changing event type for annotation using numeric keys
         view_audio.addSeparator()
         self.view_audio = view_audio
-        self.event_items = []
-        for ii in range(self.cb.count()):
-            # key = eval(f'"{ii}') if ii<10 else None
-            key = str(ii) if ii<10 else None
-            key_label = f"({key})" if key is not None else ''
-            self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
-            menu_item =self.add_keyed_menuitem(self.view_audio,
-                                               self.cb.itemText(ii),
-                                               self.change_event_type,
-                                               key)
-            self.event_items.append(menu_item)
+
+        # self.eventList = []
+        # if 'song_events' in ds:
+        #     self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
+        #     for event_type in self.eventList:
+        #         self.cb.addItem("Add " + event_type[1])
+
+        # # populate menu with event types so we can catch keys for them - allows changing event type for annotation using numeric keys
+        # for ii in range(self.cb.count()):
+        #     # key = eval(f'"{ii}') if ii<10 else None
+        #     key = str(ii) if ii<10 else None
+        #     key_label = f"({key})" if key is not None else ''
+        #     self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
+        #     menu_item =self.add_keyed_menuitem(self.view_audio,
+        #                                        self.cb.itemText(ii),
+        #                                        self.change_event_type,
+        #                                        key)
+        #     self.event_items.append(menu_item)
 
         # CHANNEL selector
         self.cb2 = pg.QtGui.QComboBox()
@@ -688,6 +672,7 @@ class PSV(MainWindow):
         self.cb2.currentIndexChanged.connect(self.update_xy)
         self.cb2.setCurrentIndex(0)
         self.hl.addWidget(self.cb2)
+
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
 
@@ -713,6 +698,8 @@ class PSV(MainWindow):
         self.cw.setLayout(self.ly)
 
         self.setCentralWidget(self.cw)
+
+        self.update_eventtype_selector()
         self.show()
 
         self.update_xy()
@@ -1283,19 +1270,38 @@ class PSV(MainWindow):
         dialog.show()
 
     def dss_predict(self, qt_keycode):
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_predict.yaml",
-                                title='Predict labels using DeepSS')
-        dialog.show()
-        result = dialog.exec_()
+        logging.info('DeepSS...')
+        ret = dss.predict(self.ds)
+        if ret is not None:
+            events, segments = ret
 
-        if result == QtGui.QDialog.Accepted:
-            print('running inference in terminal window.')
-            # load model and params
-            # make data-gen from ds.song_raw
-            # predict with progressbar
-            # add the raw probabilities to the ds so we can easily play around with the detection threshold and postprocessing parameters
-            # post process probabilities and generate labels
-            # add or update original (non-post processed) probabilities and final labels to ds.song_events
+            # add to self.event_times
+            # remove non-song keys
+            samplerate_Hz = events['samplerate_Hz']
+            del events['samplerate_Hz']
+            del segments['samplerate_Hz']
+            del segments['noise']
+
+            if 'song_events' in self.ds:
+                self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
+
+            for event_name, event_data in events.items():
+                self.event_times[event_name + '_dss'] = event_data['seconds']
+
+            for segment_name, segment_data in segments.items():
+                self.event_times[segment_name + '_dss'] = np.stack((segment_data['onsets_seconds'], segment_data['offsets_seconds']), axis=1)
+
+            event_categories = {}
+            for event_name, event_data in self.event_times.items():
+                event_categories[event_name] = 'event' if event_data.ndim==1 else 'segment'
+
+            self.ds = event_utils.update_traces(self.ds, self.event_times)
+
+            self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            self.nb_eventtypes = len(self.ds.event_types)
+            self.eventype_colors = utils.make_colors(self.nb_eventtypes)
+            logging.info('  done.')
+            self.update_eventtype_selector()
 
     def dss_update_predictions(self, qt_keycode):
 
@@ -1329,6 +1335,7 @@ class PSV(MainWindow):
             if 'song_events' in self.ds:
                 self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
 
+            # now edit self.event_times
             event_names = []
             event_names_old = []
             event_categories = []
@@ -1345,6 +1352,7 @@ class PSV(MainWindow):
                 if event_name_current not in event_names_old:
                     del self.event_times[event_name_current]
 
+            # propagate existing and create new
             for event_name, event_category, event_name_old in zip(event_names, event_categories, event_names_old):
                 if event_name_old in self.event_times and event_name != event_name_old:  # rename existing
                     self.event_times[event_name] = self.event_times.pop(event_name_old)
@@ -1355,66 +1363,53 @@ class PSV(MainWindow):
                     elif event_category=='event':
                         self.event_times[event_name] = np.zeros((0,))
 
-            # make new song_events DataArray
-            if 'song_events' in self.ds:
-                old_values = self.ds.song_events.values.copy()
-                attrs = self.ds.song_events.attrs.copy()
-            else:
-                old_values = np.zeros((self.ds.time.shape[0], 0))
-                attrs = {'sampling_rate_Hz': self.ds.attrs['target_sampling_rate_Hz']}
 
-            new_values = np.zeros_like(old_values, shape=(old_values.shape[0], len(self.event_times)))
-            song_events = xr.DataArray(data=new_values,
-                                dims=['time', 'event_types'],
-                                coords={'time': self.ds.time,
-                                        'event_types': list(self.event_times.keys()),
-                                        'event_categories': (('event_types'), list(event_categories))},
-                                attrs=attrs)
-            # delete old
-            if 'song_events' in self.ds:
-                del self.ds['song_events']
-                del self.ds.coords['event_types']
-                del self.ds.coords['event_categories']
-            # add new
-            self.ds = xr.merge((self.ds, song_events.to_dataset(name='song_events')))
+            self.ds = event_utils.update_traces(self.ds, self.event_times)
 
             # update event-related attrs
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
             self.nb_eventtypes = len(self.ds.event_types)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
 
-            # update EVENT TYPE selector
-            # remove old
-            while self.cb.count():
-                self.cb.removeItem(0)
+            self.update_eventtype_selector()
 
-            # add new (make this function)
-            self.cb.addItem("No annotation")
-            self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
-            for event_type in self.eventList:
-                self.cb.addItem("Add " + event_type[1])
-            self.cb.currentIndexChanged.connect(self.update_xy)
-            self.cb.setCurrentIndex(0)
+    def update_eventtype_selector(self):
+        # update EVENT TYPE selector
+        # remove old
 
-            # update menus
-            # remove associated menu items
+        while self.cb.count():
+            self.cb.removeItem(0)
+
+        # add new (make this function)
+        self.cb.addItem("No annotation")
+        self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
+        for event_type in self.eventList:
+            self.cb.addItem("Add " + event_type[1])
+        self.cb.currentIndexChanged.connect(self.update_xy)
+        self.cb.setCurrentIndex(0)
+
+        # update menus
+        # remove associated menu items
+        if not hasattr(self, 'event_items'):
+            self.event_items = []
+        else:
             for event_item in self.event_items:
                 try:
                     self.view_audio.removeAction(event_item)
                 except ValueError:
                     logging.warning('item not in actions')  # item not in actions
 
-            # add new ones (make this function)
-            self.event_items = []
-            for ii in range(self.cb.count()):
-                key = str(ii) if ii<10 else None
-                key_label = f"({key})" if key is not None else ''
-                self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
-                menu_item =self.add_keyed_menuitem(self.view_audio,
-                                                   self.cb.itemText(ii),
-                                                   self.change_event_type,
-                                                   key)
-                self.event_items.append(menu_item)
+        # add new ones (make this function)
+        self.event_items = []
+        for ii in range(self.cb.count()):
+            key = str(ii) if ii<10 else None
+            key_label = f"({key})" if key is not None else ''
+            self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
+            menu_item =self.add_keyed_menuitem(self.view_audio,
+                                                self.cb.itemText(ii),
+                                                self.change_event_type,
+                                                key)
+            self.event_items.append(menu_item)
 
 
 def main(source: str = '', *, events_string: str = '', target_samplingrate: float = None,

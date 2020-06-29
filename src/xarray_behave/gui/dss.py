@@ -1,7 +1,9 @@
 import zarr
 import numpy as np
+import logging
+
 import xarray_behave as xb
-from xarray_behave.gui.formbuilder import YamlFormWidget
+from .formbuilder import YamlFormWidget, YamlDialog
 
 import sys
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
@@ -11,6 +13,7 @@ try:
     import dss.make_dataset
     import dss.npy_dir
     import dss.train
+    import dss.predict
 except ImportError as e:
     print(e)
     print('you may need to install DeepSS: link_to_pypi')
@@ -19,27 +22,26 @@ package_dir = xb.__path__[0]
 
 
 def predict(ds):
-
-    # def save_as():
-    #     print('saved')
-
-
-    # app = QtWidgets.QApplication.instance()
-    # if app is None:
-    #     app = QtGui.QApplication([])
-
-    # win = pg.QtGui.QMainWindow()
-
-    # win.setWindowTitle("Configure training")
-
-    dialog = YamlFormWidget(yaml_file=package_dir + "/gui/forms/dss_predict.yaml",
-                            title='Predict labels using DeepSS')
+    dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_predict.yaml",
+                        title='Predict labels using DeepSS')
     dialog.show()
     result = dialog.exec_()
 
     if result == QtGui.QDialog.Accepted:
-        print('running inference in terminal window.')
+        form = dialog.form.get_form_data()
+        model_path = form['model_path']
+        model_path = model_path.rsplit('_',1)[0]  # split off suffix
 
+        logging.info('   running inference.')
+        events, segments, _ = dss.predict.predict(ds.song_raw.compute(), model_path, verbose=1, batch_size=96,
+                                                  event_thres=form['event_thres'], event_dist=form['event_dist'],
+                                                  segment_thres=form['event_thres'], segment_fillgap=form['segment_fillgap'],
+                                                  segment_minlen=form['segment_minlen'],
+                                                  )
+        return events, segments
+    else:
+        logging.info('   aborting.')
+        return None
 
 def update_predictions(ds):
     from xarray_behave.gui.formbuilder import YamlFormWidget
@@ -55,7 +57,6 @@ def update_predictions(ds):
     win = pg.QtGui.QMainWindow()
 
     win.setWindowTitle("Configure training")
-
     widget = YamlFormWidget(yaml_file="/Users/janc/Dropbox/code.py/xarray_behave/src/xarray_behave/gui/forms/update_labels.yaml")
     widget.mainAction.connect(save_as)
     win.setCentralWidget(widget)
@@ -63,10 +64,7 @@ def update_predictions(ds):
 
 
 def export_for_dss(ds):
-
-
     assert ds.song_raw.attrs['sampling_rate_Hz'] == ds.song_events.attrs['sampling_rate_Hz']  # make sure audio data and the annotations are all on the same sampling rate
-    ds
 
     event_type = 'sine_manual'
     start_index = 0
