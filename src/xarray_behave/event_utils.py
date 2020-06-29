@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+import xarray as xr
 
 
 def detect_events(ds):
@@ -38,9 +39,65 @@ def detect_events(ds):
     return event_times
 
 
-# FACTOR OUT TO NEW MODULE FOR INDEPENDENCE FROM GUI
+def infer_event_categories(event_times):
+    """Based on shape."""
+    event_categories = {}
+    for event_name, event_data in event_times.items():
+        event_categories[event_name] = 'event' if event_data.ndim==1 else 'segment'
+    return event_categories
+
+
+def update_traces(ds, event_times):
+    """Slightly redundant with eventtimes_to_traces but
+    will add populate new events.
+    """
+    ## event_times to ds.song_events
+    # make new song_events DataArray
+    if 'song_events' in ds:
+        old_values = ds.song_events.values.copy()
+        attrs = ds.song_events.attrs.copy()
+    else:
+        old_values = np.zeros((ds.time.shape[0], 0))
+        attrs = {'sampling_rate_Hz': ds.attrs['target_sampling_rate_Hz']}
+
+    new_values = np.zeros_like(old_values, shape=(old_values.shape[0], len(event_times)))
+
+    event_categories = infer_event_categories(event_times)
+    # populate with data:
+    logging.info(f'Updating:')
+    for cnt, (event_name, event_data) in enumerate(event_times.items()):
+        logging.info(f'   {event_name} ({event_data.shape[0]} instances')
+        if event_categories[event_name] == 'event':
+            new_values[(event_data * ds.attrs['target_sampling_rate_Hz']).astype(np.uintp), cnt] = 1
+        elif event_categories[event_name] == 'segment':
+            for onset, offset in event_data:
+                onset_idx = (onset * ds.attrs['target_sampling_rate_Hz']).astype(np.uintp)
+                offset_idx = (offset * ds.attrs['target_sampling_rate_Hz']).astype(np.uintp)
+                new_values[onset_idx:offset_idx, cnt] = 1
+    logging.info(f'Done:')
+
+    # rebuild dataset
+    song_events = xr.DataArray(data=new_values,
+                            dims=['time', 'event_types'],
+                            coords={'time': ds.time,
+                                    'event_types': list(event_times.keys()),
+                                    'event_categories': (('event_types'), list(event_categories.values()))},
+                            attrs=attrs)
+    # delete old
+    if 'song_events' in ds:
+        del ds['song_events']
+        del ds.coords['event_types']
+        del ds.coords['event_categories']
+    # add new
+    ds = xr.merge((ds, song_events.to_dataset(name='song_events')))
+    return ds
+
+
 def eventtimes_to_traces(ds, event_times):
-    """Convert dict of event (on/offset) times into song_events.
+    """Update events in ds.song_events from dict.
+
+    Does not add new events (events that exist in event_times but not in ds.song_events)!!
+
     Args:
         ds ([xarray.Dataset]): dataset with song_events
         event_times ([dict]): event times or segment on/offsets.
