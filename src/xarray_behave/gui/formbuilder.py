@@ -17,7 +17,27 @@ try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
     pass
-from pyqtgraph.Qt import QtWidgets, QtCore
+from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
+
+
+
+class YamlDialog(QtGui.QDialog):
+    def __init__(self, yaml_file, parent=None, title=None,
+                 main_callback=None, callbacks={}):
+        super().__init__(parent=parent)
+        self.setWindowTitle(title)
+        self.form = YamlFormWidget(yaml_file)
+        if main_callback is None:
+            def main_callback():
+                """Accepts and closes dialog."""
+                self.accept()
+                self.close()
+        self.form.mainAction.connect(main_callback)
+        layout = QtGui.QVBoxLayout()
+        layout.addWidget(self.form)
+        for button, callback in callbacks.items():
+            self.form.buttons[button].clicked.connect(callback)
+        self.setLayout(layout)
 
 
 class YamlFormWidget(QtWidgets.QGroupBox):
