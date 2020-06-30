@@ -513,10 +513,10 @@ def load_times(filepath_timestamps, filepath_daq):
         cam_stamps = f['timeStamps'][:]
 
     # time stamps at idx 0 can be a little wonky - so use the information embedded in the image
-        if cam_stamps.shape[1] == 2:  # time stamps from Spinnaker cam
-            shutter_times = cam_stamps[:, 1]
-        else:  # time stamps from point grey cam
-            shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2]/1_000_000  # time of "Shutter OFF"
+    if cam_stamps.shape[1] == 2:  # time stamps from Spinnaker cam
+        shutter_times = cam_stamps[:, 1]
+    else:  # time stamps from point grey cam
+        shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2]/1_000_000  # time of "Shutter OFF"
 
     # DAQ time stamps
     with h5py.File(filepath_daq, 'r') as f:
@@ -527,11 +527,17 @@ def load_times(filepath_timestamps, filepath_daq):
     last_valid_idx = np.argmax(daq_stamps == 0)
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:last_valid_idx, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
+
+    last_frame_idx = np.argmax(shutter_times==0) - 1
+    shutter_times = shutter_times[:last_frame_idx]
+    last_frame = shutter_times[-1]
+
     nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]))  # seconds - using mode here to be more robust
     nb_seconds_per_interval = nb_seconds_per_interval[0]
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
-    ss = SampStamp(sample_times=daq_stamps[:, 0], frame_times=shutter_times, sample_numbers=daq_samplenumber[:, 0])
+
+    ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0], frame_times=shutter_times, sample_numbers=daq_samplenumber[:, 0], auto_monotonize=False)
     # different refs:
     # s0 = ss.sample_time(0)  # first sample is 0 seconds
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - s0, frame_times=cam_stamps[:, 0] - s0, sample_numbers=daq_samplenumber[:, 0])
