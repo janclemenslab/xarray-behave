@@ -640,24 +640,6 @@ class PSV(MainWindow):
         view_audio.addSeparator()
         self.view_audio = view_audio
 
-        # self.eventList = []
-        # if 'song_events' in ds:
-        #     self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
-        #     for event_type in self.eventList:
-        #         self.cb.addItem("Add " + event_type[1])
-
-        # # populate menu with event types so we can catch keys for them - allows changing event type for annotation using numeric keys
-        # for ii in range(self.cb.count()):
-        #     # key = eval(f'"{ii}') if ii<10 else None
-        #     key = str(ii) if ii<10 else None
-        #     key_label = f"({key})" if key is not None else ''
-        #     self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
-        #     menu_item =self.add_keyed_menuitem(self.view_audio,
-        #                                        self.cb.itemText(ii),
-        #                                        self.change_event_type,
-        #                                        key)
-        #     self.event_items.append(menu_item)
-
         # CHANNEL selector
         self.cb2 = pg.QtGui.QComboBox()
         if 'song' in self.ds:
