@@ -1363,9 +1363,12 @@ class PSV(MainWindow):
         while self.cb.count():
             self.cb.removeItem(0)
 
-        # add new (make this function)
         self.cb.addItem("No annotation")
-        self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
+        if 'event_types' in self.ds:
+            self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
+        else:
+            self.eventList = []
+
         for event_type in self.eventList:
             self.cb.addItem("Add " + event_type[1])
         self.cb.currentIndexChanged.connect(self.update_xy)
