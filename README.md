@@ -8,6 +8,7 @@ If you do not want to use the GUI, e.g. if just want to create, load, save datas
 ```shell
 conda create -n xb python=3.7 -y
 conda activate xb
+conda install zarr
 python -m pip install xarray-behave
 ```
 See `demo.ipynb` for usage examples.
@@ -17,8 +18,7 @@ For using the GUI
 ```shell
 conda create -n xb_gui python=3.7 -y
 conda activate xb_gui
-conda install pyside2 pyqtgraph python-sounddevice -c conda-forge -y
+conda install pyside2 pyqtgraph=0.11.0rc0 zarr python-sounddevice zarr -c conda-forge -y
 python -m pip install xarray-behave[gui]
 ```
-
 The gui can be started by typing `xb` in a terminal. See `xb --help` for usage/arguments/keys.
