@@ -14,14 +14,15 @@ main:
 
 - name: spec_freq_min
   label: Min freq in spec display
-  type: float
+  type: double
   range: 1.0, 1000000.0
-  default: 1.0
+  default: 50.0
 
 - name: spec_freq_max
   label: Max freq in spec display
-  type: float
+  type: double
   range: 1.0, 1000000.0
+  default: 1000.0
 
 - name: ignore_song
   label: Ignore song
@@ -50,13 +51,13 @@ main:
   "yes":
   - name: f_low
     label: Lower cutoff
-    type: float
-    default: 1.0
+    type: double
+    default: 50.0
 
   - name: f_high
     label: Upper cutoff
-    type: float
-    default: None
+    type: double
+    default: 1000.0
 
 
 - name: load_cues
