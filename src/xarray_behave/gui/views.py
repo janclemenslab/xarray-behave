@@ -198,6 +198,10 @@ class TraceView(pg.PlotWidget):
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
         self.disableAutoRange()
 
+        # leave enought space so axes are aligned aligned
+        y_axis = self.getAxis('left')
+        y_axis.setWidth(50)
+
         self._m = model
         self.callback = callback
         self.getPlotItem().mouseClickEvent = self._click
@@ -275,6 +279,12 @@ class SpecView(pg.ImageView):
         self.view.disableAutoRange()
         self.view.setMouseEnabled(x=False, y=False)
 
+        # leave enought space so axes are aligned aligned
+        y_axis = self.getView().getAxis('left')
+        y_axis.setWidth(50)
+        y_axis.setLabel('Frequency', units='Hz')
+        y_axis.enableAutoSIPrefix()
+
         self._m = model
         self.callback = callback
         self.imageItem.mouseClickEvent = self._click
@@ -312,11 +322,19 @@ class SpecView(pg.ImageView):
         self.setImage(S.T[:, ::-1])
         self.view.setLimits(xMin=0, xMax=S.shape[1], yMin=0, yMax=S.shape[0])
 
-        # FIXME: long yticklabels (e.g "5000") lead to misalignment between spec and trace plots
         f = f[::-1]
-        # y_axis = self.getView().getAxis('left')
-        # ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
-        # y_axis.setTicks([[(ii, str(f[ii])) for ii in ticks]])
+        y_axis = self.getView().getAxis('left')
+        ticks = np.linspace(0, len(f)-1, 5, dtype=np.uintp)
+
+        tick_label = []
+        for ti in ticks:
+            tick = f[ti]
+            if tick > 10:
+                tick = int(tick)
+            else:
+                tick = round(tick, 1)
+            tick_label.append(str(tick))
+        y_axis.setTicks([[(pos, label) for pos, label in zip(ticks, tick_label)]])
 
         x_axis = self.view.getAxis('bottom')
         ticks = np.linspace(0, len(t)-1, 10, dtype=np.uintp)
