@@ -33,10 +33,6 @@ import xarray as xr
 from .. import xarray_behave as xb
 from .. import loaders as ld
 from .. import event_utils
-# try:
-#     from .. import deepss
-# except ImportError:
-#     pass
 
 from . import colormaps
 from . import utils
@@ -1348,6 +1344,7 @@ class PSV(MainWindow):
         self.cb.addItem("No annotation")
         if 'event_types' in self.ds:
             self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.ds.event_types.values)]
+            self.eventList = sorted(self.eventList)
         else:
             self.eventList = []
 
