@@ -37,7 +37,7 @@ main:
 - name: events_string
   label: Initialize event names and categories (event, segment)
   type: string
-  default: "pulse_manual,event;sine_manual,segment;vibration_manual,even"
+  default: "pulse_manual,event;sine_manual,segment;vibration_manual,event"
 
 
 - name: filter_song
