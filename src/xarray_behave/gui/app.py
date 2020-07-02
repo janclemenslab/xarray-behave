@@ -640,9 +640,11 @@ class PSV(MainWindow):
         self.cb2 = pg.QtGui.QComboBox()
         if 'song' in self.ds:
             self.cb2.addItem("Merged channels")
+
         if 'song_raw' in self.ds:
             for chan in range(self.ds.song_raw.shape[1]):
                 self.cb2.addItem("Channel " + str(chan))
+
         self.cb2.currentIndexChanged.connect(self.update_xy)
         self.cb2.setCurrentIndex(0)
         self.hl.addWidget(self.cb2)
@@ -1335,10 +1337,8 @@ class PSV(MainWindow):
             self.update_eventtype_selector()
 
     def update_eventtype_selector(self):
-        # update EVENT TYPE selector
-        # remove old
 
-        while self.cb.count():
+        while self.cb.count() > 0:
             self.cb.removeItem(0)
 
         self.cb.addItem("No annotation")
@@ -1350,6 +1350,7 @@ class PSV(MainWindow):
 
         for event_type in self.eventList:
             self.cb.addItem("Add " + event_type[1])
+
         self.cb.currentIndexChanged.connect(self.update_xy)
         self.cb.setCurrentIndex(0)
 
@@ -1370,11 +1371,17 @@ class PSV(MainWindow):
             key = str(ii) if ii<10 else None
             key_label = f"({key})" if key is not None else ''
             self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
-            menu_item =self.add_keyed_menuitem(self.view_audio,
+            menu_item = self.add_keyed_menuitem(self.view_audio,
                                                 self.cb.itemText(ii),
                                                 self.change_event_type,
                                                 key)
             self.event_items.append(menu_item)
+
+        # color events in combobox as in slice_view and spec_view
+        children = self.cb.children()
+        itemList = children[0]
+        for ii, col in zip(range(1, itemList.rowCount()), self.eventype_colors):
+            itemList.item(ii).setForeground(QtGui.QColor(*col))
 
 
 def main(source: str = '', *, events_string: str = '', target_samplingrate: float = None,
