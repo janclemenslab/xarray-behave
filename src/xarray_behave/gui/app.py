@@ -77,6 +77,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         file.addSeparator()
         self.add_keyed_menuitem(file, "Save swap files", self.save_swaps)
         self.add_keyed_menuitem(file, "Save annotations", self.save_annotations)
+        self.add_keyed_menuitem(file, "Export annotations to csv", self.export_annotations)
         self.add_keyed_menuitem(file, "Save dataset", self.save_dataset)
         file.addSeparator()
         file.addAction("Exit")
@@ -132,6 +133,43 @@ class MainWindow(pg.QtGui.QMainWindow):
                 logging.info(f'   Saving annotations to {savefilename}.')
                 # currently, can only save datasets as zarr - so convert song_events data array to dataset before saving
                 xb.save(savefilename, self.ds.song_events.to_dataset())
+                logging.info(f'   Done.')
+
+    def export_annotations(self, qt_keycode=None):
+        if 'song_events' in self.ds:
+            try:
+                import pandas as pd
+            except ImportError:
+                logging.warning('Need to install pandas for export to work: `conda install pandas`.')
+                return
+
+            try:
+                savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
+                                    f"{self.ds.attrs['datename']}_annotations.csv")
+            except KeyError:
+                savefilename = ''
+            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save annotations to', str(savefilename),
+                                                                    filter="csv files (*.csv);;all files (*)")
+            if len(savefilename):
+                logging.info('   Updating song events.')
+                self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
+                logging.info(f'   Formatting annotations for export.')
+
+                df = pd.DataFrame()
+                for event_name, event_data in self.event_times.items():
+                    if event_data.ndim > 1 and event_data.shape[1] == 2:  # segments
+                        df = pd.concat([df, pd.DataFrame({event_name + '_onsets': event_data[:, 0]})],
+                                        axis=1)
+                        df = pd.concat([df, pd.DataFrame({event_name + '_offsets': event_data[:, 1]})],
+                                        axis=1)
+                    elif event_data.ndim == 1:
+                        df = pd.concat([df, pd.DataFrame({event_name: event_data})],
+                                        axis=1)
+                    else:
+                        raise ValueError("Unexpected format - either shape should be (N,) for events and (N, 2) for segments.")
+
+                logging.info(f'   Saving annotations to {savefilename}.')
+                df.to_csv(savefilename, index=False)
                 logging.info(f'   Done.')
 
     @classmethod
