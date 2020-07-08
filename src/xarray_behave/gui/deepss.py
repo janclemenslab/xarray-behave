@@ -35,6 +35,7 @@ def predict(ds):
         logging.info('   running inference.')
         events, segments, _ = dss.predict.predict(ds.song_raw.compute(), model_path, verbose=1, batch_size=96,
                                                   event_thres=form['event_thres'], event_dist=form['event_dist'],
+                                                  event_dist_min=form['event_dist_min'], event_dist_max=form['event_dist_max'],
                                                   segment_thres=form['event_thres'], segment_fillgap=form['segment_fillgap'],
                                                   segment_minlen=form['segment_minlen'],
                                                   )

@@ -5,6 +5,7 @@ main:
   type: file_open
   default: " "
 
+
 - name: event_thres
   label: Event detection threshold
   type: double
@@ -12,10 +13,24 @@ main:
   range: 0,1
 
 - name: event_dist
-  label: Minimal distance between events (seconds)
+  label: Minimal distance between events during detection (seconds)
   type: double
   default: 0.01
   range: 0,100000
+
+
+- name: event_dist_min
+  label: Minimal distance between events for interval filtering after detection (seconds)
+  type: double
+  default: 0.0
+  range: 0,100000
+
+- name: event_dist_max
+  label: Maximal distance between events for interval filtering after detection (seconds)
+  type: double
+  default: 100000
+  range: 0,100000
+
 
 - name: segment_thres
   label: Segment detection threshold
@@ -34,6 +49,7 @@ main:
   type: double
   default: 0.02
   range: 0,1000000
+
 
 - name: save_button
   label: Run inference
