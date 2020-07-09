@@ -284,13 +284,17 @@ class MainWindow(pg.QtGui.QMainWindow):
                 else:
                     resample_video_data = True
 
+                include_tracks = not form_data['ignore_tracks']
+                include_poses = not form_data['ignore_tracks']
+
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
                                 fix_fly_indices=False, include_song=~form_data['ignore_song'],
                                 keep_multi_channel=True,
                                 target_sampling_rate=form_data['target_samplingrate'],
-                                resample_video_data=resample_video_data)
+                                resample_video_data=resample_video_data,
+                                include_tracks=include_tracks, include_poses=include_poses)
 
                 if form_data['filter_song'] == 'yes':
                     f_low = eval(form_data['f_low'])
@@ -1294,7 +1298,8 @@ class PSV(MainWindow):
             samplerate_Hz = events['samplerate_Hz']
             del events['samplerate_Hz']
             del segments['samplerate_Hz']
-            del segments['noise']
+            if 'noise' in segments:
+                del segments['noise']
 
             if 'song_events' in self.ds:
                 self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)

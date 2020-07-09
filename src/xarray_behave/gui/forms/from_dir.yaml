@@ -6,11 +6,21 @@ main:
   range: 0,1000000
   default: 1000
 
+- name: ignore_tracks
+  label: Ignore tracks
+  type: bool
+  default: False
+
 - name: box_size
   label: Crop width and height
   type: int
   range: 0, 1000
   default: 200
+
+- name: ignore_song
+  label: Ignore song
+  type: bool
+  default: False
 
 - name: spec_freq_min
   label: Min freq in spec display
@@ -24,11 +34,6 @@ main:
   range: 1.0, 1000000.0
   default: 1000.0
 
-- name: ignore_song
-  label: Ignore song
-  type: bool
-  default: False
-
 - name: init_annotations
   label: Initialize annotations
   type: bool
@@ -38,7 +43,6 @@ main:
   label: Initialize event names and categories (event, segment)
   type: string
   default: "pulse_manual,event;sine_manual,segment;vibration_manual,event"
-
 
 - name: filter_song
   label: Bandpass filter song
