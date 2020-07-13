@@ -443,8 +443,8 @@ def load_poses_deepposekit(filepath):
 
     poses_allo = ds.poses + ds.box_centers - box_size/2
 
-    first_pose_frame = int(np.argmin(np.isnan(ds.poses[:, 0, 0, 0])))
-    last_pose_frame = int(np.argmin(~np.isnan(ds.poses[first_pose_frame:, 0, 0, 0])) + first_pose_frame)
+    first_pose_frame = int(np.argmin(np.isnan(ds.poses.data[:, 0, 0, 0])))
+    last_pose_frame = int(np.argmin(~np.isnan(ds.poses.data[first_pose_frame:, 0, 0, 0])) + first_pose_frame)
     if last_pose_frame == 0:
         last_pose_frame = ds.poses.shape[0]
 

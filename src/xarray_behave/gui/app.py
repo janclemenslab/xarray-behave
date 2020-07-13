@@ -752,8 +752,7 @@ class PSV(MainWindow):
 
     @property
     def framenumber(self):
-        return self.ds.coords['nearest_frame'][self.index_other].data
-        # return self.ds.nearest_frame.sel(time=self.ds.sampletime[int(self.t0)], method='nearest')
+        return int(self.ds.coords['nearest_frame'][self.index_other].data)
 
     @property
     def span(self):
