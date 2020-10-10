@@ -61,18 +61,18 @@ def update_traces(ds, event_times):
         attrs = {'sampling_rate_Hz': ds.attrs['target_sampling_rate_Hz']}
 
     new_values = np.zeros_like(old_values, shape=(old_values.shape[0], len(event_times)))
-
+    fs = ds.song_events.attrs['sampling_rate_Hz']
     event_categories = infer_event_categories(event_times)
     # populate with data:
     logging.info(f'Updating:')
     for cnt, (event_name, event_data) in enumerate(event_times.items()):
         logging.info(f'   {event_name} ({event_data.shape[0]} instances')
         if event_categories[event_name] == 'event':
-            new_values[(event_data * ds.attrs['target_sampling_rate_Hz']).astype(np.uintp), cnt] = 1
+            new_values[(event_data * fs).astype(np.uintp), cnt] = 1
         elif event_categories[event_name] == 'segment':
             for onset, offset in event_data:
-                onset_idx = (onset * ds.attrs['target_sampling_rate_Hz']).astype(np.uintp)
-                offset_idx = (offset * ds.attrs['target_sampling_rate_Hz']).astype(np.uintp)
+                onset_idx = (onset * fs).astype(np.uintp)
+                offset_idx = (offset * fs).astype(np.uintp)
                 new_values[onset_idx:offset_idx, cnt] = 1
     logging.info(f'Done:')
 
@@ -123,6 +123,47 @@ def eventtimes_to_traces(ds, event_times):
                     ds.song_events.sel(time=slice(onset, offset), event_types=event_name).data[:] = 1
     logging.info(f'Done.')
     return ds
+
+
+def traces_to_eventtimes(traces, event_names, event_categories):
+    """[summary]
+
+    Args:
+        traces ([type]): list of numpy arrays with the binary traces for each event/segment
+        event_names ([type]): [description]
+        event_categories ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    assert len(traces) == len(event_names)
+    assert len(traces) == len(event_categories)
+
+    event_times = dict()
+
+    logging.info('Extracting event times from song_events:')
+    for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
+        logging.info(f'   {event_name}')
+        if event_category == 'event':
+            event_times[event_name] = np.where(traces[:, event_idx] == 1)[0]
+        elif event_category == 'segment':
+            breakpoint()
+            onsets = np.where(np.diff(traces[event_idx]) == 1)[0]
+            offsets = np.where(np.diff(traces[event_idx]) == -1)[0]
+            if len(onsets) and len(offsets):
+                # ensure onsets and offsets match
+                offsets = offsets[offsets>np.min(onsets)]
+                onsets = onsets[onsets<np.max(offsets)]
+            if len(onsets) != len(offsets):
+                print('Inconsistent segment onsets or offsets - ignoring all on- and offsets.')
+                onsets = []
+                offsets = []
+
+            if not len(onsets) and not len(offsets):
+                event_times[event_name] = np.zeros((0,2))
+            else:
+                event_times[event_name] = np.stack((onsets, offsets)).T
+    return event_times
 
 def eventtimes_delete(eventtimes, which):
     return eventtimes
