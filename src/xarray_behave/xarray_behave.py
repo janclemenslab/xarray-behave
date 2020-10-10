@@ -77,6 +77,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         first_tracked_frame = int(ss.frame(0))
         last_tracked_frame = int(ss.frame(last_sample_number))
         logging.info(f'No tracks - setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+    else:
+        logging.info(f'Tracked frame {first_tracked_frame} to {last_tracked_frame}.')
 
     # LOAD POSES from DEEPPOSEKIT
     with_poses = False
