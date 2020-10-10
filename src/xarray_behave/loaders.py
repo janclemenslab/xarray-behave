@@ -17,7 +17,8 @@ import zarr
 import math
 from . import xarray_behave as xb
 from . import event_utils
-from typing import Sequence
+from typing import Sequence, Union
+import logging
 
 
 def rotate_point(pos, degrees, origin=(0, 0)):
@@ -265,21 +266,44 @@ def load_segmentation(filepath):
     File should have at least 'event_names' and 'event_indices' datasets."""
     res = dd_io.load(filepath)
     # extract event_seconds
-    event_seconds = {}
-    for indices, name in zip(res['event_indices'], res['event_names']):
-        event_seconds[name] = indices / res['samplerate_Hz']
+    song_seconds = {}
+    song_categories = {}
 
-    # event_categories
-    if 'event_categories' in res:
-        event_categories = res['event_categories']
-    else:
-        event_categories = {}
-        for name, times in event_seconds.items():
-            if times.ndim == 1 or times.shape[1] == 1:
-                event_categories[name] = 'event'
-            else:
-                event_categories[name] = 'segment'
-    return event_seconds, event_categories
+    for event_indices, event_name in zip(res['event_indices'], res['event_names']):
+        song_seconds[event_name] = event_indices / res['samplerate_Hz']
+        song_categories[event_name] = 'event'
+
+    # post process segments ?
+    if 'sine' in res['segment_names']:
+        logging.info('   Found sine song - attempting to post process ')
+        try:
+            import dss.segment_utils
+            sine_index = res['segment_names'].index('sine')
+            res['segment_labels'][sine_index] = dss.segment_utils.fill_gaps(res['segment_labels'][sine_index],
+                                                                            gap_dur = 20 / 1000 * res['samplerate_Hz'])
+            res['segment_labels'][sine_index] = dss.segment_utils.remove_short(res['segment_labels'][sine_index],
+                                                                               min_len = 20 / 1000 * res['samplerate_Hz'])
+            logging.info('   Yay!')
+        except ImportError:
+            logging.info('   Oh nooo! Could not import dss which is required for fixing sine.')
+
+    # extract segment on- and offsets
+    segment_indices = event_utils.traces_to_eventtimes(res['segment_labels'], res['segment_names'], ['segment'])
+    for segment_name, segment_indices in segment_indices.items():
+        song_seconds[segment_name] = segment_indices / res['samplerate_Hz']
+        song_categories[segment_name] = 'segment'
+
+    # # event_categories
+    # if 'event_categories' in res:
+    #     event_categories = res['event_categories']
+    # else:
+    #     event_categories = {}
+    #     for name, times in event_seconds.items():
+    #         if times.ndim == 1 or times.shape[1] == 1:
+    #             event_categories[name] = 'event'
+    #         else:
+    #             event_categories[name] = 'segment'
+    return song_seconds, song_categories
 
 
 def load_manual_annotation(filepath):
@@ -431,8 +455,8 @@ def load_poses_deepposekit(filepath):
         filepath (str): name of the file produced by DeepPoseKit
 
     Returns:
-        poses_ego (xarray.DataArray): poses in EGOcentric (centered around thorax, head aligned straight upwards
-        poses_allo (xarray.DataArray): poses in ALLOcentric (frame) coordinates
+        poses_ego (xarray.DataArray): poses in EGOcentric (centered around thorax, head aligned straight upwards), [frames, flies, bodypart, x/y]
+        poses_allo (xarray.DataArray): poses in ALLOcentric (frame) coordinates, [frames, flies, bodypart, x/y]
         partnames (List[str]): list of names for each body part (is already part of the poses_ego/allo xrs)
         first_pose_frame, last_pose_frame (int): frame corresponding to first and last item in the poses_ego/allo arrays (could attach this info as xr dim)
     """
@@ -465,7 +489,19 @@ def load_poses_deepposekit(filepath):
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
 
 
-def load_raw_song(filepath_daq, song_channels: Sequence[int] = None, return_nonsong_channels: bool = False, lazy=False):
+def load_poses_sleap(filepath):
+    with h5py.File(filepath, 'r') as f:
+        pose_parts = f['node_names']
+        track_names = f['track_names']
+        track_occupancy = f['track_occupancy'][:]
+        tracks = f['tracks'][:]
+
+    poses_allo = tracks.transpose([3, 0, 2, 1])
+    return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
+
+
+def load_raw_song(filepath_daq: str, song_channels: Union[Sequence[int], None] = None,
+                  return_nonsong_channels: bool = False, lazy: bool = False):
     """[summary]
 
     Args:
