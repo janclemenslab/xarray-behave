@@ -962,7 +962,7 @@ class PSV(MainWindow):
         fn, okPressed = QtGui.QInputDialog.getInt(self, "Enter frame number", "Frame number:",
                             value=self.framenumber, min=0, max=np.max(self.ds.nearest_frame.data), step=1)
         if okPressed:
-            time_index = np.argmax(self.ds.nearest_frame>fn)
+            time_index = np.argmax(self.ds.nearest_frame.data>fn)
             self.t0 = int(time_index / self.fs_other * self.fs_song)
 
     def go_to_time(self, qt_keycode):
