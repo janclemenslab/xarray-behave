@@ -167,6 +167,34 @@ def merge_channels(data, sampling_rate, filter_data: bool = True):
     return data_merged_max
 
 
+
+def fill_gaps(sine_pred, gap_dur=100):
+    onsets = np.where(np.diff(sine_pred.astype(np.int))==1)[0]
+    offsets = np.where(np.diff(sine_pred.astype(np.int))==-1)[0]
+    if len(onsets) and len(offsets):
+        onsets = onsets[onsets<offsets[-1]]
+        offsets = offsets[offsets>onsets[0]]
+        durations = offsets - onsets
+        for idx, (onset, offset, duration) in enumerate(zip(onsets, offsets, durations)):
+            if idx>0 and offsets[idx-1]>onsets[idx]-gap_dur:
+                sine_pred[offsets[idx-1]:onsets[idx]+1] = 1
+    return sine_pred
+
+
+def remove_short(sine_pred, min_len=100):
+    # remove too short sine songs
+    onsets = np.where(np.diff(sine_pred.astype(np.int))==1)[0]
+    offsets = np.where(np.diff(sine_pred.astype(np.int))==-1)[0]
+    if len(onsets) and len(offsets):
+        onsets = onsets[onsets<offsets[-1]]
+        offsets = offsets[offsets>onsets[0]]
+        durations = offsets - onsets
+        for cnt, (onset, offset, duration) in enumerate(zip(onsets, offsets, durations)):
+            if duration<min_len:
+                sine_pred[onset:offset+1] = 0
+    return sine_pred
+
+
 def load_swap_indices(filepath):
     a = np.loadtxt(filepath, dtype=np.uintp)
     indices, flies1, flies2 = np.split(a, [1, 2], axis=-1)  # split columns in file into variables
@@ -276,16 +304,11 @@ def load_segmentation(filepath):
     # post process segments ?
     if 'sine' in res['segment_names']:
         logging.info('   Found sine song - attempting to post process ')
-        try:
-            import dss.segment_utils
-            sine_index = res['segment_names'].index('sine')
-            res['segment_labels'][sine_index] = dss.segment_utils.fill_gaps(res['segment_labels'][sine_index],
-                                                                            gap_dur = 20 / 1000 * res['samplerate_Hz'])
-            res['segment_labels'][sine_index] = dss.segment_utils.remove_short(res['segment_labels'][sine_index],
-                                                                               min_len = 20 / 1000 * res['samplerate_Hz'])
-            logging.info('   Yay!')
-        except ImportError:
-            logging.info('   Oh nooo! Could not import dss which is required for fixing sine.')
+        sine_index = res['segment_names'].index('sine')
+        res['segment_labels'][sine_index] = fill_gaps(res['segment_labels'][sine_index],
+                                                        gap_dur = 20 / 1000 * res['samplerate_Hz'])
+        res['segment_labels'][sine_index] = remove_short(res['segment_labels'][sine_index],
+                                                            min_len = 20 / 1000 * res['samplerate_Hz'])
 
     # extract segment on- and offsets
     segment_indices = event_utils.traces_to_eventtimes(res['segment_labels'], res['segment_names'], ['segment'])
