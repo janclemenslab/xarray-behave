@@ -120,14 +120,19 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         filepath_segmentation_matlab = Path(root, res_path, datename, f'{datename}_song.mat')
         filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.h5')
         if os.path.exists(filepath_segmentation):
-            # res = ld.load_segmentation(filepath_segmentation)
-            auto_event_seconds, auto_event_categories = ld.load_segmentation(filepath_segmentation)
-            with_segmentation = True
-            merge_raw_recording = True
-            logging.debug(f'   {filepath_segmentation} loaded.')
+            try:
+                auto_event_seconds, auto_event_categories = ld.load_segmentation(filepath_segmentation)
+                with_segmentation = True
+                merge_raw_recording = True
+                logging.debug(f'   {filepath_segmentation} loaded.')
+            except AssertionError as e:
+                logging.debug(f'   {filepath_segmentation} failed.')
+                logging.exception(e)
+                with_segmentation = False
+                merge_raw_recording = False
+
         elif os.path.exists(filepath_segmentation_matlab):
             logging.debug(f'   {filepath_segmentation} not found.')
-            # res = ld.load_segmentation_matlab(filepath_segmentation_matlab)
             auto_event_seconds, auto_event_categories  = ld.load_segmentation_matlab(filepath_segmentation_matlab)
             with_segmentation = True
             with_segmentation_matlab = True
