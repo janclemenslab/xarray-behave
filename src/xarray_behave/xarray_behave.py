@@ -125,7 +125,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                 with_segmentation = True
                 merge_raw_recording = True
                 logging.debug(f'   {filepath_segmentation} loaded.')
-            except AssertionError as e:
+            except Exception as e:
                 logging.debug(f'   {filepath_segmentation} failed.')
                 logging.exception(e)
                 with_segmentation = False

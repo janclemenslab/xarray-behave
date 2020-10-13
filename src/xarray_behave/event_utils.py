@@ -147,7 +147,6 @@ def traces_to_eventtimes(traces, event_names, event_categories):
         if event_category == 'event':
             event_times[event_name] = np.where(traces[:, event_idx] == 1)[0]
         elif event_category == 'segment':
-            breakpoint()
             onsets = np.where(np.diff(traces[event_idx]) == 1)[0]
             offsets = np.where(np.diff(traces[event_idx]) == -1)[0]
             if len(onsets) and len(offsets):
