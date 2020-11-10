@@ -239,6 +239,7 @@ class TraceView(pg.PlotWidget):
                                      pen=pg.mkPen(color='r', width=1)))
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
+
         region = SegmentItem((onset, offset), region_typeindex, self.xrange,
                              brush=brush, movable=movable)
         self.addItem(region)
@@ -246,6 +247,8 @@ class TraceView(pg.PlotWidget):
             region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
 
     def add_event(self, xx, event_type, pen, movable=False):
+        if not len(xx):
+            return
         if not movable:
             xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
             yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
@@ -374,6 +377,8 @@ class SpecView(pg.ImageView):
             region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
 
     def add_event(self, xx, event_type, pen, movable=False):
+        if not len(xx):
+            return
         xx0 = xx.copy()
         xx = self.time_to_pos(xx)
         if not movable:
