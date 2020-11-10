@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import h5py
 
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
@@ -137,3 +138,16 @@ def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return array[idx]
+
+
+def allkeys(obj, keys=[]):
+  """Recursively find all keys"""
+  # from https://stackoverflow.com/questions/59897093/get-all-keys-and-its-hierarchy-in-h5-file-using-python-library-h5py
+  keys.append(obj.name)
+  if isinstance(obj, h5py.Group):
+    for item in obj:
+      if isinstance(obj[item], h5py.Group):
+        allkeys(obj[item], keys)
+      else: # isinstance(obj[item], h5py.Dataset):
+        keys.append(obj[item].name)
+  return keys
