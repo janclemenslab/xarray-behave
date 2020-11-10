@@ -1,0 +1,86 @@
+main:
+
+- type: text
+  text: '<b>Make dataset for training</b>:<br />
+    Export audio and annotations data for multiple recordings
+    into a single directory using "File/Export for DeepSS".
+
+    Will assemble, split by file or fraction etc.'
+
+- name: data_folder
+  label: Data folder
+  type: file_dir
+  default: " "
+
+- name: store_folder
+  label: Store folder
+  type: file_dir
+  default: " "
+
+- name: make_single_class_datasets
+  label: Make additional targets for each song type
+  type: bool
+  default: True
+
+- name: split_train_in_two
+  label: Split train in two
+  type: bool
+  default: True
+  help: 'avoid start/end selection'
+
+- name: event_std_seconds
+  label: Event std (seconds)
+  type: double
+  default: 0
+  range: 0,100000
+
+- name: gap_seconds
+  label: Gap duration (seconds)
+  type: double
+  default: 0
+  range: 0,100000
+
+
+- name: train_split
+  label: Train split
+  type: list
+  default: "By fraction"
+  options: "By file,By fraction"
+
+- name: train_split_fraction
+  label: Fraction
+  type: double
+  default: 0.8
+  range: 0,1
+
+
+- name: val_split
+  label: Validation split
+  type: list
+  default: "By fraction"
+  options: "By file,By fraction"
+
+- name: val_split_fraction
+  label: Fraction
+  type: double
+  default: 0.2
+  range: 0,1
+
+
+- name: test_split
+  label: Test split
+  type: list
+  default: "By file"
+  options: "By file,By fraction"
+
+- name: test_split_fraction
+  label: Fraction
+  type: double
+  default: 0.1
+  range: 0,1
+
+
+- name: okay_button
+  label: Assemble dataset
+  type: button
+  default: main action

@@ -1,0 +1,49 @@
+main:
+
+- type: text
+  text: '<b>Export data for DeepSS</b>:<br />
+    Will export the audio data as a WAV file and the
+    annotations as CSV. Collect data for multiple recordings
+    in a single directory and make a training dataset using "DeepSS/Make Dataset".'
+
+- name: which_events
+  label: Song type to export
+  type: list
+  default: ['no song selected']
+  options: 'All song types'
+  help: 'Select specific event time to export. Otherwise it will export all.'
+
+- name: start_seconds
+  label: Start seconds
+  type: double
+  default: 0
+  range: 0,100000
+
+- name: end_seconds
+  label: End seconds
+  type: double
+  default: -1
+  range: 0,100000
+
+- type: text
+  text: 'Npz will save audio data and samplerate as a numpy file.
+         If choosing wav, data will be clipped to [-1, 1].
+         To prevent data loss, set a scale factor.'
+
+- name: file_type
+  label: File type
+  type: list
+  default: 'npz'
+  options: 'wav,npz'
+
+- name: scale_audio
+  label: Scale audio
+  type: double
+  default: 1.0
+  help: 'WAV needs to be scaled to [-1, 1] - '
+
+
+- name: okay_button
+  label: Save inference
+  type: button
+  default: main action

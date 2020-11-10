@@ -1,5 +1,29 @@
 main:
 
+- name: data_set
+  label: Which dataset in the file?
+  type: list
+  default: ''
+  options: ''
+
+- name: samplerate
+  label: Sample rate of the data in Hz
+  type: int
+  default: 10000
+  range: 1,1000000
+  main:
+
+- name: ignore_tracks
+  label: Ignore tracks
+  type: bool
+  default: False
+
+- name: box_size
+  label: Crop width and height
+  type: int
+  range: 0, 1000
+  default: 200
+
 - name: annotation_path
   label: Try to load annotations from
   type: file_dir

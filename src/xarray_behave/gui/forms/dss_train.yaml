@@ -1,103 +1,178 @@
 main:
 
+- type: text
+  text: '<b>Training</b>:<br />
+    This pipeline uses single model with two output heads:
+    a "<u>confidence map</u>" head to predicts the
+    nodes for an entire image and a "<u>part affinity field</u>" head to group
+    the nodes into distinct animal instances.'
+
 - name: data_dir
   label: data directory
   type: file_dir
   default: " "
-  
+  help: '<b>Multi-Animal Bottom-Up Pipeline</b>:<br />
+  This pipeline uses single model with two output heads:
+  a "<u>confidence map</u>" head to predicts the
+  nodes for an entire image and a "<u>part affinity field</u>" head to group
+  the nodes into distinct animal instances.'
+
 - name: save_dir
   label: save directory
   type: file_dir
   default: " "
-  
 
-- name: preprocess
+# populate as list from dataset
+- name: y_suffix
+  label: y_suffix
+  type: optional_list
+  default: null
+  options: ''
+
+- name: fraction_data
+  label: fraction_data
+  type: optional_double
+  none_label: Use all
+  default_disabled: True
+  default: 0.1
+  range: 0,1000
+
+- name: seed
+  label: fraction_data_seed
+  type: optional_int
+  none_label: No seed
+  default_disabled: True
+  default: 1
+
+- type: text
+  text: '<b>Network parameters</b>:<br />
+    This pipeline uses single model with two output heads:
+    a "<u>confidence map</u>" head to predicts the
+    nodes for an entire image and a "<u>part affinity field</u>" head to group
+    the nodes into distinct animal instances.'
+
+- name: frontend
   label: Downsampling frontend
   type: stacked
-  default: "None"
-  options: "None,stft,tcn"
-  
-  "None":
 
-  tcn:
-    - name: tcn
-      label: Downsampling factor (stride)
-      type: int
-      default: 4
-      range: 1,100
-  stft:
-    - name: stft
-      label: Downsampling factor (stride)
-      type: int
-      default: 4
-      range: 1,100
+  default: "No"
+  options: "Yes,No"
 
-- name: architecture
-  label: Architecture
-  type: stacked
-  default: "TCN"
-  options: "TCN,FCN"
+  "No":
 
-  TCN:
-    - name: nb_filters
-      label: Number of filters
-      type: int
-      default: 20
-      range: 1,3000
-    - name: kernel_size
-      label: Filter duration
-      type: int
-      default: 16
+  "Yes":
+  - name: frontend_type
+    label: frontend_type
+    type: list
+    default: 'stft'
+    options: 'stft,tcn'
 
-  FCN:
-    - name: nb_filters
-      label: Number of filters
-      type: int
-      default: 20
-      range: 1,3000
-    - name: kernel_size
-      label: Filter duration
-      type: int
-      default: 16
+  - name: pre_kernel_size
+    label: pre_kernel_size
+    type: int
+    default: 16
+    range: 1,1000
+
+  - name: pre_nb_filters
+    label: pre_nb_filters
+    type: int
+    default: 16
+    range: 1,1000
+
+  - name: pre_nb_conv
+    label: pre_nb_conv=2^downsampling
+    type: int
+    default: 2
+    range: 1,1000
+
+
+- name: nb_hist
+  label: nb_hist
+  type: int
+  default: 128
+  range: 1,1000
+
+- name: ignore_boundaries
+  label: ignore boundaries
+  type: bool
+  default: True
+
+- name: nb_filters
+  label: Number of filters
+  type: int
+  default: 16
+  range: 1,1024
+
+- name: kernel_size
+  label: Filter duration
+  type: int
+  default: 16
+
+- name: nb_conv
+  label: nb_conv
+  type: int
+  default: 3
+
+- type: text
+  text: 'Per nb_conv - should be space-separated list of "True" and "False",
+  like "True True False"'
+
+# should be multi_checkbox with nb_conv checkboxes
+- name: use_separable
+  label: use_separable
+  type: string_list
+  default: "False False False"
+
+- type: text
+  text: '<b>Training parameters</b>:<br />
+    This pipeline uses single model with two output heads:
+    a "<u>confidence map</u>" head to predicts the
+    nodes for an entire image and a "<u>part affinity field</u>" head to group
+    the nodes into distinct animal instances.'
 
 - name: learning_rate
   label: Learning rate
-  type: float
+  type: double
   default: 0.0001
 
-- name: nb_epochs
+- name: nb_epoch
   label: Number of epochs
   type: int
   default: 100
-
-- name: nb_steps
-  label: Steps per epoch
-  type: int
-  default: 100
+  range: 1,100000
 
 - name: reduce_lr
   label: Reduce learning rate
   type: stacked
-  default: "no"
-  options: "no,yes"
-  
-  "no":
+  default: "No"
+  options: "No,Yes"
 
-  "yes":
-    - name: patience
+  "No":
+
+  "Yes":
+    - name: reduce_lr_patience
       label: Patience
       type: int
       default: 4
 
+- name: tensorboard
+  label: Create tensorboard logs
+  type: bool
+  default: False
+
 - name: load
   label: Load config
   type: button
-  
+
 - name: save
   label: Save config
   type: button
 
+- name: make_cli
+  label: Make scripts
+  type: button
+
 - name: train
-  label: Start training
+  label: Start training in GUI
   type: button
   default: main action
