@@ -1,11 +1,13 @@
 """Load files created by various analysis programs created."""
 import numpy as np
+import pandas as pd
 import h5py
 import flammkuchen as dd_io
+from typing import Sequence, Union
+import logging
 
 import scipy.interpolate
 import scipy.ndimage
-
 from scipy.io import loadmat
 import scipy.signal
 import scipy.stats
@@ -16,9 +18,9 @@ import xarray as xr
 import zarr
 import math
 from . import xarray_behave as xb
-from . import event_utils
-from typing import Sequence, Union
-import logging
+from . import (event_utils,
+               annot)
+
 
 
 def rotate_point(pos, degrees, origin=(0, 0)):
@@ -167,7 +169,6 @@ def merge_channels(data, sampling_rate, filter_data: bool = True):
     return data_merged_max
 
 
-
 def fill_gaps(sine_pred, gap_dur=100):
     onsets = np.where(np.diff(sine_pred.astype(np.int))==1)[0]
     offsets = np.where(np.diff(sine_pred.astype(np.int))==-1)[0]
@@ -230,27 +231,6 @@ def swap_flies(dataset, indices, flies1=0, flies2=1):
             dataset.body_positions.values[index:, [fly2, fly1], ...] = dataset.body_positions.values[index:, [fly1, fly2], ...]
 
     return dataset
-
-
-def infer_event_categories(data):
-    """Infer event type (event/segment) based on median interval between
-    event times.
-
-    Args:
-        data ([type]): binary matrix [samples x events]
-    """
-    event_categories = []
-    for evt in range(data.shape[1]):
-        if np.any(data[:, evt]):
-            dt = np.nanmedian(np.diff(np.where(data[:, evt])[0]))
-        else:
-            dt = 10  # fall back to events w/o annotations
-
-        if dt > 1:
-            event_categories.append('event')
-        else:
-            event_categories.append('segment')
-    return event_categories
 
 
 def load_segmentation_matlab(filepath):
@@ -316,25 +296,29 @@ def load_segmentation(filepath):
         song_seconds[segment_name] = segment_indices / res['samplerate_Hz']
         song_categories[segment_name] = 'segment'
 
-    # # event_categories
-    # if 'event_categories' in res:
-    #     event_categories = res['event_categories']
-    # else:
-    #     event_categories = {}
-    #     for name, times in event_seconds.items():
-    #         if times.ndim == 1 or times.shape[1] == 1:
-    #             event_categories[name] = 'event'
-    #         else:
-    #             event_categories[name] = 'segment'
     return song_seconds, song_categories
 
 
-def load_manual_annotation(filepath):
-    """Load output produced by the python ManualSegmenter."""
+def load_manual_annotation_csv(filepath):
+    """Load output produced by xb."""
+    df = pd.read_csv(filepath)
+
+    if not all([item in df.columns for item in ['name','start_seconds', 'stop_seconds']]):
+        logging.error(f"Malformed CSV file {filepath} - needs to have these columns: ['name','start_seconds', 'stop_seconds']. Returning empty results")
+        event_seconds = dict()
+        event_categories = dict()
+    else:
+        event_seconds = annot.Events.from_df(df)
+        event_categories = event_seconds.categories
+    return event_seconds, event_categories
+
+
+def load_manual_annotation_zarr(filepath):
+    """Load output produced by xb (legacy format)."""
     manual_events_ds = xb.load(filepath)
 
     if 'event_categories' not in manual_events_ds:
-        event_categories_List = infer_event_categories(manual_events_ds.song_events.data)
+        event_categories_List = event_utils.infer_event_categories_from_traces(manual_events_ds.song_events.data)
 
         # force these to be the correct types even if they are empty and
         # the event_cat inference does not work
@@ -366,16 +350,16 @@ def load_manual_annotation_matlab(filepath):
             for key, val in f.items():
                 mat_data[key.lower()] = val[:].T
 
-    manual_events_seconds = dict()
+    events_seconds = dict()
     event_categories = dict()
     for key, val in mat_data.items():
         if len(val) and hasattr(val, 'ndim') and val.ndim == 2 and not key.startswith('_'):  # ignore matfile metadata
-            manual_events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
+            events_seconds[key.lower() + '_manual'] = np.sort(val[:, 1:])
             if val.shape[1] == 2:  # pulse times
                 event_categories[key.lower() + '_manual'] = 'event'
             else:  # sine on and offset
                 event_categories[key.lower() + '_manual'] = 'segment'
-    return manual_events_seconds, event_categories
+    return events_seconds, event_categories
 
 
 def load_tracks(filepath):
@@ -491,7 +475,7 @@ def load_poses_deepposekit(filepath):
     poses_allo = ds.poses + ds.box_centers - box_size/2
 
     first_pose_frame = int(np.argmin(np.isnan(ds.poses.data[:, 0, 0, 0]).data))
-    last_pose_frame = int(np.argmin(~np.isnan(ds.poses.data[first_pose_frame:, 0, 0, 0]).data) + first_pose_frame)
+    last_pose_frame = int(np.argmin(~np.isnan(np.array(ds.poses.data[first_pose_frame:, 0, 0, 0]).data)) + first_pose_frame)
     if last_pose_frame == 0:
         last_pose_frame = ds.poses.shape[0]
 

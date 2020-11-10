@@ -1,13 +1,26 @@
+import sys
+import logging
+import collections
+from glob import glob
+import os.path
+
 import zarr
 import numpy as np
-import logging
 
 import xarray_behave as xb
 from .formbuilder import YamlFormWidget, YamlDialog
 
-import sys
+import dss.make_dataset as dsm
+import dss.npy_dir
+
+import scipy.signal
+import pandas as pd
+import matplotlib.pyplot as plt
+import scipy.io.wavfile
+
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
+from .. import annot
 
 try:
     import dss.make_dataset
@@ -44,77 +57,221 @@ def predict(ds):
         logging.info('   aborting.')
         return None
 
-def update_predictions(ds):
-    from xarray_behave.gui.formbuilder import YamlFormWidget
+# def update_predictions(ds):
+#     from xarray_behave.gui.formbuilder import YamlFormWidget
 
-    import sys
-    from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
-    import pyqtgraph as pg
+#     import sys
+#     from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+#     import pyqtgraph as pg
 
-    def save_as():
-        print('saved')
+#     def save_as():
+#         print('saved')
 
-    app = pg.QtGui.QApplication([])
-    win = pg.QtGui.QMainWindow()
+#     app = pg.QtGui.QApplication([])
+#     win = pg.QtGui.QMainWindow()
 
-    win.setWindowTitle("Configure training")
-    widget = YamlFormWidget(yaml_file="/Users/janc/Dropbox/code.py/xarray_behave/src/xarray_behave/gui/forms/update_labels.yaml")
-    widget.mainAction.connect(save_as)
-    win.setCentralWidget(widget)
-    win.show()
+#     win.setWindowTitle("Configure training")
+#     widget = YamlFormWidget(yaml_file="/Users/janc/Dropbox/code.py/xarray_behave/src/xarray_behave/gui/forms/update_labels.yaml")
+#     widget.mainAction.connect(save_as)
+#     win.setCentralWidget(widget)
+#     win.show()
 
 
-def export_for_dss(ds):
-    assert ds.song_raw.attrs['sampling_rate_Hz'] == ds.song_events.attrs['sampling_rate_Hz']  # make sure audio data and the annotations are all on the same sampling rate
 
-    event_type = 'sine_manual'
-    start_index = 0
-    end_index = None
-    splits = [0.6, 0.8]
-    class_names=['noise', 'song']
-    class_types=['segment', 'segment']
+def data_loader_wav(filename):
+    # load the recording
+    fs, x = scipy.io.wavfile.read(filename)
+    x = x[:, np.newaxis] if x.ndim==1 else x  # adds singleton dim for single-channel wavs
+    return fs, x
 
-    x = ds.song_raw.data
-    yy = ds.song_events.loc[:, event_type].data
+def data_loader_npz(filename):
+    # load the recording
+    file = np.load(filename)
+    fs = file['samplerate']
+    x = file['song']
+    x = x[:, np.newaxis] if x.ndim==1 else x  # adds singleton dim for single-channel wavs
+    return fs, x
 
-    if end_index is None or start_index is None:
-        indices = np.argwhere(yy == 1)[:, 0]
-    if start_index is None:
-        start_index = np.max((0, indices[0] - 10_000))
+# auto register with decorator
+data_loaders = {'npz': data_loader_npz, 'wav': data_loader_wav, None: None}
 
-    if end_index is None:
-        end_index = np.min((len(yy), indices[-1] + 10_000))
 
-    x = x[start_index:end_index]
-    yy = yy[start_index:end_index]
+def load_data(filename):
+    extension = os.path.splitext(filename)[1][1:]  # [1:] strips '.'
+    data_loader = data_loaders[extension]
+    if data_loader is not None:
+        fs, x = data_loader(filename)
+        return fs, x
+    else:
+        return None
 
-    print(x.shape, yy.shape)
-    y = np.zeros((yy.shape[0], len(class_names)), dtype=np.uint8)
-    y[:,0] = 1-yy
-    y[:,1] = yy
-    plt.plot(y[::10, :])
-    samplerate = ds.attrs['samplingrate']  # this is the sample rate of your data and the pulse times
 
-    root = dss.make_dataset.init_store(
-            nb_channels=x.shape[1],  # number of channels/microphones in the recording
-            nb_classes=y.shape[1],  # number of classes to predict - [noise, pulse]
-            samplerate=ds.song_raw.attrs['sampling_rate_Hz'],
-            class_names=class_names,
-            class_types=class_types,
-            store_type=zarr.DictStore,  # use zarr.DirectoryStore for big data
-            store_name='mouse_test.zarr', # only used with DirectoryStore - this is the path to the directory created
-            )
-    nb_samples = x.shape[0]
+def make(data_folder, store_folder,
+         file_splits, data_splits,
+         make_single_class_datasets: bool = False,
+         split_train_in_two: bool = True,
+         event_std_seconds: float = 0,
+         gap_seconds: float = 0):
 
-    train_val_test_split = (np.array(splits)*nb_samples).astype(np.int)
-    x_splits = np.split(x, train_val_test_split)
-    y_splits = np.split(y, train_val_test_split)
+    annotation_loader = pd.read_csv
+    files_annotation = glob(data_folder + '/*.csv')
 
-    for x_split, y_split, name in zip(x_splits, y_splits, ['train', 'val','test']):
-        print(x_split.shape, y_split.shape, name)
-        root[name]['x'].append(x_split)
-        root[name]['y'].append(y_split)
 
-    dss.npy_dir.save('mouse_test.npy', root)
+    # go through all annotation files and collect info on classes
+    class_names = []
+    class_types = []
+    for file_annotation in files_annotation:
+        print(file_annotation)
+        df = annotation_loader(file_annotation)
+        event_times = annot.Events.from_df(df)
+        # this_class_names, this_class_types = dsm.infer_class_info(df)
+        class_names.extend(event_times.names)
+        class_types.extend(event_times.categories.values())
 
-    dss.train.train(data_dir='mouse_test.npy', model_name='tcn', nb_pre_conv=4, verbose=1)
+    class_names, first_indices = np.unique(class_names, return_index=True)
+
+    class_types = list(np.array(class_types)[first_indices])
+    class_names = list(class_names)
+
+    for class_name, class_type in zip(class_names, class_types):
+        print(f'found {class_name} of type {class_type}')
+
+    class_names.insert(0, 'noise')
+    class_types.insert(0, 'segment')
+
+    file_bases = [f.rpartition('.')[0] for f in files_annotation]
+    data_files = []
+    for file_base in file_bases:
+        if os.path.exists(file_base + '.npz'):
+            data_files.append(file_base + '.npz')
+        elif os.path.exists(file_base + '.wav'):
+            data_files.append(file_base + '.wav')
+        else:
+            data_files.append(None)
+
+    # read first data file to infer number of audio channels
+    # file_base = files_annotation[0].rpartition('.csv')[0]
+    # load the recording
+
+    # get valid file
+    dfs = [data_file for data_file in data_files if data_file is not None]
+    if not len(dfs):
+        logging.exception('No valid data files found.')
+        raise ValueError('No valid data files found.')
+
+    fs, x = load_data(dfs[0])
+    nb_channels = x.shape[1]
+
+    store = dsm.init_store(nb_channels=nb_channels,
+                        nb_classes=len(class_names),
+                        samplerate=fs,
+                        class_names=class_names,
+                        class_types=class_types,
+                        make_single_class_datasets=make_single_class_datasets,
+                        store_type=zarr.DictStore, store_name='store.zarr', chunk_len=1_000_000)
+    store['train']['x'].shape, store['val']['x'].shape, store['test']['x'].shape
+
+    # first split files into a train-test and val
+    file_split_dict = collections.defaultdict(lambda: None)
+    parts = ['train', 'val', 'test']
+
+    if len(file_splits):
+        if sum(file_splits.values())>1.0:
+            raise ValueError(f'Sum of file splits > 1.0!')
+
+        if len(file_splits)<3:
+            file_splits['remainder'] = max(0, 1 - sum(file_splits.values()))
+
+        file_splits = dsm.generate_file_splits(file_bases,
+                                            splits=list(file_splits.values()),
+                                            split_names=list(file_splits.keys()))
+
+
+        for file_base in file_bases:
+            for part in parts:
+                if part in file_splits and file_base in file_splits[part]:
+                    file_split_dict[file_base] = part
+
+    data_split_targets = []
+    if len(data_splits):
+        fractions = np.array(list(data_splits.values()))
+        probs = fractions / np.sum(fractions)
+        data_splits = {key: val for key, val in zip(data_splits.keys(), probs)}
+        data_split_targets = list(data_splits.keys())
+        data_splits = list(data_splits.values())
+        if split_train_in_two and 'train' in data_split_targets:
+            train_idx = data_split_targets.index('train')
+            data_splits[train_idx] /= 2
+            data_splits.append(data_splits[train_idx])
+            data_split_targets.append('train')
+
+    for file_base, data_file in zip(file_bases, data_files):
+        if data_file is None:
+            logging.warning(f'Unknown data file for {file_base} - skipping.')
+            continue
+        logging.info(f'  {file_base}')
+
+        # load the recording
+        if data_file.endswith('.npz'):
+            data_loader = data_loader_npz
+        elif data_file.endswith('.wav'):
+            data_loader = data_loader_wav
+        else:
+            logging.warning(f'Unknown data file {file_base} - skipping.')
+            continue
+
+        fs, x = data_loader(data_file)
+        nb_samples = x.shape[0]
+
+        # load annotations
+        df = annotation_loader(file_base + '.csv')
+
+        # make initial annotation matrix
+        y = dsm.make_annotation_matrix(df, nb_samples, fs, class_names)
+
+        # blur events
+        # OPTIONAL but highly recommended
+        if event_std_seconds > 0:
+            for class_index, class_type in enumerate(class_types):
+                if class_type == 'event':
+                    y[:, class_index] = dsm.blur_events(y[:, class_index],
+                                                        event_std_seconds=event_std_seconds,
+                                                        samplerate=fs)
+
+        # introduce small gaps between adjacent segments
+        # OPTIONAL but makes boundary detection easier
+        if gap_seconds > 0:
+            segment_idx = np.where(np.array(class_types)=='segment')[0]
+            if len(segment_idx):
+                y[:, segment_idx] = dsm.make_gaps(y[:, segment_idx],
+                                                  gap_seconds=0.015,
+                                                  samplerate=fs)
+
+        # all validation files
+        if file_split_dict[file_base] is not None:
+            name = file_split_dict[file_base]
+            logging.info(f'    {name} data.')
+            store[name]['x'].append(x)
+            store[name]['y'].append(dsm.normalize_probabilities(y))
+            # make prediction targets for individual song types [OPTIONAL]
+            for cnt, class_name in enumerate(class_names[1:]):
+                store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(y[:, [0, cnt+1]]))
+        else:
+            # split data from each remaining file into train and test chunks according to `splits`
+            split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets)
+            logging.info(f'    splitting {data_splits} into {data_split_targets}.')
+            for name in data_split_targets:
+                store[name]['x'].append(split_arrays['x'][name])
+                store[name]['y'].append(dsm.normalize_probabilities(split_arrays['y'][name]))
+                # make prediction targets for individual song types [OPTIONAL]
+                for cnt, class_name in enumerate(class_names[1:]):
+                    store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(split_arrays['y'][name][:, [0, cnt+1]]))
+
+    # report
+    logging.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/test/val samples.")
+    # save as npy_dir
+    logging.info(f'  Saving to {store_folder}.')
+    dss.npy_dir.save(store_folder, store)
+
+    # delete intermediate store
+    pass

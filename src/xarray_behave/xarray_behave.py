@@ -7,9 +7,12 @@ import zarr
 import logging
 import os.path
 from pathlib import Path
-from . import loaders as ld
-from . import metrics as mt
-from . import event_utils
+import pandas as pd
+
+from . import (loaders as ld,
+               metrics as mt,
+               event_utils,
+               annot)
 
 
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
@@ -103,7 +106,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # instead of these flags - just check for existence of dict keys??
     with_segmentation = False
-    with_segmentation_matlab = False
     with_segmentation_manual = False
     with_segmentation_manual_matlab = False
     with_song = False
@@ -123,7 +125,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             try:
                 auto_event_seconds, auto_event_categories = ld.load_segmentation(filepath_segmentation)
                 with_segmentation = True
-                merge_raw_recording = True
+                merge_raw_recording = False  # True
                 logging.debug(f'   {filepath_segmentation} loaded.')
             except Exception as e:
                 logging.debug(f'   {filepath_segmentation} failed.')
@@ -136,7 +138,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             auto_event_seconds, auto_event_categories  = ld.load_segmentation_matlab(filepath_segmentation_matlab)
             with_segmentation = True
             with_segmentation_matlab = True
-            merge_raw_recording = True
+            merge_raw_recording = False  # True
             with_song = True
             logging.debug(f'   {filepath_segmentation_matlab} loaded.')
         else:
@@ -146,19 +148,24 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         # load MANUAL SONG ANNOTATIONS
         # first try PYTHON, then matlab
         logging.info('Attempting to load manual segmentation:')
-        filepath_segmentation_manual = Path(root, res_path, datename, f'{datename}_songmanual.zarr')
+        filepath_segmentation_manual_csv = Path(root, res_path, datename, f'{datename}_songmanual.csv')
+        filepath_segmentation_manual_zarr = Path(root, res_path, datename, f'{datename}_songmanual.zarr')
         filepath_segmentation_manual_matlab = Path(root, res_path, datename, f'{datename}_songmanual.mat')
-        if os.path.exists(filepath_segmentation_manual):
-            manual_event_seconds, manual_event_categories = ld.load_manual_annotation(filepath_segmentation_manual)  # need to extract event_seconds and categories from that one
+        if os.path.exists(filepath_segmentation_manual_csv):
+            manual_event_seconds, manual_event_categories = ld.load_manual_annotation_csv(filepath_segmentation_manual_csv)  # need to extract event_seconds and categories from that one
             with_segmentation_manual = True
-            logging.debug(f'   {filepath_segmentation_manual} loaded.')
+            logging.debug(f'   {filepath_segmentation_manual_csv} loaded.')
+        elif os.path.exists(filepath_segmentation_manual_zarr):
+            manual_event_seconds, manual_event_categories = ld.load_manual_annotation_zarr(filepath_segmentation_manual_zarr)  # need to extract event_seconds and categories from that one
+            with_segmentation_manual = True
+            logging.debug(f'   {filepath_segmentation_manual_zarr} loaded.')
         elif os.path.exists(filepath_segmentation_manual_matlab):
             manual_event_seconds, manual_event_categories = ld.load_manual_annotation_matlab(filepath_segmentation_manual_matlab)
             with_segmentation_manual = True
             with_segmentation_manual_matlab = True
             logging.debug(f'   {filepath_segmentation_manual_matlab} loaded.')
         else:
-            logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual} or {filepath_segmentation_manual_matlab}.')
+            logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual_csv} or {filepath_segmentation_manual_zarr} or {filepath_segmentation_manual_matlab}.')
 
         # load RAW song traces
         res = dict()
@@ -214,7 +221,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # PREPARE DataArrays
     dataset_data = dict()
-    if with_song:  # MERGED song recording
+    if with_song and merge_raw_recording:  # MERGED song recording
         song = xr.DataArray(data=res['song'][first_sample:last_sample, 0],  # cut recording to match new grid
                             dims=['sampletime'],
                             coords={'sampletime': sampletime, },
@@ -285,6 +292,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         song_events_ds = event_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
                                                         song_events.attrs['event_times'])
         dataset_data['song_events'] = song_events_ds.song_events
+        try:
+            ds_eventtimes = annot.Events(event_seconds).to_dataset()
+            dataset_data['event_times'] = ds_eventtimes.event_times
+            dataset_data['event_names'] = ds_eventtimes.event_names
+            dataset_data['event_names'].attrs['possible_event_names'] = ds_eventtimes.attrs['possible_event_names']
+        except Exception as e:
+            logging.error('Failed to generate event_times data arrays:')
+            logging.exception(e)
 
     # BODY POSITION
     fps = None
@@ -570,10 +585,10 @@ def save(savepath, dataset):
 def _normalize_strings(dataset):
     """Ensure all keys in coords are proper (unicode?) python strings, not byte strings."""
     dn = dict()
+
     for key, val in dataset.coords.items():
         if val.dtype == 'S16':
-            val.data = np.array([v.decode() for v in val.data])
-        dn[key] = val
+            dataset[key] = [v.decode() for v in val.data]
     return dataset
 
 
@@ -603,11 +618,48 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True,
 
     if normalize_strings:
         dataset = _normalize_strings(dataset)
-
+    print(dataset)
     return dataset
 
 
-def from_wav(filepath, target_samplerate=None, event_names=[], event_categories=[]):
+def from_wav(filepath, target_samplerate=None,
+             event_names=[], event_categories=[],
+             annotation_path=None):
+    import soundfile
+    logging.info(f"Loading data from {filepath}.")
+    data, sampling_rate = soundfile.read(filepath)
+
+    if data.ndim==1:
+        logging.info("   Data is 1d so prolly single-channel audio - appending singleton dimension.")
+        data = data[:, np.newaxis]
+
+    ds = from_data(filepath, data, sampling_rate, target_samplerate, event_names, event_categories, annotation_path)
+    return ds
+
+
+def from_hdf5(filepath, data_set, sampling_rate, target_samplerate=None,
+              event_names=[], event_categories=[],
+              annotation_path=None):
+    import h5py
+    logging.info(f"Loading dataset 'data_set' from {filepath}.")
+    with h5py.File(filepath, 'r') as f:
+        data = f[data_set][:]
+
+    if data.ndim==1:
+        logging.info("   Dataset is 1d so prolly single-channel data - appending singleton dimension.")
+        data = data[:, np.newaxis]
+
+    if data.shape[0] < data.shape[1]:
+        logging.info("   Dataset should be [time x channels] but is of shape {data.shape} - transposing to {data.T.shape}.")
+        data = data.T
+
+    ds = from_data(filepath, data, sampling_rate, target_samplerate, event_names, event_categories, annotation_path)
+    return ds
+
+
+def from_data(filepath, data, sampling_rate, target_samplerate=None,
+              event_names=[], event_categories=[],
+              annotation_path=None):
 
     if event_names and not event_categories:
         logging.info('No event_categories specified - defaulting to segments')
@@ -616,15 +668,11 @@ def from_wav(filepath, target_samplerate=None, event_names=[], event_categories=
     if len(event_names) != len(event_categories):
         raise ValueError(f'event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}.')
 
-    import soundfile
-    data, sampling_rate = soundfile.read(filepath)
-
     if target_samplerate is None:
         target_samplerate = sampling_rate
 
     dataset_data = dict()
 
-    data = data[:, np.newaxis]
     sampletime = np.arange(len(data)) / sampling_rate
     time = np.arange(sampletime[0], sampletime[-1], 1 / target_samplerate)
 
@@ -650,17 +698,24 @@ def from_wav(filepath, target_samplerate=None, event_names=[], event_categories=
                            })
         dataset_data['song_events'] = song_events
 
+    if annotation_path is not None:
+        try:
+            df = pd.read_csv(annotation_path)
+            ds_eventtimes = annot.Events.from_df(df).to_dataset()
+            dataset_data['event_times'] = ds_eventtimes.event_times
+            dataset_data['event_names'] = ds_eventtimes.event_names
+        except Exception as e:
+            logging.exception(e)
+
     # MAKE THE DATASET
     ds = xr.Dataset(dataset_data, attrs={})
     ds.coords['time'] = time
-    ds.coords['nearest_frame'] = ('time', (time/100).astype(np.uint))  # do we need this?
+    # ds.coords['nearest_frame'] = ('time', (time/100).astype(np.uint))  # do we need this?
 
     # save command line args
     ds.attrs = {'video_filename': '',
                 'datename': filepath,
                 'root': '', 'dat_path': '', 'res_path': '',
-                'sampling_rate_Hz': sampling_rate,
-                     'sampling_rate_Hz': sampling_rate,
                 'sampling_rate_Hz': sampling_rate,
                 'target_sampling_rate_Hz': target_samplerate}
     logging.info(ds)

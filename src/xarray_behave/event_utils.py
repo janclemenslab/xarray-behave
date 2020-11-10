@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import xarray as xr
-
+import pandas as pd
 
 def detect_events(ds):
     """Transform ds.song_events into dict of event (on/offset) times.
@@ -39,8 +39,52 @@ def detect_events(ds):
     return event_times
 
 
-def infer_event_categories(event_times):
-    """Based on shape."""
+def infer_class_info_from_df(df: pd.DataFrame):
+    """Based on difference between start_seconds/stop_seconds
+
+    Args:
+        df ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    class_names, first_indices = np.unique(df['name'], return_index=True)
+    class_names = list(class_names)
+    class_names.insert(0, 'noise')
+
+    # infer class type - event if start and end are the same
+    class_types = ['segment']
+    for first_index in first_indices:
+        if df.loc[first_index]['start_seconds']==df.loc[first_index]['stop_seconds']:
+            class_types.append('event')
+        else:
+            class_types.append('segment')
+    return class_names, class_types
+
+
+def infer_event_categories_from_traces(data):
+    """Infer event type (event/segment) based on median interval between
+    event times.
+
+    Args:
+        data ([type]): binary matrix [samples x events]
+    """
+    event_categories = []
+    for evt in range(data.shape[1]):
+        if np.any(data[:, evt]):
+            dt = np.nanmedian(np.diff(np.where(data[:, evt])[0]))
+        else:
+            dt = 10  # fall back to events w/o annotations
+
+        if dt > 1:
+            event_categories.append('event')
+        else:
+            event_categories.append('segment')
+    return event_categories
+
+
+def infer_event_categories_from_shape(event_times):
+    """Based on shape of time lists."""
     event_categories = {}
     for event_name, event_data in event_times.items():
         event_categories[event_name] = 'event' if event_data.ndim==1 else 'segment'
@@ -62,18 +106,24 @@ def update_traces(ds, event_times):
 
     new_values = np.zeros_like(old_values, shape=(old_values.shape[0], len(event_times)))
     fs = ds.song_events.attrs['sampling_rate_Hz']
-    event_categories = infer_event_categories(event_times)
+    event_categories = infer_event_categories_from_shape(event_times)
     # populate with data:
     logging.info(f'Updating:')
     for cnt, (event_name, event_data) in enumerate(event_times.items()):
         logging.info(f'   {event_name} ({event_data.shape[0]} instances')
         if event_categories[event_name] == 'event':
-            new_values[(event_data * fs).astype(np.uintp), cnt] = 1
+            event_indices = (event_data * fs).astype(np.uintp)
+            event_indices = event_indices[event_indices>=0]
+            event_indices = event_indices[event_indices<len(new_values)]
+            new_values[event_indices, cnt] = 1
         elif event_categories[event_name] == 'segment':
             for onset, offset in event_data:
                 onset_idx = (onset * fs).astype(np.uintp)
                 offset_idx = (offset * fs).astype(np.uintp)
-                new_values[onset_idx:offset_idx, cnt] = 1
+                within_bounds = onset_idx < len(new_values) and offset_idx < len(new_values)
+                greater_zero = onset_idx >= 0 and offset_idx >= 0
+                if within_bounds and greater_zero:
+                    new_values[onset_idx:offset_idx, cnt] = 1
     logging.info(f'Done:')
 
     # rebuild dataset
@@ -145,7 +195,7 @@ def traces_to_eventtimes(traces, event_names, event_categories):
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         logging.info(f'   {event_name}')
         if event_category == 'event':
-            event_times[event_name] = np.where(traces[:, event_idx] == 1)[0]
+            event_times[event_name] = np.where(traces[event_idx] == 1)[0]
         elif event_category == 'segment':
             onsets = np.where(np.diff(traces[event_idx]) == 1)[0]
             offsets = np.where(np.diff(traces[event_idx]) == -1)[0]
@@ -163,14 +213,3 @@ def traces_to_eventtimes(traces, event_names, event_categories):
             else:
                 event_times[event_name] = np.stack((onsets, offsets)).T
     return event_times
-
-def eventtimes_delete(eventtimes, which):
-    return eventtimes
-
-def eventtimes_add(eventtimes, which, resort=False):
-    return eventtimes
-
-def eventtimes_replace(eventtimes, which_old, which_new, resort=False):
-    eventtimes = eventtimes_delete(eventtimes, which_old)
-    eventtimes = eventtimes_add(eventtimes, which_new)
-    return eventtimes
