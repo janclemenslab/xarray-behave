@@ -244,7 +244,7 @@ def make(data_folder, store_folder,
             segment_idx = np.where(np.array(class_types)=='segment')[0]
             if len(segment_idx):
                 y[:, segment_idx] = dsm.make_gaps(y[:, segment_idx],
-                                                  gap_seconds=0.015,
+                                                  gap_seconds=gap_seconds,
                                                   samplerate=fs)
 
         # all validation files
