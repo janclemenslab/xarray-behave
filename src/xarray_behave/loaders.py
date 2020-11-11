@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import h5py
 import flammkuchen as dd_io
-from typing import Sequence, Union
+from typing import Sequence, Optional
 import logging
 
 import scipy.interpolate
@@ -507,7 +507,7 @@ def load_poses_sleap(filepath):
     return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
 
 
-def load_raw_song(filepath_daq: str, song_channels: Union[Sequence[int], None] = None,
+def load_raw_song(filepath_daq: str, song_channels: Optional[Sequence[int]] = None,
                   return_nonsong_channels: bool = False, lazy: bool = False):
     """[summary]
 
