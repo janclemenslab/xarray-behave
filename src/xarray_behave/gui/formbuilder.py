@@ -451,9 +451,10 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             field.setRange(min, max)
             field.setSingleStep(0.25)
 
-            field.setValue(item["default"])
             decimals = item.get('decimals', 2)
             field.setDecimals(decimals)
+
+            field.setValue(item["default"])
 
             field.valueChanged.connect(lambda: self.valueChanged.emit())
 
