@@ -452,6 +452,8 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             field.setSingleStep(0.25)
 
             field.setValue(item["default"])
+            decimals = item.get('decimals', 2)
+            field.setDecimals(decimals)
 
             field.valueChanged.connect(lambda: self.valueChanged.emit())
 
@@ -471,8 +473,10 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             spin_type = item["type"].split("_")[-1]
             none_string = "auto" if item["type"].startswith("auto") else "none"
             none_label = item.get("none_label", None)
+            decimals = item.get('decimals', 2)
+
             field = OptionalSpinWidget(
-                type=spin_type, none_string=none_string, none_label=none_label
+                type=spin_type, none_string=none_string, none_label=none_label, decimals=decimals
             )
             if "range" in item.keys():
                 min, max = list(map(int, item["range"].split(",")))
@@ -731,6 +735,7 @@ class OptionalSpinWidget(QtWidgets.QWidget):
         type="int",
         none_string="none",
         none_label: Optional[Text] = None,
+        decimals: Optional[int] = None,
         *args,
         **kwargs,
     ):
@@ -742,8 +747,12 @@ class OptionalSpinWidget(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.spin_widget = (
-            QtWidgets.QDoubleSpinBox() if type is "double" else QtWidgets.QSpinBox()
+            QtWidgets.QDoubleSpinBox() if type == "double" else QtWidgets.QSpinBox()
         )
+
+        if type == "double" and decimals is not None:
+            self.spin_widget.setDecimals(decimals)
+
         none_label = none_label if none_label is not None else self.none_string.title()
         self.check_widget = QtWidgets.QCheckBox(none_label)
 
