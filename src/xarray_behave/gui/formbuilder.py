@@ -479,7 +479,8 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
                 type=spin_type, none_string=none_string, none_label=none_label, decimals=decimals
             )
             if "range" in item.keys():
-                min, max = list(map(int, item["range"].split(",")))
+                caster = int if spin_type=="int" else float
+                min, max = list(map(caster, item["range"].split(",")))
                 field.setRange(min, max)
             elif item["default"] is not None and item["default"] > 100:
                 min, max = 0, item["default"] * 10
