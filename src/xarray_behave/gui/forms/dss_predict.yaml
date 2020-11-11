@@ -4,7 +4,7 @@ main:
   label: model
   type: file_open
   default: " "
-
+  filter: "*_model.h5"
 
 - name: event_thres
   label: Event detection threshold
@@ -19,7 +19,6 @@ main:
   decimals: 4
   range: 0,100000
 
-
 - name: event_dist_min
   label: Minimal distance between events for interval filtering after detection (seconds)
   type: double
@@ -33,7 +32,6 @@ main:
   default: 100000
   decimals: 4
   range: 0,100000
-
 
 - name: segment_thres
   label: Segment detection threshold
