@@ -1,13 +1,17 @@
 main:
 
+# provide this via file dialog and display info
 - name: model_path
   label: model
   type: file_open
   default: " "
   filter: "*_model.h5"
 
+- type: text
+  text: '<b>Event detection</b>'
+
 - name: event_thres
-  label: Event detection threshold
+  label: Threshold
   type: double
   default: 0.5
   range: 0,1
@@ -19,43 +23,61 @@ main:
   decimals: 4
   range: 0,100000
 
+- type: text
+  text: '<i>Filter events by interval after detection</i><br />
+    Will discard events that are too close (minimal distance) or
+    too far (maximal distance) from other events.'
+
 - name: event_dist_min
-  label: Minimal distance between events for interval filtering after detection (seconds)
+  label: Minimal distance (seconds)
   type: double
   default: 0.0
   decimals: 4
   range: 0,100000
 
 - name: event_dist_max
-  label: Maximal distance between events for interval filtering after detection (seconds)
-  type: double
-  default: 100000
+  label: Maximal distance(seconds)
+  type: optional_double
+  default: 1
+  default_disabled: True
+  none_label: infinity
   decimals: 4
   range: 0,100000
 
+
+- type: text
+  text: '<b>Segment detection</b>'
+
 - name: segment_thres
-  label: Segment detection threshold
+  label: Threshold
   type: double
   default: 0.5
   decimals: 2
   range: 0,1
 
+- type: text
+  text: '<i>Post process segments</i><br />
+    Will fill short gaps within a segement and discard short segments.'
+
 - name: segment_fillgap
-  label: Hold time (seconds)
-  type: double
+  label: Gap duration for filling (seconds)
+  type: optional_double
   default: 0.02
+  default_disabled: True
+  none_label: Do not fill
   decimals: 4
   range: 0,1000000
 
 - name: segment_minlen
-  label: Minimal duration (seconds)
-  type: double
+  label: Minimal duration for discarding (seconds)
+  type: optional_double
   default: 0.02
+  default_disabled: True
+  none_label: Do remove short segments
   decimals: 4
   range: 0,1000000
 
-
 - name: save_button
-  label: Run inference
+  label: Predict song labels
   type: button
   default: main action

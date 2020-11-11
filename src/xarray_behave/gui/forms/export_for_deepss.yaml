@@ -11,39 +11,44 @@ main:
   type: list
   default: ['no song selected']
   options: 'All song types'
-  help: 'Select specific event time to export. Otherwise it will export all.'
+  help: 'Select specific song type to export. Otherwise it will export all.
+  You can also make training targets for specific song types with "DeepSS/Make Dataset".'
+
+- type: text
+  text: 'Discard data before "start seconds" and after "stop seconds".'
 
 - name: start_seconds
   label: Start seconds
   type: double
-  default: 0
+  default: 0.0
   decimals: 4
-  range: 0,10000000
+  range: 0.0,10000000.0
 
 - name: end_seconds
   label: End seconds
-  type: double
-  default: -1
+  type: optional_double
+  default: 0.0
+  default_disabled: True
+  none_label: Recording end
   decimals: 4
-  range: 0,1000000
+  range: 0.0,1000000.0
 
 - type: text
-  text: 'Npz will save audio data and samplerate as a numpy file.
-         If choosing wav, data will be clipped to [-1, 1].
-         To prevent data loss, set a scale factor.'
+  text: 'Will save audio data and samplerate as a numpy file (NPZ) or wave file (WAV).
+         If choosing WAV, data will be clipped to [-1, 1] due to
+         restrictions of the WAV file format. To prevent data loss, set a scale factor.'
 
 - name: file_type
   label: File type
   type: list
-  default: 'npz'
-  options: 'wav,npz'
+  default: 'NPZ'
+  options: 'WAV,NPZ'
 
 - name: scale_audio
-  label: Scale audio
+  label: Scale factor
   type: double
   default: 1.0
-  help: 'WAV needs to be scaled to [-1, 1] - '
-
+  help: 'To prevent clipping for WAV, which clips audio to [-1, 1] if data is float.'
 
 - name: okay_button
   label: Save inference

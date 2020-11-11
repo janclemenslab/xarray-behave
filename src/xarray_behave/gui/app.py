@@ -173,7 +173,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         df.to_csv(savefilename, index=False)
 
 
-    def export_to_wav(self, savefilename: str = None,
+    def export_to_wav(self, savefilename: Optional[str] = None,
                       start_seconds: float = 0, end_seconds: Optional[float] = None,
                       scale: float = 1.0):
         """[summary]
@@ -186,7 +186,9 @@ class MainWindow(pg.QtGui.QMainWindow):
         """
         # transform to indices for cutting song data
         start_index = int(start_seconds * self.fs_song)
-        end_index = int(end_seconds * self.fs_song)
+        end_index = None
+        if end_seconds is not None:
+            end_index = int(end_seconds * self.fs_song)
 
         # get clean data
         song = np.array(self.ds.song_raw.data[start_index:end_index])
@@ -204,7 +206,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         scipy.io.wavfile.write(savefilename, self.fs_song, song)
 
 
-    def export_to_npz(self, savefilename: str = None,
+    def export_to_npz(self, savefilename: Optional[str] = None,
                       start_seconds: float = 0, end_seconds: Optional[float] = None,
                       scale: float = 1.0):
         """[summary]
@@ -217,7 +219,9 @@ class MainWindow(pg.QtGui.QMainWindow):
         """
         # transform to indices for cutting song data
         start_index = int(start_seconds * self.fs_song)
-        end_index = int(end_seconds * self.fs_song)
+        end_index = None
+        if end_seconds is not None:
+            end_index = int(end_seconds * self.fs_song)
 
         # get clean data and save to WAV
         song = self.ds.song_raw.data[start_index:end_index]
@@ -250,6 +254,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         dialog.form.fields['start_seconds'].setRange(0, np.max(self.ds.sampletime))
         dialog.form.fields['end_seconds'].setRange(0, np.max(self.ds.sampletime))
         dialog.form.fields['end_seconds'].setValue(np.max(self.ds.sampletime))
+        dialog.form.fields['end_seconds'].setToNone()
 
         dialog.show()
         result = dialog.exec_()
@@ -266,10 +271,10 @@ class MainWindow(pg.QtGui.QMainWindow):
             end_seconds = form_data['end_seconds']
 
             logging.info(f"Exporting for DeepSS:")
-            if form_data['file_type'] == 'wav':
+            if form_data['file_type'] == 'WAV':
                 logging.info(f"   song to WAV: {savefilename_trunk + '.wav'}.")
                 self.export_to_wav(savefilename_trunk + '.wav', start_seconds, end_seconds, form_data['scale_audio'])
-            elif form_data['file_type'] == 'npz':
+            elif form_data['file_type'] == 'NPZ':
                 logging.info(f"   song to NPZ: {savefilename_trunk + '.npz'}.")
                 self.export_to_npz(savefilename_trunk + '.npz', start_seconds, end_seconds, form_data['scale_audio'])
 
@@ -331,11 +336,12 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                         filter="all files (*)")
             if len(savefilename):
                 data = dialog.form.get_form_data()
-                cmd = 'python -m dss.train'
+                cmd = 'python3 -m dss.train'
+                # FIXME formatting
                 for key, val in data.items():
                     cmd += f" --{key.replace('_','-')} {val}"
-
-                with open(savefilename) as f:
+                print(cmd)
+                with open(savefilename, 'w') as f:
                     f.write(cmd)
                 logging.info(f"Done.")
 
@@ -349,7 +355,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 dialog.form.set_form_data(data)  # update form
                 logging.info(f"Done.")
 
-        data_dir = QtWidgets.QFileDialog.getExistingDirectory(None, directory=None, caption="Open Data Directory (*.npy)")
+        data_dir = QtWidgets.QFileDialog.getExistingDirectory(None, directory=None,
+                                                              caption="Open Data Folder (*.npy)",
+                                                              filter="npy folders (*.npy);;all files (*)")
         # TODO: check that this is a valid data_dir!
 
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_train.yaml",
@@ -369,8 +377,9 @@ class MainWindow(pg.QtGui.QMainWindow):
             form_data['model_name'] = 'tcn'
             if form_data['frontend'] == 'Yes':
                 form_data['model_name'] += form_data['frontend_type']
+                form_data['pre_nb_conv'] = int(np.ceil(np.log2(form_data['pre_nb_conv'])))
 
-            form_data['reduce_lr'] = form_data['reduce_lr'] == 'Yes'
+            form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
             form_data = {k: v for k, v in form_data.items() if v not in ['Yes', 'No', None]}
 
             try:

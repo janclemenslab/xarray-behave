@@ -22,25 +22,23 @@ main:
   label: Make training targets for individual song types
   type: bool
   default: True
-  help: Make training target for individual song types. This will be done
-    in addition to the target for training a network to annotate
-    all song types.
+  help: Make additional training targets for individual song types.
 
 - name: split_train_in_two
   label: Split train in two
   type: bool
   default: True
-  help: 'Normally, when splitting train:test 80:20, train will be either at the first
-  or the last 20% of a recording. Toggling this will split train:train:test 40:40:20 - now test
+  help: 'When splitting train:test 80:20, train will be either at the first
+  or the last 20% of a recording. Split train in two (train:train:test) to 40:40:20. Now test
   can also occupy the central 20% of the recording.'
 
 - name: event_std_seconds
-  label: Event std (seconds)
+  label: Standard deviation of event times (seconds)
   type: double
-  default: 0.0020
+  default: 0.016
   decimals: 4
   range: 0,100000
-  help: Replace each event in the target by a Gaussian.
+  help: Replace each event in the target by a Gaussian of the specified standard deviation.
 
 - name: gap_seconds
   label: Gap duration (seconds)
@@ -48,7 +46,7 @@ main:
   default: 0
   range: 0,100000
   decimals: 4
-  help: Introduce small gap between adjacent segments to facilitate post-processing
+  help: Introduce small gap between adjacent segments facilitates detection of on- and offsets.
 
 
 - type: text
