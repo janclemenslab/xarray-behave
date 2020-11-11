@@ -1522,8 +1522,6 @@ class PSV(MainWindow):
         ret = deepss.predict(self.ds)
         if ret is not None:
             events, segments = ret
-
-            # add to self.event_times
             # remove non-song keys
             samplerate_Hz = events['samplerate_Hz']
             del events['samplerate_Hz']
@@ -1531,32 +1529,26 @@ class PSV(MainWindow):
             if 'noise' in segments:
                 del segments['noise']
 
-            # if 'song_events' in self.ds:
-            #     self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
-
             for event_name, event_data in events.items():
+                logging.info(f"   found event '{event_name}'.")
                 self.event_times.add_name(event_name + '_dss', 'event',
                                               np.stack((event_data['seconds'], event_data['seconds']), axis=1))
 
             for segment_name, segment_data in segments.items():
+                logging.info(f"   found segment '{segment_name}'.")
                 self.event_times.add_name(segment_name + '_dss', 'segment',
                                               np.stack((segment_data['onsets_seconds'], segment_data['offsets_seconds']), axis=1))
 
-            # self.ds = event_utils.update_traces(self.ds, self.event_times)
-            breakpoint()
-            # self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            self.event_times = annot.Events(self.event_times, categories=self.event_times.categories)
             self.fs_other = samplerate_Hz
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
-            logging.info('  done.')
             self.update_eventtype_selector()
-
+            logging.info('  done.')
 
     def edit_annotation_types(self, qt_keycode):
 
-        if 'event_types' in self.ds:
-            # types = self.ds.event_types.coords['event_types'].data
-            # cats = self.ds.event_types.coords['event_categories'].data
+        if hasattr(self, 'event_times'):
             types = self.event_times.names
             cats = self.event_times.categories
             table_data = [[typ, cat] for typ, cat in zip(types, cats)]
@@ -1593,20 +1585,22 @@ class PSV(MainWindow):
                     self.event_times[event_name] = self.event_times.pop(event_name_old)
                 elif event_name_old not in self.event_times:  # create new empty
                     self.event_times.add_name(event_name, event_category)
+
             # update event-related attrs
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
-            self.nb_eventtypes = len(self.event_times)  # len(self.ds.event_types)
+            self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
 
             self.update_eventtype_selector()
 
     def update_eventtype_selector(self):
 
+        # delete all existing entries
         while self.cb.count() > 0:
             self.cb.removeItem(0)
 
         self.cb.addItem("No annotation")
-        if 'event_types' in self.ds:
+        if hasattr(self, 'event_times'):
             self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.event_times.names)]
             self.eventList = sorted(self.eventList)
         else:
