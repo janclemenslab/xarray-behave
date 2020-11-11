@@ -124,12 +124,10 @@ def make(data_folder, store_folder,
         print(file_annotation)
         df = annotation_loader(file_annotation)
         event_times = annot.Events.from_df(df)
-        # this_class_names, this_class_types = dsm.infer_class_info(df)
         class_names.extend(event_times.names)
         class_types.extend(event_times.categories.values())
 
     class_names, first_indices = np.unique(class_names, return_index=True)
-
     class_types = list(np.array(class_types)[first_indices])
     class_names = list(class_names)
 
