@@ -94,15 +94,32 @@ class Events(UserDict):
                                 columns=df.columns)
         return df.append(new_row, ignore_index=True)
 
-    def to_df(self):
+    def to_df(self, preserve_empty: bool = True):
+        """Convert to pandas.DataFeame
+
+        Args:
+            preserve_empty (bool, optional):
+                In keeping with the convention that events have identical start and stop times and segments do not,
+                empty events are coded with np.nan as both start and stop and
+                empty segments are coded as np.nan as start and 0 as stop.
+                `from_df()` will obey this convention - if both start and stop are np.nan,
+                the name will be a segment,
+                if only the start is np.nan (the stop does not matter), the name will be an event
+                Defaults to True.
+
+        Returns:
+            pandas.DataFrame: with columns name, start_seconds, stop_seconds, one row per event.
+        """
         df = self._init_df()
         for name in self.names:
             for start_second, stop_second in zip(self.start_seconds(name), self.stop_seconds(name)):
                 df = self._append_row(df, name, start_second, stop_second)
-        # ensure we keep events without annotations
-        for name in self.names:
-            if name not in df.name.values:
-                df = self._append_row(df, name, start_seconds=None, stop_seconds=None)
+        if preserve_empty:  # ensure we keep events without annotations
+            for name, cat in zip(self.names, self.categories.values()):
+                if name not in df.name.values:
+                    stop_seconds = np.nan if cat == 'event' else 0  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
+                    print(name, cat, stop_seconds)
+                    df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=stop_seconds)
         return df
 
     def to_dataset(self):
@@ -247,13 +264,21 @@ class Events(UserDict):
             if len(self[name])==0:
                 categories[name] = None
             else:
-                start_is_stop = self.duration_seconds(name) is self.stop_seconds(name)
-                categories[name] = 'event' if start_is_stop else 'segment'
+                first_start = self.start_seconds(name)[0]
+                first_stop = self.stop_seconds(name)[0]
+
+                if (np.isnan(first_start) and np.isnan(first_stop)) or (first_start == first_stop):
+                    category = 'event'
+                else:
+                    category = 'segment'
+
+                categories[name] = category
+
         return categories
 
     def _drop_nan(self):
+        # remove entries with nan stop or start (but keep their name)
         for name in self.names:
-            # remove entries with nan stop or start (but keep their name)
             nan_events = np.logical_or(np.isnan(self.start_seconds(name)),
                                        np.isnan(self.stop_seconds(name)))
             self[name] = self[name][~nan_events]
