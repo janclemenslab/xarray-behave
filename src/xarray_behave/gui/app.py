@@ -444,18 +444,16 @@ class MainWindow(pg.QtGui.QMainWindow):
                                  annotation_path=form_data['annotation_path'])
 
                 if form_data['filter_song'] == 'yes':
-                    f_low = eval(form_data['f_low'])
-                    f_high = eval(form_data['f_high'])
-                    ds = cls.filter_song(ds, f_low, f_high)
+                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
 
-                fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-                fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
                 cue_points = []
                 if form_data['load_cues']=='yes':
                     cue_points = cls.load_cuepoints(form_data['cues_file'])
 
                 return PSV(ds, title=wav_filename, cue_points=cue_points,
-                           fmin=fmin, fmax=fmax, data_source=DataSource('wav', wav_filename))
+                           fmin=dialog.form['spec_freq_min'],
+                           fmax=dialog.form['spec_freq_max'],
+                           data_source=DataSource('wav', wav_filename))
 
     @classmethod
     def from_hdf5(cls, hdf5_filename=None, app=None, qt_keycode=None, events_string='',
@@ -529,18 +527,16 @@ class MainWindow(pg.QtGui.QMainWindow):
                                   annotation_path=form_data['annotation_path'])
 
                 if form_data['filter_song'] == 'yes':
-                    f_low = eval(form_data['f_low'])
-                    f_high = eval(form_data['f_high'])
-                    ds = cls.filter_song(ds, f_low, f_high)
+                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
 
-                fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-                fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
                 cue_points = []
                 if form_data['load_cues']=='yes':
                     cue_points = cls.load_cuepoints(form_data['cues_file'])
 
                 return PSV(ds, title=hdf5_filename, cue_points=cue_points,
-                           fmin=fmin, fmax=fmax, data_source=DataSource('hdf5', hdf5_filename))
+                           fmin=dialog.form['spec_freq_min'],
+                           fmax=dialog.form['spec_freq_max'],
+                           data_source=DataSource('hdf5', hdf5_filename))
 
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
@@ -594,9 +590,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 include_tracks=include_tracks, include_poses=include_poses)
 
                 if form_data['filter_song'] == 'yes':
-                    f_low = eval(form_data['f_low'])
-                    f_high = eval(form_data['f_high'])
-                    ds = cls.filter_song(ds, f_low, f_high)
+                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
 
                 if form_data['init_annotations'] and len(form_data['events_string']):
                     # parse events_string
@@ -634,15 +628,14 @@ class MainWindow(pg.QtGui.QMainWindow):
                 except:
                     logging.info(f'Something went wrong when loading the video. Continuing without.')
 
-                fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-                fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
-                box_size = float(dialog.form['box_size'])
-
                 cue_points = []
                 if form_data['load_cues']=='yes':
                     cue_points = cls.load_cuepoints(form_data['cues_file'])
                 return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
-                        fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('dir', dirname))
+                        fmin=dialog.form['spec_freq_min'],
+                        fmax=dialog.form['spec_freq_max'],
+                        box_size=dialog.form['box_size'],
+                        data_source=DataSource('dir', dirname))
 
     @classmethod
     def from_zarr(cls, filename=None, app=None, qt_keycode=None,
@@ -686,9 +679,8 @@ class MainWindow(pg.QtGui.QMainWindow):
                         ds.song_raw.load()  # non-lazy load song for faster updates
 
                 if form_data['filter_song'] == 'yes':
-                    f_low = eval(form_data['f_low'])
-                    f_high = eval(form_data['f_high'])
-                    ds = cls.filter_song(ds, f_low, f_high)
+                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
+
 
                 # add event categories if they are missing in the dataset
                 if 'song_events' in ds and 'event_categories' not in ds:
@@ -710,19 +702,21 @@ class MainWindow(pg.QtGui.QMainWindow):
                 except:
                     logging.info(f'Something went wrong when loading the video. Continuing without.')
 
-                fmin = float(dialog.form['spec_freq_min']) if len(dialog.form['spec_freq_min']) else None
-                fmax = float(dialog.form['spec_freq_max']) if len(dialog.form['spec_freq_max']) else None
-                box_size = float(dialog.form['box_size'])
                 # load cues
                 cue_points = []
                 if form_data['load_cues']=='yes':
                     cue_points = cls.load_cuepoints(form_data['cues_file'])
 
                 return PSV(ds, vr=vr, cue_points=cue_points, title=filename,
-                        fmin=fmin, fmax=fmax, box_size=box_size, data_source=DataSource('zarr', filename))
+                        fmin=dialog.form['spec_freq_min'],
+                        fmax=dialog.form['spec_freq_max'],
+                        box_size=dialog.form['box_size'],
+                        data_source=DataSource('zarr', filename))
 
     @classmethod
     def filter_song(cls, ds, f_low, f_high):
+        if f_low is None:
+            f_low = 1.0
         if 'song_raw' in ds:  # this will take a long time:
             if f_high is None:
                 f_high = ds.song_raw.attrs['sampling_rate_Hz'] / 2 - 1
@@ -1549,9 +1543,10 @@ class PSV(MainWindow):
                                               np.stack((segment_data['onsets_seconds'], segment_data['offsets_seconds']), axis=1))
 
             # self.ds = event_utils.update_traces(self.ds, self.event_times)
-
-            self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
-            self.nb_eventtypes = len(self.event_Times)
+            breakpoint()
+            # self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            self.fs_other = samplerate_Hz
+            self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
             logging.info('  done.')
             self.update_eventtype_selector()
