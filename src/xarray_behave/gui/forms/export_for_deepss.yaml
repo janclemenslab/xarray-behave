@@ -17,13 +17,15 @@ main:
   label: Start seconds
   type: double
   default: 0
-  range: 0,100000
+  decimals: 4
+  range: 0,10000000
 
 - name: end_seconds
   label: End seconds
   type: double
   default: -1
-  range: 0,100000
+  decimals: 4
+  range: 0,1000000
 
 - type: text
   text: 'Npz will save audio data and samplerate as a numpy file.

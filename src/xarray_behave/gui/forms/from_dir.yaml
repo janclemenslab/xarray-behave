@@ -14,7 +14,7 @@ main:
 - name: box_size
   label: Crop width and height
   type: int
-  range: 0, 1000
+  range: 0,10000
   default: 200
 
 - name: ignore_song
@@ -24,14 +24,14 @@ main:
 
 - name: spec_freq_min
   label: Min freq in spec display
-  type: float
-  range: 1.0, 1000000.0
-  default: 10.0
+  type: double
+  range: 0.0,1000000.0
+  default: 50.0
 
 - name: spec_freq_max
   label: Max freq in spec display
-  type: float
-  range: 1.0, 1000000.0
+  type: double
+  range: 0.0,1000000.0
   default: 1000.0
 
 - name: init_annotations
@@ -55,13 +55,15 @@ main:
   "yes":
   - name: f_low
     label: Lower cutoff
-    type: float
+    type: double
     default: 50.0
+    range: 0.0,1000000.0
 
   - name: f_high
     label: Upper cutoff
-    type: float
+    type: double
     default: 1000.0
+    range: 0.0,1000000.0
 
 
 - name: load_cues

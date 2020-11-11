@@ -16,6 +16,7 @@ main:
   label: Minimal distance between events during detection (seconds)
   type: double
   default: 0.01
+  decimals: 4
   range: 0,100000
 
 
@@ -23,12 +24,14 @@ main:
   label: Minimal distance between events for interval filtering after detection (seconds)
   type: double
   default: 0.0
+  decimals: 4
   range: 0,100000
 
 - name: event_dist_max
   label: Maximal distance between events for interval filtering after detection (seconds)
   type: double
   default: 100000
+  decimals: 4
   range: 0,100000
 
 
@@ -36,18 +39,21 @@ main:
   label: Segment detection threshold
   type: double
   default: 0.5
+  decimals: 2
   range: 0,1
 
 - name: segment_fillgap
   label: Hold time (seconds)
   type: double
   default: 0.02
+  decimals: 4
   range: 0,1000000
 
 - name: segment_minlen
   label: Minimal duration (seconds)
   type: double
   default: 0.02
+  decimals: 4
   range: 0,1000000
 
 

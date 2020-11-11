@@ -35,16 +35,8 @@ main:
   none_label: Use all
   default_disabled: True
   default: 0.1
-  decimals: 4
-  range: 0,1000
-
-- name: fraction_data_nodec
-  label: fraction_data no dec
-  type: optional_double
-  none_label: Use all
-  default_disabled: True
-  default: 0.1
-  range: 0,1000
+  decimals: 3
+  range: 0,1
 
 - name: seed
   label: fraction_data_seed
@@ -52,6 +44,8 @@ main:
   none_label: No seed
   default_disabled: True
   default: 1
+  range: 1,1000
+
 
 - type: text
   text: '<b>Network parameters</b>:<br />
@@ -92,14 +86,14 @@ main:
     label: pre_nb_conv=2^downsampling
     type: int
     default: 2
-    range: 1,1000
+    range: 1,100
 
 
 - name: nb_hist
   label: nb_hist
   type: int
   default: 128
-  range: 1,1000
+  range: 1,100000
 
 - name: ignore_boundaries
   label: ignore boundaries
@@ -116,11 +110,14 @@ main:
   label: Filter duration
   type: int
   default: 16
+  range: 1,1000
 
 - name: nb_conv
   label: nb_conv
   type: int
   default: 3
+  range: 1,100
+
 
 - type: text
   text: 'Per nb_conv - should be space-separated list of "True" and "False",
@@ -142,6 +139,7 @@ main:
 - name: learning_rate
   label: Learning rate
   type: double
+  decimals: 6
   default: 0.0001
 
 - name: nb_epoch
