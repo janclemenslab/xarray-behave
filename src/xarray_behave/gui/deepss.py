@@ -34,50 +34,6 @@ except ImportError as e:
 package_dir = xb.__path__[0]
 
 
-def predict(ds):
-    dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_predict.yaml",
-                        title='Predict labels using DeepSS')
-    dialog.show()
-    result = dialog.exec_()
-
-    if result == QtGui.QDialog.Accepted:
-        form = dialog.form.get_form_data()
-        model_path = form['model_path']
-        model_path = model_path.rsplit('_',1)[0]  # split off suffix
-
-        logging.info('   running inference.')
-        events, segments, _ = dss.predict.predict(ds.song_raw.compute(), model_path, verbose=1, batch_size=96,
-                                                  event_thres=form['event_thres'], event_dist=form['event_dist'],
-                                                  event_dist_min=form['event_dist_min'], event_dist_max=form['event_dist_max'],
-                                                  segment_thres=form['event_thres'], segment_fillgap=form['segment_fillgap'],
-                                                  segment_minlen=form['segment_minlen'],
-                                                  )
-        return events, segments
-    else:
-        logging.info('   aborting.')
-        return None
-
-# def update_predictions(ds):
-#     from xarray_behave.gui.formbuilder import YamlFormWidget
-
-#     import sys
-#     from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
-#     import pyqtgraph as pg
-
-#     def save_as():
-#         print('saved')
-
-#     app = pg.QtGui.QApplication([])
-#     win = pg.QtGui.QMainWindow()
-
-#     win.setWindowTitle("Configure training")
-#     widget = YamlFormWidget(yaml_file="/Users/janc/Dropbox/code.py/xarray_behave/src/xarray_behave/gui/forms/update_labels.yaml")
-#     widget.mainAction.connect(save_as)
-#     win.setCentralWidget(widget)
-#     win.show()
-
-
-
 def data_loader_wav(filename):
     # load the recording
     fs, x = scipy.io.wavfile.read(filename)
@@ -111,7 +67,8 @@ def make(data_folder, store_folder,
          make_single_class_datasets: bool = False,
          split_train_in_two: bool = True,
          event_std_seconds: float = 0,
-         gap_seconds: float = 0):
+         gap_seconds: float = 0,
+         delete_intermediat_store: bool = True):
 
     annotation_loader = pd.read_csv
     files_annotation = glob(data_folder + '/*.csv')
@@ -270,6 +227,6 @@ def make(data_folder, store_folder,
     # save as npy_dir
     logging.info(f'  Saving to {store_folder}.')
     dss.npy_dir.save(store_folder, store)
-
-    # delete intermediate store
+    if delete_intermediat_store:
+        pass  # TODO delete intermediate store
     pass
