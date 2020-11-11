@@ -118,7 +118,6 @@ class Events(UserDict):
             for name, cat in zip(self.names, self.categories.values()):
                 if name not in df.name.values:
                     stop_seconds = np.nan if cat == 'event' else 0  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
-                    print(name, cat, stop_seconds)
                     df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=stop_seconds)
         return df
 
