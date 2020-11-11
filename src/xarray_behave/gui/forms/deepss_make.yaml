@@ -2,81 +2,105 @@ main:
 
 - type: text
   text: '<b>Make dataset for training</b>:<br />
-    Export audio and annotations data for multiple recordings
-    into a single directory using "File/Export for DeepSS".
-
-    Will assemble, split by file or fraction etc.'
+    Export audio as wave or npz files and annotations data as csv
+    for multiple recordings into a single directory using "File/Export for DeepSS".
+    Will assemble, split files or fraction etc.'
 
 - name: data_folder
   label: Data folder
   type: file_dir
   default: " "
+  help: Folder with annotations in csv files and audio in wav or npz files.
 
 - name: store_folder
   label: Store folder
   type: file_dir
   default: " "
+  help: Folder for saving the assembled data structure.
 
 - name: make_single_class_datasets
-  label: Make additional targets for each song type
+  label: Make training targets for individual song types
   type: bool
   default: True
+  help: Make training target for individual song types. This will be done
+    in addition to the target for training a network to annotate
+    all song types.
 
 - name: split_train_in_two
   label: Split train in two
   type: bool
   default: True
-  help: 'avoid start/end selection'
+  help: 'Normally, when splitting train:test 80:20, train will be either at the first
+  or the last 20% of a recording. Toggling this will split train:train:test 40:40:20 - now test
+  can also occupy the central 20% of the recording.'
 
 - name: event_std_seconds
   label: Event std (seconds)
   type: double
   default: 0
+  decimals: 4
   range: 0,100000
+  help: Replace each event in the target by a Gaussian.
 
 - name: gap_seconds
   label: Gap duration (seconds)
   type: double
   default: 0
   range: 0,100000
+  decimals: 4
+  help: Introduce small gap between adjacent segments to facilitate post-processing
 
+
+- type: text
+  text: '
+    Splits:
+    <ul>
+      <li>train (optimize the network)</li>
+      <li>validation (assess network performance during training and steer training)</li>
+      <li>test (independent data to assess network performance after training)</li>
+    </ul>
+    Split <i>files</i>: select a fraction of files for the specific split. The full file will be used.<br />
+    Split <i>samples</i>: select a fraction of data from each file.<br />'
 
 - name: train_split
   label: Train split
   type: list
-  default: "By fraction"
-  options: "By file,By fraction"
+  default: "samples"
+  options: "files,samples"
 
 - name: train_split_fraction
   label: Fraction
   type: double
   default: 0.8
+  decimals: 2
   range: 0,1
 
 
 - name: val_split
   label: Validation split
   type: list
-  default: "By fraction"
-  options: "By file,By fraction"
+  default: "samples"
+  options: "files,samples"
 
 - name: val_split_fraction
   label: Fraction
   type: double
   default: 0.2
+  decimals: 2
   range: 0,1
 
 
 - name: test_split
   label: Test split
   type: list
-  default: "By file"
-  options: "By file,By fraction"
+  default: "files"
+  options: "files,samples"
 
 - name: test_split_fraction
   label: Fraction
   type: double
   default: 0.1
+  decimals: 2
   range: 0,1
 
 

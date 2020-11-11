@@ -35,6 +35,15 @@ main:
   none_label: Use all
   default_disabled: True
   default: 0.1
+  decimals: 4
+  range: 0,1000
+
+- name: fraction_data_nodec
+  label: fraction_data no dec
+  type: optional_double
+  none_label: Use all
+  default_disabled: True
+  default: 0.1
   range: 0,1000
 
 - name: seed

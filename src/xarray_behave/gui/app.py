@@ -299,7 +299,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             file_splits = dict()
             data_splits = dict()
             for part in parts:
-                if form_data[part + '_split']=='By file':
+                if form_data[part + '_split']=='files':
                     file_splits[part] = form_data[part + '_split_fraction']
                 else:
                     data_splits[part] = form_data[part +
