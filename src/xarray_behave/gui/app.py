@@ -7,7 +7,7 @@ import sys
 import logging
 import time
 from pathlib import Path
-from functools import partial
+from functools import lru_cache, partial
 import warnings
 import defopt
 import yaml
@@ -22,7 +22,7 @@ import scipy.io.wavfile
 import soundfile
 import pathlib
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict, Any
 
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
@@ -321,6 +321,45 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     def deepss_train(self, qt_keycode):
 
+        def _filter_form_data(form_data: Dict[str, Any], cli: bool = False) -> Dict[str, Any]:
+            """[summary]
+
+            Args:
+                form_data (Dict[Any]): [description]
+                cli (bool, optional): Process boolean flags. Defaults to False.
+
+            Returns:
+                Dict[Any]: [description]
+            """
+
+            form_data['model_name'] = 'tcn'
+            if form_data['frontend'] == 'Yes':
+                form_data['model_name'] += form_data['frontend_type']
+                form_data['pre_nb_conv'] = int(np.ceil(np.log2(form_data['pre_nb_conv'])))
+            # del form_data['frontend']
+
+            form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
+            form_data = {k: v for k, v in form_data.items() if v not in ['Yes', 'No', None]}
+
+            if not len(form_data['y_suffix']):
+                del form_data['y_suffix']
+
+            for field in ['seed', 'fraction_data', 'reduce_lr_patience']:
+                if field in form_data and form_data[field] is None:
+                    del form_data[field]
+
+            form_data['use_separable'] = ' '.join(form_data['use_separable'])
+            if cli:
+                for field in ['ignore_boundaries', 'reduce_lr', 'tensorboard']:
+                    if field in form_data:
+                        if form_data[field] is False:  # rename and pre-prend "no_"
+                            del form_data[field]
+                            form_data['no_' + field] = ''
+                        else:  # empyt value
+                            form_data[field] = ''
+
+            return form_data
+
         def save(arg):
             savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save configuration to', '',
                                                         filter="yaml files (*.yaml);;all files (*)")
@@ -332,15 +371,18 @@ class MainWindow(pg.QtGui.QMainWindow):
                 logging.info(f"Done.")
 
         def make_cli(arg):
-            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Script name', '',
-                                                        filter="all files (*)")
+            script_ext = 'cmd' if os.name == 'nt' else 'sh'
+            savefilename = 'train.' + script_ext
+            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Script name', savefilename,
+                                                        filter=f"script (*.{script_ext};;all files (*)")
             if len(savefilename):
-                data = dialog.form.get_form_data()
+                form_data = dialog.form.get_form_data()
+                form_data = _filter_form_data(form_data, cli=True)
+
                 cmd = 'python3 -m dss.train'
                 # FIXME formatting
-                for key, val in data.items():
+                for key, val in form_data.items():
                     cmd += f" --{key.replace('_','-')} {val}"
-                print(cmd)
                 with open(savefilename, 'w') as f:
                     f.write(cmd)
                 logging.info(f"Done.")
@@ -359,7 +401,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                               caption="Open Data Folder (*.npy)",
                                                               filter="npy folders (*.npy);;all files (*)")
         # TODO: check that this is a valid data_dir!
-
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_train.yaml",
                             title='Train network',
                             # main_callback=train,
@@ -373,21 +414,21 @@ class MainWindow(pg.QtGui.QMainWindow):
         result = dialog.exec_()
         if result == QtGui.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
+            form_data = _filter_form_data(form_data)
 
-            form_data['model_name'] = 'tcn'
-            if form_data['frontend'] == 'Yes':
-                form_data['model_name'] += form_data['frontend_type']
-                form_data['pre_nb_conv'] = int(np.ceil(np.log2(form_data['pre_nb_conv'])))
 
-            form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
-            form_data = {k: v for k, v in form_data.items() if v not in ['Yes', 'No', None]}
-
+            got_dss = False
             try:
                 import dss.train
-                dss.train.train(**form_data)
+                got_dss = True
             except ImportError:
-                logging.exception('need to install dss. alternatively, make scripts and run training elsewhere.')
+                logging.exception('Need to install dss. Alternatively, make scripts and run training elsewhere.')
 
+            if got_dss:
+                # start in independent process, otherwise GUI will freeze during training
+                import multiprocessing as mp
+                train_process = mp.Process(group=None, target=dss.train.train, kwargs=form_data)
+                train_process.start()
 
     @classmethod
     def from_wav(cls, wav_filename=None, app=None, qt_keycode=None, events_string='',
@@ -404,6 +445,8 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 title=f'Make new dataset from wave file {wav_filename}')
             dialog.form['target_samplingrate'] = wav_fileinfo.samplerate
             dialog.form['spec_freq_max'] = wav_fileinfo.samplerate / 2
+            # dialog.form['target_samplingrate'] = 10_000#wav_fileinfo.samplerate
+            # dialog.form['spec_freq_max'] = 10_000/2#wav_fileinfo.samplerate / 2
 
             # set default based on data file
             annotation_path = os.path.splitext(wav_filename)[0] + '.csv'
@@ -512,12 +555,10 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 form_data = dialog.form.get_form_data()
                 logging.info(f"Making new dataset from {hdf5_filename}.")
-                if form_data['target_samplingrate'] < 1:
-                    form_data['target_samplingrate'] = None
 
                 event_names = []
                 event_classes = []
-                if form_data['init_annotations'] and len(form_data['events_string']):
+                if len(form_data['events_string']):
                     for pair in form_data['events_string'].split(';'):
                         items = pair.strip().split(',')
                         if len(items)>0:
@@ -962,7 +1003,7 @@ class PSV(MainWindow):
         view_audio = self.bar.addMenu("Audio")
         self._add_keyed_menuitem(view_audio, "Play waveform as audio", self.play_audio, "E")
         view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio, "Initialize or edit annotation types", self.edit_annotation_types)
+        self._add_keyed_menuitem(view_audio, "Add or edit annotation types", self.edit_annotation_types)
         view_audio.addSeparator()
         self._add_keyed_menuitem(view_audio, "Show annotations", partial(self.toggle, 'show_songevents'), "V",
                                 checkable=True, checked=self.show_songevents)
@@ -978,13 +1019,13 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.dec_freq_res, "R")
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.inc_freq_res, "T")
         view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio, "Move events", partial(self.toggle, 'movable_events'), "M",
+        self._add_keyed_menuitem(view_audio, "Allow moving annotations", partial(self.toggle, 'movable_events'), "M",
                                 checkable=True, checked=self.movable_events)
-        self._add_keyed_menuitem(view_audio, "Move only selected events", partial(self.toggle, 'move_only_current_events'), None,
+        self._add_keyed_menuitem(view_audio, "Move selected annotation type", partial(self.toggle, 'move_only_current_events'), None,
                                 checkable=True, checked=self.move_only_current_events)
-        self._add_keyed_menuitem(view_audio, "Delete events of selected type in view",
+        self._add_keyed_menuitem(view_audio, "Delete selected annotation type in view",
                                 self.delete_current_events, "U")
-        self._add_keyed_menuitem(view_audio, "Delete all events in view", self.delete_all_events, "Y")
+        self._add_keyed_menuitem(view_audio, "Delete all annotation type in view", self.delete_all_events, "Y")
 
         view_train = self.bar.addMenu("DeepSS")
         self._add_keyed_menuitem(view_train, "Make dataset for training", self.deepss_make, None)
@@ -1359,12 +1400,18 @@ class PSV(MainWindow):
         if self.move_only_current_events and self.current_event_index != region.event_index:
             return
 
+        event_name_to_move = self.current_event_name
+        if self.current_event_index != region.event_index:
+            event_name_to_move = self.event_times.names[region.event_index]
+
         # this could be done by the view:
         f = scipy.interpolate.interp1d(region.xrange, self.trange,
                                        bounds_error=False, fill_value='extrapolate')
         new_region = f(region.getRegion())
-        self.event_times.move_time(self.current_event_name, region.bounds, new_region)
-        logging.info(f'  Moved {self.current_event_name} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
+
+        # need to figure out event_name of the moved one if moving non-selected event
+        self.event_times.move_time(event_name_to_move, region.bounds, new_region)
+        logging.info(f'  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
         self.update_xy()
 
     def on_position_change_finished(self, position):
@@ -1372,13 +1419,17 @@ class PSV(MainWindow):
         if self.move_only_current_events and self.current_event_index != position.event_index:
             return
 
+        event_name_to_move = self.current_event_name
+        if self.current_event_index != region.event_index:
+            event_name_to_move = self.event_times.names[region.event_index]
+
         # this should be done by the view:
         # convert position to time coordinates (important for spec_view since x-axis does not correspond to time)
         f = scipy.interpolate.interp1d(position.xrange, self.trange,
                                        bounds_error=False, fill_value='extrapolate')
         new_position = f(position.pos()[0])
-        self.event_times.move_time(self.current_event_name, position.position, new_position)
-        logging.info(f'  Moved {self.current_channel_name} from t=[{position.position:1.4f} to {new_position:1.4f} seconds.')
+        self.event_times.move_time(event_name_to_move, position.position, new_position)
+        logging.info(f'  Moved {event_name_to_move} from t=[{position.position:1.4f} to {new_position:1.4f} seconds.')
         self.update_xy()
 
     def on_position_dragged(self, fly, pos, offset):
