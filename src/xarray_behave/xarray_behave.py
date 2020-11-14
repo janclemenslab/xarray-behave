@@ -685,32 +685,27 @@ def from_data(filepath, data, sampling_rate, target_samplerate=None,
                                'amplitude_units': 'volts'})
     dataset_data['song_raw'] = song_raw
 
-    if event_names is not None and event_categories is not None:
-        song_events_data = np.zeros((len(time), len(event_names)), dtype=np.uint)
-        song_events = xr.DataArray(data=song_events_data,
-                    dims=['time', 'event_types'],
-                    coords={'time': time,
-                            'event_types': event_names,
-                            'event_categories': (('event_types'), event_categories)},
-                    attrs={'description': 'Song annotations',
-                            'sampling_rate_Hz': sampling_rate,
-                            'time_units': 'seconds',
-                           })
-        dataset_data['song_events'] = song_events
-
+    event_times = annot.Events()
     if annotation_path is not None:
         try:
             df = pd.read_csv(annotation_path)
-            ds_eventtimes = annot.Events.from_df(df).to_dataset()
-            dataset_data['event_times'] = ds_eventtimes.event_times
-            dataset_data['event_names'] = ds_eventtimes.event_names
+            event_times = annot.Events.from_df(df)
         except Exception as e:
             logging.exception(e)
+
+    if event_names is not None and event_categories is not None:
+        for event_name, event_category in zip(event_names, event_categories):
+            if event_name not in event_times:
+                event_times.add_name(event_name, event_category)
+
+    ds_eventtimes = event_times.to_dataset()
+    dataset_data['event_names'] = ds_eventtimes.event_names
+    dataset_data['event_times'] = ds_eventtimes.event_times
+
 
     # MAKE THE DATASET
     ds = xr.Dataset(dataset_data, attrs={})
     ds.coords['time'] = time
-    # ds.coords['nearest_frame'] = ('time', (time/100).astype(np.uint))  # do we need this?
 
     # save command line args
     ds.attrs = {'video_filename': '',
