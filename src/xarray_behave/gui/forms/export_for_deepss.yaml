@@ -51,6 +51,6 @@ main:
   help: 'To prevent clipping for WAV, which clips audio to [-1, 1] if data is float.'
 
 - name: okay_button
-  label: Save inference
+  label: Export data
   type: button
   default: main action

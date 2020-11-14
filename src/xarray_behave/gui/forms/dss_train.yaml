@@ -21,11 +21,9 @@ main:
 
 # populate as list from dataset
 - name: y_suffix
-  label: y_suffix
+  label: Song type
   type: optional_list
-  default: null
-  options: ''
-  help: 'Select song type to fit the network to. If nothing selected, will fit network for all targets in the data set'
+  help: 'Select song type to fit the network to. If nothing is selected, will fit network for all targets in the data set'
 
 - name: fraction_data
   label: Data fraction
@@ -89,7 +87,7 @@ main:
 - name: nb_hist
   label: Chunk duration (samples)
   type: int
-  default: 128
+  default: 256
   range: 1,100000
   help: Number of samples processed at once. Sets the maximal temporal context available for inference.
 
@@ -102,13 +100,13 @@ main:
 - name: nb_filters
   label: Number of filters
   type: int
-  default: 16
+  default: 32
   range: 1,1024
 
 - name: kernel_size
   label: Filter duration (samples)
   type: int
-  default: 16
+  default: 32
   range: 1,1000
 
 - name: nb_conv
@@ -125,6 +123,7 @@ main:
 
 - type: text
   text: 'One boolean ("True" or "False") per TCN block. Separate by spaces.
+        Produces networks with better performance with less training data.
         Only the first few blocks should be made separable if at all.'
 
 - type: text
@@ -139,7 +138,7 @@ main:
 - name: nb_epoch
   label: Number of epochs
   type: int
-  default: 100
+  default: 400
   range: 1,100000
   help: Maximal number of training epochs. Will stop early if performance does not improve for 20 epochs.
 

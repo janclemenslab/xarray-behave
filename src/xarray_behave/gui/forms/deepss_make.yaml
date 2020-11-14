@@ -24,18 +24,10 @@ main:
   default: True
   help: Make additional training targets for individual song types.
 
-- name: split_train_in_two
-  label: Split train in two
-  type: bool
-  default: True
-  help: 'When splitting train:test 80:20, train will be either at the first
-  or the last 20% of a recording. Split train in two (train:train:test) to 40:40:20. Now test
-  can also occupy the central 20% of the recording.'
-
 - name: event_std_seconds
   label: Standard deviation of event times (seconds)
   type: double
-  default: 0.016
+  default: 0.0016
   decimals: 4
   range: 0,100000
   help: Replace each event in the target by a Gaussian of the specified standard deviation.
@@ -51,17 +43,11 @@ main:
 
 - type: text
   text: '
-    Splits:
-    <ul>
-      <li>train (optimize the network)</li>
-      <li>validation (assess network performance during training and steer training)</li>
-      <li>test (independent data to assess network performance after training)</li>
-    </ul>
     Split <i>files</i>: select a fraction of files for the specific split. The full file will be used.<br />
     Split <i>samples</i>: select a fraction of data from each file.<br />'
 
 - name: train_split
-  label: Train split
+  label: Train split by
   type: list
   default: "samples"
   options: "files,samples"
@@ -73,9 +59,16 @@ main:
   decimals: 2
   range: 0,1
 
+- name: split_train_in_two
+  label: Split train in two
+  type: bool
+  default: True
+  help: 'When splitting train:test 80:20, train will be either at the first
+  or the last 20% of a recording. Split train in two (train:train:test) to 40:40:20. Now test
+  can also occupy the central 20% of the recording.'
 
 - name: val_split
-  label: Validation split
+  label: Validation split by
   type: list
   default: "samples"
   options: "files,samples"
@@ -89,7 +82,7 @@ main:
 
 
 - name: test_split
-  label: Test split
+  label: Test split by
   type: list
   default: "files"
   options: "files,samples"

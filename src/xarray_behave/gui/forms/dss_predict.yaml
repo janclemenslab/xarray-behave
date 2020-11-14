@@ -1,6 +1,8 @@
 main:
 
 # provide this via file dialog and display info
+# e.g. expected sample rate (option to resample),
+# song types (standard - append "dss", allow renaming)
 - name: model_path
   label: model
   type: file_open

@@ -84,6 +84,6 @@ main:
 
 
 - name: generate
-  label: Okay
+  label: Load Data
   type: button
   default: main action

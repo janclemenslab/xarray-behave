@@ -74,6 +74,6 @@ main:
 
 
 - name: generate
-  label: Okay
+  label: Load data
   type: button
   default: main action

@@ -25,24 +25,28 @@ main:
   default: 200
 
 - name: annotation_path
-  label: Try to load annotations from
+  label: Load annotations from
   type: file_dir
   default: " "
   help: 'will try default STEM + .csv'
 
-- name: init_annotations
-  label: Initialize annotations
-  type: bool
-  default: False
+- type: text
+  text: 'Enter each song type as a comma separate name,category pair. Name can be any string w/o a space, comma or semicolon.
+  Category can be either "event" for pulse like events or segements for syllables with a beginning and an end.
+  Multiple song types should be separated by a semicolon: "pulse,event;sine,segment;aggression,segment".'
 
 - name: events_string
-  label: Event names and categories (event, segment)
-  type: string
-  default: "syllable,segment"
+  label: Initialize annotations
+  type: optional_string
+  default_disabled: True
+  none_label: what
+  default: ""
 
 - name: target_samplingrate
   label: Samplerate for events in Hz (Defaults to samplerate of the recording)
-  type: int
+  type: optional_int
+  default_disabled: True
+  none_label: Use audio rate
   range: 1,10000000
   default: 1000
 
@@ -99,6 +103,6 @@ main:
 
 
 - name: generate
-  label: Okay
+  label: Load data
   type: button
   default: main action
