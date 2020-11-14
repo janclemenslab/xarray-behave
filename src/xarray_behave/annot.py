@@ -2,18 +2,17 @@
 
 TODO: From/to traces
 """
-
-
 import numpy as np
 import xarray as xr
 import pandas as pd
 from collections import UserDict
 import pandas as pd
 import numpy as np
+from typing import Optional, List
 
 class Events(UserDict):
 
-    def __init__(self, data, categories=None):
+    def __init__(self, data=None, categories=None):
         """[summary]
 
         Args:
@@ -21,6 +20,9 @@ class Events(UserDict):
             categories (dict[str: str]): name, category mapping
 
         """
+        if data is None:
+            data = dict()
+
         super().__init__(data)
 
         for key, val in self.items():
@@ -193,21 +195,27 @@ class Events(UserDict):
             deleted_time = None
         return deleted_time
 
-    def select_range(self, name, t0, t1, strict: bool = True):
+    def select_range(self, name: str, t0: Optional[float] = None, t1: Optional[float] = None, strict: bool = True):
         """Get indices of events within the range.
 
         Need to start and stop after t0 and before t1 (non-inclusive bounds).
 
         Args:
-            name ([type]): [description]
-            t0 ([type]): [description]
-            t1 ([type]): [description]
-            strict (bool): if true, only matches events that start AND stop within the range,
+            name (str): [description]
+            t0 (float, optional): [description]
+            t1 (float, optional): [description]
+            strict (bool, optional): if true, only matches events that start AND stop within the range,
                            if false, matches events that start OR stop within the range
 
         Returns:
             List[uint]: List of indices of events within the range
         """
+
+        if t0 is None:
+            t0 = 0
+        if t1 is None:
+            t1 = np.inf
+
         if strict:
             within_range = np.logical_and(self.start_seconds(name)>t0, self.stop_seconds(name)<t1)
         else:
