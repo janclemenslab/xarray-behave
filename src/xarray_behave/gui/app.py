@@ -130,19 +130,18 @@ class MainWindow(pg.QtGui.QMainWindow):
         """Save annotations to csv.
         Each annotation is a row with name, start_seconds, stop_seconds.
         start_seconds = stop_seconds for events like pulses."""
-        if 'song_events' in self.ds:
-            try:
-                csv_filename = os.path.splitext(self.ds.attrs['datename'])[0] + '_songmanual.csv'
-                savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
-                                    csv_filename)
-            except KeyError:
-                savefilename = ''
-            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save annotations to', str(savefilename),
-                                                                    filter="CSV files (*.csv);;all files (*)")
-            if len(savefilename):
-                logging.info(f'   Saving annotations to {savefilename}.')
-                self.export_to_csv(savefilename)
-                logging.info(f'Done.')
+        try:
+            csv_filename = os.path.splitext(self.ds.attrs['datename'])[0] + '_songmanual.csv'
+            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
+                                csv_filename)
+        except KeyError:
+            savefilename = ''
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save annotations to', str(savefilename),
+                                                                filter="CSV files (*.csv);;all files (*)")
+        if len(savefilename):
+            logging.info(f'   Saving annotations to {savefilename}.')
+            self.export_to_csv(savefilename)
+            logging.info(f'Done.')
 
 
     def export_to_csv(self, savefilename: str = None,
@@ -762,6 +761,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     @classmethod
     def filter_song(cls, ds, f_low, f_high):
+        # TODO paralellize over channels
         if f_low is None:
             f_low = 1.0
         if 'song_raw' in ds:  # this will take a long time:
