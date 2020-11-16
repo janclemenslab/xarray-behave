@@ -1,9 +1,9 @@
 main:
 
 - name: annotation_path
-  label: Try to load annotations from
+  label: file with annotations
   type: file_dir
-  default: " "
+  default: ""
   help: 'will try default STEM + .csv'
 
 - name: init_annotations

@@ -25,7 +25,7 @@ main:
   default: 200
 
 - name: annotation_path
-  label: Load annotations from
+  label: file with annotations
   type: file_dir
   default: " "
   help: 'will try default STEM + .csv'
