@@ -77,8 +77,8 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.bar = self.menuBar()
 
         self.file_menu = self.bar.addMenu("File")
-        self._add_keyed_menuitem(self.file_menu, "New from wav", self.from_wav)
-        self._add_keyed_menuitem(self.file_menu, "New from hdf5", self.from_hdf5)
+        self._add_keyed_menuitem(self.file_menu, "New from audio file", self.from_wav)
+        self._add_keyed_menuitem(self.file_menu, "New from hdf5 file", self.from_hdf5)
         self._add_keyed_menuitem(self.file_menu, "New from data folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
@@ -91,8 +91,8 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
-        self.hb.addWidget(self.add_button("New dataset from wav", self.from_wav))
-        self.hb.addWidget(self.add_button("New dataset from hdf5", self.from_hdf5))
+        self.hb.addWidget(self.add_button("New dataset from audio file", self.from_wav))
+        self.hb.addWidget(self.add_button("New dataset from hdf5 file", self.from_hdf5))
         self.hb.addWidget(self.add_button("New dataset from data folder", self.from_dir))
         self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
 
@@ -442,7 +442,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             wav_fileinfo = soundfile.info(wav_filename)
             logging.info(wav_fileinfo)
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
-                                title=f'Make new dataset from wave file {wav_filename}')
+                                title=f'Load audio file {wav_filename}')
             dialog.form['target_samplingrate'] = wav_fileinfo.samplerate
             dialog.form['spec_freq_max'] = wav_fileinfo.samplerate / 2
             # dialog.form['target_samplingrate'] = 10_000#wav_fileinfo.samplerate
@@ -522,7 +522,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             hdf5_keys.remove('/')  # remove root
 
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_hdf5.yaml",
-                                title=f'Make new dataset from hdf5 file {hdf5_filename}')
+                                title=f'Load hdf5 file {hdf5_filename}')
 
 
             dialog.form.fields['data_set'].set_options(hdf5_keys)  # add datasets
@@ -597,7 +597,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                                     caption='Select data directory')
         if dirname:
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
-                                title=f'Make new dataset from data directory {dirname}')
+                                title=f'Dataset from data directory {dirname}')
 
             # initialize form data with cli args
             if spec_freq_min is not None:
@@ -949,8 +949,8 @@ class PSV(MainWindow):
         # build UI/controller
         # MENU
         self.file_menu.clear()
-        self._add_keyed_menuitem(self.file_menu, "New from wav", self.from_wav)
-        self._add_keyed_menuitem(self.file_menu, "New from hdf5", self.from_hdf5)
+        self._add_keyed_menuitem(self.file_menu, "New from audio file", self.from_wav)
+        self._add_keyed_menuitem(self.file_menu, "New from hdf5 file", self.from_hdf5)
         self._add_keyed_menuitem(self.file_menu, "New from data folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
