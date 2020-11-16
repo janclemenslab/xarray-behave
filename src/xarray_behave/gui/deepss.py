@@ -95,7 +95,7 @@ def make(data_folder, store_folder,
          split_train_in_two: bool = True,
          event_std_seconds: float = 0,
          gap_seconds: float = 0,
-         delete_intermediat_store: bool = True):
+         delete_intermediate_store: bool = True):
 
     annotation_loader = pd.read_csv
     files_annotation = glob(data_folder + '/*.csv')
@@ -172,7 +172,7 @@ def make(data_folder, store_folder,
             for part in parts:
                 if part in file_splits and file_base in file_splits[part]:
                     file_split_dict[file_base] = part
-
+    breakpoint()
     data_split_targets = []
     if len(data_splits):
         fractions = np.array(list(data_splits.values()))
@@ -209,7 +209,6 @@ def make(data_folder, store_folder,
 
         # make initial annotation matrix
         y = dsm.make_annotation_matrix(df, nb_samples, fs, class_names)
-
         # blur events
         # OPTIONAL but highly recommended
         if event_std_seconds > 0:
@@ -235,24 +234,26 @@ def make(data_folder, store_folder,
             store[name]['x'].append(x)
             store[name]['y'].append(dsm.normalize_probabilities(y))
             # make prediction targets for individual song types [OPTIONAL]
-            for cnt, class_name in enumerate(class_names[1:]):
-                store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(y[:, [0, cnt+1]]))
+            if make_single_class_datasets:
+                for cnt, class_name in enumerate(class_names[1:]):
+                    store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(y[:, [0, cnt+1]]))
         else:
             # split data from each remaining file into train and test chunks according to `splits`
             split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets)
             logging.info(f'    splitting {data_splits} into {data_split_targets}.')
-            for name in data_split_targets:
-                store[name]['x'].append(split_arrays['x'][name])
-                store[name]['y'].append(dsm.normalize_probabilities(split_arrays['y'][name]))
-                # make prediction targets for individual song types [OPTIONAL]
-                for cnt, class_name in enumerate(class_names[1:]):
-                    store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(split_arrays['y'][name][:, [0, cnt+1]]))
+            if make_single_class_datasets:
+                for name in data_split_targets:
+                    store[name]['x'].append(split_arrays['x'][name])
+                    store[name]['y'].append(dsm.normalize_probabilities(split_arrays['y'][name]))
+                    # make prediction targets for individual song types [OPTIONAL]
+                    for cnt, class_name in enumerate(class_names[1:]):
+                        store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(split_arrays['y'][name][:, [0, cnt+1]]))
 
     # report
     logging.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/test/val samples.")
     # save as npy_dir
     logging.info(f'  Saving to {store_folder}.')
     dss.npy_dir.save(store_folder, store)
-    if delete_intermediat_store:
+    if delete_intermediate_store:
         pass  # TODO delete intermediate store
     pass
