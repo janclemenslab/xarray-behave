@@ -1745,7 +1745,7 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
     mainwin.show()
     if not len(source):
         pass
-    elif source.endswith('.wav'):
+    elif source.endswith('.wav') or source.endswith('.npz'):
         mainwin.windows.append(MainWindow.from_wav(wav_filename=source,
                                                    events_string=events_string,
                                                    target_samplingrate=target_samplingrate,
