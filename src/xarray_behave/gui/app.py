@@ -439,12 +439,20 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                                     caption='Select audio file')
         # get samplerate
         if wav_filename:
-            wav_fileinfo = soundfile.info(wav_filename)
-            logging.info(wav_fileinfo)
+            if wav_filename.endswith('.npz'):
+                samplerate = np.load(wav_filename)['samplerate']
+            else:
+                try:  # to load as audio file
+                    wav_fileinfo = soundfile.info(wav_filename)
+                    samplerate = wav_fileinfo.samplerate
+                    logging.info(wav_fileinfo)
+                except:
+                    logging.info(f'{wav_filename} is not an audio file readable by pysoundfile.')
+
+
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
                                 title=f'Load audio file {wav_filename}')
-            dialog.form['target_samplingrate'] = wav_fileinfo.samplerate
-            dialog.form['spec_freq_max'] = wav_fileinfo.samplerate / 2
+            dialog.form['target_samplingrate'] = samplerate
 
             # set default based on data file
             annotation_path = os.path.splitext(wav_filename)[0] + '.csv'

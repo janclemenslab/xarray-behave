@@ -622,12 +622,17 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True,
     return dataset
 
 
-def from_wav(filepath, target_samplerate=None,
+def from_wav(filepath: str, target_samplerate=None,
              event_names=[], event_categories=[],
              annotation_path=None):
     import soundfile
     logging.info(f"Loading data from audiofile at {filepath}.")
-    data, sampling_rate = soundfile.read(filepath)
+    if filepath.endswith('.npz'):
+        with np.load(filepath) as file:
+            sampling_rate = file['samplerate']
+            data = file['song']
+    else:
+        data, sampling_rate = soundfile.read(filepath)
 
     if data.ndim==1:
         logging.info("   Data is 1d so prolly single-channel audio - appending singleton dimension.")
