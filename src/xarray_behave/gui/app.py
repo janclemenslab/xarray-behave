@@ -321,7 +321,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     def deepss_train(self, qt_keycode):
 
-        def _filter_form_data(form_data: Dict[str, Any], cli: bool = False) -> Dict[str, Any]:
+        def _filter_form_data(form_data: Dict[str, Any], is_cli: bool = False) -> Dict[str, Any]:
             """[summary]
 
             Args:
@@ -349,7 +349,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     del form_data[field]
 
             form_data['use_separable'] = ' '.join(form_data['use_separable'])
-            if cli:
+            if is_cli:
                 for field in ['ignore_boundaries', 'reduce_lr', 'tensorboard']:
                     if field in form_data:
                         if form_data[field] is False:  # rename and pre-prend "no_"
@@ -377,7 +377,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                         filter=f"script (*.{script_ext};;all files (*)")
             if len(savefilename):
                 form_data = dialog.form.get_form_data()
-                form_data = _filter_form_data(form_data, cli=True)
+                form_data = _filter_form_data(form_data, is_cli=True)
 
                 cmd = 'python3 -m dss.train'
                 # FIXME formatting
@@ -385,6 +385,8 @@ class MainWindow(pg.QtGui.QMainWindow):
                     cmd += f" --{key.replace('_','-')} {val}"
                 with open(savefilename, 'w') as f:
                     f.write(cmd)
+
+                # TODO: dialog to suggest editing the script (change paths, activate conda env, cluster specific stuff)
                 logging.info(f"Done.")
 
         def load(arg):
@@ -416,7 +418,6 @@ class MainWindow(pg.QtGui.QMainWindow):
             form_data = dialog.form.get_form_data()
             form_data = _filter_form_data(form_data)
 
-
             got_dss = False
             try:
                 import dss.train
@@ -445,8 +446,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 title=f'Load audio file {wav_filename}')
             dialog.form['target_samplingrate'] = wav_fileinfo.samplerate
             dialog.form['spec_freq_max'] = wav_fileinfo.samplerate / 2
-            # dialog.form['target_samplingrate'] = 10_000#wav_fileinfo.samplerate
-            # dialog.form['spec_freq_max'] = 10_000/2#wav_fileinfo.samplerate / 2
 
             # set default based on data file
             annotation_path = os.path.splitext(wav_filename)[0] + '.csv'
@@ -524,14 +523,12 @@ class MainWindow(pg.QtGui.QMainWindow):
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_hdf5.yaml",
                                 title=f'Load hdf5 file {hdf5_filename}')
 
-
             dialog.form.fields['data_set'].set_options(hdf5_keys)  # add datasets
             dialog.form.fields['data_set'].setValue(hdf5_keys[0])  # select first
 
             # set default based on data file
             annotation_path = os.path.splitext(hdf5_filename)[0] + '.csv'
             dialog.form.fields['annotation_path'].setText(annotation_path)  # select first
-
 
             # initialize form data with cli args
             if spec_freq_min is not None:
@@ -1647,7 +1644,13 @@ class PSV(MainWindow):
                     self.event_times.add_name(event_name, event_category)
 
             # update event-related attrs
-            self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            if 'song_events' in self.ds:
+                self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+            elif 'target_sampling_rate_Hz' in self.ds.attrs:
+                self.fs_other = self.ds.attrs['target_sampling_rate_Hz']
+            else:
+                self.fs_other = self.fs_song
+
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
 
