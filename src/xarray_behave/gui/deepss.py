@@ -172,7 +172,7 @@ def make(data_folder, store_folder,
             for part in parts:
                 if part in file_splits and file_base in file_splits[part]:
                     file_split_dict[file_base] = part
-    breakpoint()
+
     data_split_targets = []
     if len(data_splits):
         fractions = np.array(list(data_splits.values()))
@@ -242,7 +242,7 @@ def make(data_folder, store_folder,
             split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets)
             logging.info(f'    splitting {data_splits} into {data_split_targets}.')
             if make_single_class_datasets:
-                for name in data_split_targets:
+                for name in set(data_split_targets):
                     store[name]['x'].append(split_arrays['x'][name])
                     store[name]['y'].append(dsm.normalize_probabilities(split_arrays['y'][name]))
                     # make prediction targets for individual song types [OPTIONAL]
