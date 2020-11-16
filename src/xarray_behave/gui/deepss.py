@@ -31,8 +31,6 @@ except ImportError as e:
     print(e)
     print('you may need to install DeepSS: link_to_pypi')
 
-package_dir = xb.__path__[0]
-
 
 def data_loader_wav(filename):
     # load the recording
@@ -47,6 +45,7 @@ def data_loader_npz(filename):
     x = file['song']
     x = x[:, np.newaxis] if x.ndim==1 else x  # adds singleton dim for single-channel wavs
     return fs, x
+
 
 # auto register with decorator
 data_loaders = {'npz': data_loader_npz, 'wav': data_loader_wav, None: None}
@@ -72,7 +71,6 @@ def make(data_folder, store_folder,
 
     annotation_loader = pd.read_csv
     files_annotation = glob(data_folder + '/*.csv')
-
 
     # go through all annotation files and collect info on classes
     class_names = []
@@ -141,7 +139,6 @@ def make(data_folder, store_folder,
         file_splits = dsm.generate_file_splits(file_bases,
                                             splits=list(file_splits.values()),
                                             split_names=list(file_splits.keys()))
-
 
         for file_base in file_bases:
             for part in parts:
