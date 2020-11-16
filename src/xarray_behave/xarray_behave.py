@@ -626,7 +626,7 @@ def from_wav(filepath, target_samplerate=None,
              event_names=[], event_categories=[],
              annotation_path=None):
     import soundfile
-    logging.info(f"Loading data from {filepath}.")
+    logging.info(f"Loading data from audiofile at {filepath}.")
     data, sampling_rate = soundfile.read(filepath)
 
     if data.ndim==1:
@@ -641,7 +641,7 @@ def from_hdf5(filepath, data_set, sampling_rate, target_samplerate=None,
               event_names=[], event_categories=[],
               annotation_path=None):
     import h5py
-    logging.info(f"Loading dataset 'data_set' from {filepath}.")
+    logging.info(f"Loading dataset {data_set} from hdf5 file {filepath}.")
     with h5py.File(filepath, 'r') as f:
         data = f[data_set][:]
 
