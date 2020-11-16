@@ -115,6 +115,7 @@ def make(data_folder, store_folder,
         raise ValueError('No valid data files found.')
 
     fs, x = load_data(dfs[0])
+    fs = float(fs)
     nb_channels = x.shape[1]
 
     store = dsm.init_store(nb_channels=nb_channels,
