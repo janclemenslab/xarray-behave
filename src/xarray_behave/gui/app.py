@@ -165,10 +165,10 @@ class MainWindow(pg.QtGui.QMainWindow):
             if name not in which_events:
                 event_times.delete_name(name)
             else:
-                event_times[name] = event_times.filter_range(name, start_seconds, end_seconds)
+                event_times[name] = event_times.filter_range(name, start_seconds, end_seconds) - start_seconds
 
         df = event_times.to_df()
-        df = df.sort_values(by='start_seconds', ascending=False, ignore_index=True)
+        df = df.sort_values(by='start_seconds', ascending=True, ignore_index=True)
         df.to_csv(savefilename, index=False)
 
 
@@ -202,7 +202,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         if song.dtype == 'int64':
             song = song.astype(np.int32)
 
-        scipy.io.wavfile.write(savefilename, self.fs_song, song)
+        scipy.io.wavfile.write(savefilename, int(self.fs_song), song)
 
 
     def export_to_npz(self, savefilename: Optional[str] = None,
@@ -453,6 +453,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
                                 title=f'Load audio file {wav_filename}')
             dialog.form['target_samplingrate'] = samplerate
+            dialog.form['spec_freq_max'] = samplerate / 2
 
             # set default based on data file
             annotation_path = os.path.splitext(wav_filename)[0] + '.csv'
