@@ -240,6 +240,9 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Export to', str(savefilename),
                                                                 filter="all files (*)")
+        if not savefilename:
+            return
+
         savefilename_trunk = os.path.splitext(savefilename)[0]
 
         # get via dialog:
@@ -283,6 +286,8 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                         caption='Select data folder')
+        if not data_folder:
+            return
 
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/deepss_make.yaml",
                             title=f'Assemble dataset for training DeepSS')
@@ -990,6 +995,7 @@ class PSV(MainWindow):
         view_audio.addSeparator()
         self._add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), "G",
                                 checkable=True, checked=self.show_spec)
+        self._add_keyed_menuitem(view_audio, "Set display frequency limits", self.set_spec_freq)
         self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.dec_freq_res, "R")
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.inc_freq_res, "T")
         view_audio.addSeparator()
@@ -1291,6 +1297,19 @@ class PSV(MainWindow):
                 value=self.t0 / self.fs_song, min=0, max=self.tmax /self.fs_song)
         if okPressed:
             self.t0 = np.argmax(self.ds.sampletime.data>time)
+
+    def set_spec_freq(self, qt_keycode):
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/spec_freq.yaml",
+                            title=f'Set frequency limits in display')
+        dialog.show()
+        result = dialog.exec_()
+
+        if result == QtGui.QDialog.Accepted:
+            form_data = dialog.form.get_form_data()  # why call this twice
+            self.fmin = form_data['spec_freq_min']
+            self.fmax = form_data['spec_freq_max']
+            logging.info(f'Set frequency range for spectrogram display to {self.fmin}:{self.fmax} Hz.')
+            self.update_xy()
 
     def update_xy(self):
         self.x = self.ds.sampletime.data[self.time0:self.time1]
