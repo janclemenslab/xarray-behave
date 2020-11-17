@@ -22,7 +22,7 @@ import scipy.io.wavfile
 import soundfile
 import pathlib
 from dataclasses import dataclass
-from typing import Callable, Optional, Dict, Any
+from typing import Callable, Optional, Dict, Any, List
 
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
@@ -143,8 +143,8 @@ class MainWindow(pg.QtGui.QMainWindow):
 
 
     def export_to_csv(self, savefilename: str = None,
-                      start_seconds = 0, end_seconds = np.inf,
-                      which_events = None,
+                      start_seconds: float = 0, end_seconds: float = np.inf,
+                      which_events: Optional[List[str]] = None,
                       qt_keycode=None):
         """[summary]
 
@@ -262,7 +262,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             if form_data['which_events'] == 'all song types':
                 which_events = self.event_times.names
             else:
-                which_events = form_data['which_events']
+                which_events = [form_data['which_events']]
 
             start_seconds = form_data['start_seconds']
             end_seconds = form_data['end_seconds']
@@ -1394,8 +1394,8 @@ class PSV(MainWindow):
             return
 
         event_name_to_move = self.current_event_name
-        if self.current_event_index != region.event_index:
-            event_name_to_move = self.event_times.names[region.event_index]
+        if self.current_event_index != position.event_index:
+            event_name_to_move = self.event_times.names[position.event_index]
 
         # this should be done by the view:
         # convert position to time coordinates (important for spec_view since x-axis does not correspond to time)
@@ -1403,7 +1403,7 @@ class PSV(MainWindow):
                                        bounds_error=False, fill_value='extrapolate')
         new_position = f(position.pos()[0])
         self.event_times.move_time(event_name_to_move, position.position, new_position)
-        logging.info(f'  Moved {event_name_to_move} from t=[{position.position:1.4f} to {new_position:1.4f} seconds.')
+        logging.info(f'  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.')
         self.update_xy()
 
     def on_position_dragged(self, fly, pos, offset):
@@ -1714,13 +1714,13 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
     if not len(source):
         pass
     elif source.endswith('.wav') or source.endswith('.npz'):
-        mainwin.windows.append(MainWindow.from_wav(wav_filename=source,
+        mainwin.windows.append(MainWindow.from_file(filename=source,
                                                    events_string=events_string,
                                                    target_samplingrate=target_samplingrate,
                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
                                                    skip_dialog=skip_dialog))
     elif source.endswith('.h5') or source.endswith('.hdf5'):
-        mainwin.windows.append(MainWindow.from_hdf5(hdf5_filename=source,
+        mainwin.windows.append(MainWindow.from_file(filename=source,
                                                    events_string=events_string,
                                                    target_samplingrate=target_samplingrate,
                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
