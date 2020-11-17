@@ -8,7 +8,7 @@ import logging
 import os.path
 from pathlib import Path
 import pandas as pd
-
+from typing import List, Optional
 from . import (loaders as ld,
                metrics as mt,
                event_utils,
@@ -621,50 +621,76 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True,
     print(dataset)
     return dataset
 
-
-def from_wav(filepath: str, target_samplerate=None,
-             event_names=[], event_categories=[],
-             annotation_path=None):
-    import soundfile
-    logging.info(f"Loading data from audiofile at {filepath}.")
-    if filepath.endswith('.npz'):
-        with np.load(filepath) as file:
+def load_npz(filepath: str, dataset: Optional[str] = 'song'):
+    import numpy as np
+    logging.info(f"Loading data from NPZ file at {filepath}.")
+    with np.load(filepath) as file:
+        try:
             sampling_rate = file['samplerate']
-            data = file['song']
-    else:
-        data, sampling_rate = soundfile.read(filepath)
+        except KeyError:
+            sampling_rate = None
+        data = file[dataset]
+    return data, sampling_rate
+
+def load_npy(filepath: str, dataset: Optional[str] = None):
+    import numpy as np
+    logging.info(f"Loading data from NPY file {filepath}.")
+    data = np.load(filepath)
+    samplingrate = None
+    return data, samplingrate
+
+def load_audio(filepath: str, dataset: Optional[str] = None):
+    import soundfile
+    logging.info(f"Loading data from audio file at {filepath}.")
+    data, sampling_rate = soundfile.read(filepath)
+    return data, sampling_rate
+
+def load_h5(filepath: str, dataset: Optional[str] = 'samples'):
+    import h5py
+    logging.info(f"Loading dataset {dataset} from HDF5 file {filepath}.")
+    with h5py.File(filepath, 'r') as f:
+        data = f[dataset][:]
+    samplingrate = None
+    return data, samplingrate
+
+# def zarr(filepath):
+#     import zarr
+#     logging.info(f"Loading zarr file {filepath}.")
+#     xb.load()
+#     samplingrate = None
+#     return data, samplingrate
+
+data_loaders = {'audio': load_audio, 'npy': load_npy, 'npz': load_npz, 'h5': load_h5, 'wav': load_audio}
+
+def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Optional[float] = None,
+              samplerate: Optional[float] = None, dataset: Optional[str] = None,
+              event_names=[], event_categories=[], annotation_path: Optional[str] = None):
+    # TODO merge with from_data
+
+    data, samplerate_from_file = data_loaders[loader_name](filepath, dataset)
+
+    if samplerate is None:
+        samplerate = samplerate_from_file
 
     if data.ndim==1:
         logging.info("   Data is 1d so prolly single-channel audio - appending singleton dimension.")
         data = data[:, np.newaxis]
 
-    ds = from_data(filepath, data, sampling_rate, target_samplerate, event_names, event_categories, annotation_path)
-    return ds
+#     ds = from_data(filepath, data, samplerate, target_samplerate, event_names, event_categories, annotation_path)
+#     return ds
 
 
-def from_hdf5(filepath, data_set, sampling_rate, target_samplerate=None,
-              event_names=[], event_categories=[],
-              annotation_path=None):
-    import h5py
-    logging.info(f"Loading dataset {data_set} from hdf5 file {filepath}.")
-    with h5py.File(filepath, 'r') as f:
-        data = f[data_set][:]
 
-    if data.ndim==1:
-        logging.info("   Dataset is 1d so prolly single-channel data - appending singleton dimension.")
-        data = data[:, np.newaxis]
+# def from_data(filepath, data, samplerate, target_samplerate=None,
+#               event_names: Optional[List[str]] = None,
+#               event_categories: Optional[List[str]] = None,
+#               annotation_path=None):
 
-    if data.shape[0] < data.shape[1]:
-        logging.info("   Dataset should be [time x channels] but is of shape {data.shape} - transposing to {data.T.shape}.")
-        data = data.T
+    if event_names is None:
+        event_names = []
 
-    ds = from_data(filepath, data, sampling_rate, target_samplerate, event_names, event_categories, annotation_path)
-    return ds
-
-
-def from_data(filepath, data, sampling_rate, target_samplerate=None,
-              event_names=[], event_categories=[],
-              annotation_path=None):
+    if event_categories is None:
+        event_categories = []
 
     if event_names and not event_categories:
         logging.info('No event_categories specified - defaulting to segments')
@@ -674,18 +700,18 @@ def from_data(filepath, data, sampling_rate, target_samplerate=None,
         raise ValueError(f'event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}.')
 
     if target_samplerate is None:
-        target_samplerate = sampling_rate
+        target_samplerate = samplerate
 
     dataset_data = dict()
 
-    sampletime = np.arange(len(data)) / sampling_rate
+    sampletime = np.arange(len(data)) / samplerate
     time = np.arange(sampletime[0], sampletime[-1], 1 / target_samplerate)
 
     song_raw = xr.DataArray(data=data,  # cut recording to match new grid
                         dims=['sampletime', 'channels'],
                         coords={'sampletime': sampletime, },
                         attrs={'description': 'Song signal merged across all recording channels.',
-                               'sampling_rate_Hz': sampling_rate,
+                               'sampling_rate_Hz': samplerate,
                                'time_units': 'seconds',
                                'amplitude_units': 'volts'})
     dataset_data['song_raw'] = song_raw
@@ -716,7 +742,7 @@ def from_data(filepath, data, sampling_rate, target_samplerate=None,
     ds.attrs = {'video_filename': '',
                 'datename': filepath,
                 'root': '', 'dat_path': '', 'res_path': '',
-                'sampling_rate_Hz': sampling_rate,
+                'sampling_rate_Hz': samplerate,
                 'target_sampling_rate_Hz': target_samplerate}
     logging.info(ds)
     return ds

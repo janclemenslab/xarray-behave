@@ -77,8 +77,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.bar = self.menuBar()
 
         self.file_menu = self.bar.addMenu("File")
-        self._add_keyed_menuitem(self.file_menu, "New from audio file", self.from_wav)
-        self._add_keyed_menuitem(self.file_menu, "New from hdf5 file", self.from_hdf5)
+        self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
         self._add_keyed_menuitem(self.file_menu, "New from data folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
@@ -91,8 +90,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
-        self.hb.addWidget(self.add_button("New dataset from audio file", self.from_wav))
-        self.hb.addWidget(self.add_button("New dataset from hdf5 file", self.from_hdf5))
+        self.hb.addWidget(self.add_button("New dataset from file", self.from_file))
         self.hb.addWidget(self.add_button("New dataset from data folder", self.from_dir))
         self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
 
@@ -431,32 +429,77 @@ class MainWindow(pg.QtGui.QMainWindow):
                 train_process.start()
 
     @classmethod
-    def from_wav(cls, wav_filename=None, app=None, qt_keycode=None, events_string='',
-                 spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
-                 skip_dialog: bool = False):
-        if not wav_filename:
-            wav_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None,
-                                                                    caption='Select audio file')
-        # get samplerate
-        if wav_filename:
-            if wav_filename.endswith('.npz'):
-                samplerate = np.load(wav_filename)['samplerate']
+    def from_file(cls, filename=None, app=None, qt_keycode=None, events_string='',
+                  spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
+                  skip_dialog: bool = False):
+        if not filename:
+            # enable multiple filters: *.h5, *.npy, *.npz, *.wav, *.*
+            file_filter = "Any file (*.*);;WAV files (*.wav);;HDF5 files (*.h5 *.hdf5);;NPY files (*.npy);;NPZ files (*.npz)"
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None,
+                                                                caption='Select file',
+                                                                filter=file_filter)
+        if filename:
+            # infer loader from file name and set default in form
+            # infer samplerate (catch error) and set default in form
+            samplerate = 10_000  # Hz
+            data_loader = None
+            datasets = ['']
+            if filename.endswith('.npz'):
+                try:
+                    # TODO list variable for form
+                    with np.load(filename) as file:
+                        datasets = list(file.keys())
+                        try:
+                            samplerate = file['samplerate']
+                        except KeyError:
+                            samplerate = None
+                    data_loader = 'npz'
+                except KeyError:
+                    logging.info(f'{filename} no sample rate info in NPZ file. Need to save "samplerate" variable with the audio data.')
+            elif filename.endswith('.zarr'):
+                pass  # lazy load and get samplerate attr
+            elif filename.endswith('.npy'):
+                data_loader = 'npy'
+            elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5'):
+                # infer data set (for hdf5) and populate form
+                try:
+                    # list all data sets in file and add to list
+                    with h5py.File(filename, 'r') as f:
+                        datasets = utils.allkeys(f, keys=[])
+                        datasets.remove('/')  # remove root
+                    data_loader = 'h5'
+                except:
+                    pass
             else:
                 try:  # to load as audio file
-                    wav_fileinfo = soundfile.info(wav_filename)
-                    samplerate = wav_fileinfo.samplerate
-                    logging.info(wav_fileinfo)
+                    fileinfo = soundfile.info(filename)
+                    samplerate = fileinfo.samplerate
+                    logging.info(fileinfo)
+                    data_loader = 'audio'
                 except:
-                    logging.info(f'{wav_filename} is not an audio file readable by pysoundfile.')
+                    pass # logging.info(f'{filename} is not an audio file readable by pysoundfile.')
 
 
-            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_wav.yaml",
-                                title=f'Load audio file {wav_filename}')
+            if filename.endswith('.npy'):
+                data_loader = 'npy'
+
+            if data_loader is None:
+                data_loader = 'audio'
+
+            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_file.yaml",
+                                title=f'Load {filename}')
             dialog.form['target_samplingrate'] = samplerate
             dialog.form['spec_freq_max'] = samplerate / 2
 
+            dialog.form.fields['data_set'].set_options(datasets)  # add datasets
+            dialog.form.fields['data_set'].setValue(datasets[0])  # select first
+
+            data_loaders = list(xb.data_loaders.keys())
+            dialog.form.fields['data_loader'].set_options(data_loaders)  # add datasets
+            dialog.form.fields['data_loader'].setValue(data_loader)  # select first
+
             # set default based on data file
-            annotation_path = os.path.splitext(wav_filename)[0] + '.csv'
+            annotation_path = os.path.splitext(filename)[0] + '.csv'
             dialog.form.fields['annotation_path'].setText(annotation_path)  # select first
 
             # initialize form data with cli args
@@ -470,6 +513,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 dialog.form['init_annotations'] = True
                 dialog.form['events_string'] = events_string
 
+
             if not skip_dialog:
                 dialog.show()
                 result = dialog.exec_()
@@ -480,86 +524,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 form_data = dialog.form.get_form_data()  # why call this twice
 
                 form_data = dialog.form.get_form_data()
-                logging.info(f"Making new dataset from {wav_filename}.")
+                logging.info(f"Making new dataset from {filename}.")
                 if form_data['target_samplingrate'] < 1:
                     form_data['target_samplingrate'] = None
-
-                event_names = []
-                event_classes = []
-                if form_data['init_annotations'] and len(form_data['events_string']):
-                    for pair in form_data['events_string'].split(';'):
-                        items = pair.strip().split(',')
-                        if len(items)>0:
-                            event_names.append(items[0].strip())
-                        if len(items)>1:
-                            event_classes.append(items[1].strip())
-                        else:
-                            event_classes.append('segment')
-
-                ds = xb.from_wav(filepath=wav_filename,
-                                 target_samplerate=form_data['target_samplingrate'],
-                                 event_names=event_names,
-                                 event_categories=event_classes,
-                                 annotation_path=form_data['annotation_path'])
-
-                if form_data['filter_song'] == 'yes':
-                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
-
-                cue_points = []
-                if form_data['load_cues']=='yes':
-                    cue_points = cls.load_cuepoints(form_data['cues_file'])
-
-                return PSV(ds, title=wav_filename, cue_points=cue_points,
-                           fmin=dialog.form['spec_freq_min'],
-                           fmax=dialog.form['spec_freq_max'],
-                           data_source=DataSource('wav', wav_filename))
-
-    @classmethod
-    def from_hdf5(cls, hdf5_filename=None, app=None, qt_keycode=None, events_string='',
-                 spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
-                 skip_dialog: bool = False):
-        if not hdf5_filename:
-            hdf5_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None,
-                                                                     caption='Select hdf5 file')
-
-        if hdf5_filename:
-            # list all data sets in file and add to list
-            with h5py.File(hdf5_filename, 'r') as f:
-                hdf5_keys = utils.allkeys(f, keys=[])
-            hdf5_keys.remove('/')  # remove root
-
-            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_hdf5.yaml",
-                                title=f'Load hdf5 file {hdf5_filename}')
-
-            dialog.form.fields['data_set'].set_options(hdf5_keys)  # add datasets
-            dialog.form.fields['data_set'].setValue(hdf5_keys[0])  # select first
-
-            # set default based on data file
-            annotation_path = os.path.splitext(hdf5_filename)[0] + '.csv'
-            dialog.form.fields['annotation_path'].setText(annotation_path)  # select first
-
-            # initialize form data with cli args
-            if spec_freq_min is not None:
-                dialog.form['spec_freq_min'] = spec_freq_min
-            if spec_freq_max is not None:
-                dialog.form['spec_freq_max'] = spec_freq_max
-            if target_samplingrate is not None:
-                dialog.form['target_samplingrate'] = target_samplingrate
-            if len(events_string):
-                dialog.form['init_annotations'] = True
-                dialog.form['events_string'] = events_string
-
-            if not skip_dialog:
-                dialog.show()
-                result = dialog.exec_()
-            else:
-                result = QtGui.QDialog.Accepted
-
-            if result == QtGui.QDialog.Accepted:
-                form_data = dialog.form.get_form_data()  # why call this twice
-
-                form_data = dialog.form.get_form_data()
-                logging.info(f"Making new dataset from {hdf5_filename}.")
 
                 event_names = []
                 event_classes = []
@@ -573,13 +540,14 @@ class MainWindow(pg.QtGui.QMainWindow):
                         else:
                             event_classes.append('segment')
 
-                ds = xb.from_hdf5(filepath=hdf5_filename,
-                                  data_set=form_data['data_set'],
-                                  sampling_rate=form_data['samplerate'],
-                                  target_samplerate=form_data['target_samplingrate'],
-                                  event_names=event_names,
-                                  event_categories=event_classes,
-                                  annotation_path=form_data['annotation_path'])
+                ds = xb.from_file(filepath=filename,
+                                 loader_name=form_data['data_loader'],
+                                 samplerate=form_data['samplerate'],
+                                 dataset=form_data['data_set'],
+                                 target_samplerate=form_data['target_samplingrate'],
+                                 event_names=event_names,
+                                 event_categories=event_classes,
+                                 annotation_path=form_data['annotation_path'])
 
                 if form_data['filter_song'] == 'yes':
                     ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
@@ -588,10 +556,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                 if form_data['load_cues']=='yes':
                     cue_points = cls.load_cuepoints(form_data['cues_file'])
 
-                return PSV(ds, title=hdf5_filename, cue_points=cue_points,
+                return PSV(ds, title=filename, cue_points=cue_points,
                            fmin=dialog.form['spec_freq_min'],
                            fmax=dialog.form['spec_freq_max'],
-                           data_source=DataSource('hdf5', hdf5_filename))
+                           data_source=DataSource(form_data['data_loader'], filename))
 
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
@@ -829,7 +797,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     # TODO: replace with method in annot.Events
                     self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
 
-                # make or update ds.event_times from event_times dict
+                # update ds.event_times from event_times dict
                 event_times = annot.Events(self.event_times)
                 ds_event_times = event_times.to_dataset()
 
@@ -838,9 +806,9 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 logging.info(f'   Saving dataset to {savefilename}.')
                 xb.save(savefilename, self.ds)
-                logging.info(f'   Done.')
+                logging.info(f'Done.')
             else:
-                logging.info(f'   Saving aborted.')
+                logging.info(f'Saving aborted.')
 
 
 class ZarrOverwriteWarning(QtWidgets.QMessageBox):
@@ -956,8 +924,7 @@ class PSV(MainWindow):
         # build UI/controller
         # MENU
         self.file_menu.clear()
-        self._add_keyed_menuitem(self.file_menu, "New from audio file", self.from_wav)
-        self._add_keyed_menuitem(self.file_menu, "New from hdf5 file", self.from_hdf5)
+        self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
         self._add_keyed_menuitem(self.file_menu, "New from data folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
