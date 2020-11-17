@@ -676,16 +676,6 @@ def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Opti
         logging.info("   Data is 1d so prolly single-channel audio - appending singleton dimension.")
         data = data[:, np.newaxis]
 
-#     ds = from_data(filepath, data, samplerate, target_samplerate, event_names, event_categories, annotation_path)
-#     return ds
-
-
-
-# def from_data(filepath, data, samplerate, target_samplerate=None,
-#               event_names: Optional[List[str]] = None,
-#               event_categories: Optional[List[str]] = None,
-#               annotation_path=None):
-
     if event_names is None:
         event_names = []
 
