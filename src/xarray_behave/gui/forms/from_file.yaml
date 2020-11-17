@@ -32,7 +32,7 @@ main:
 
 - name: annotation_path
   label: file with annotations
-  type: file_dir
+  type: file_open
   default: " "
   help: 'will try default STEM + .csv'
 
