@@ -206,6 +206,7 @@ def make(data_folder, store_folder,
 
         # load annotations
         df = annotation_loader(file_base + '.csv')
+        df = df.dropna()
 
         # make initial annotation matrix
         y = dsm.make_annotation_matrix(df, nb_samples, fs, class_names)
