@@ -55,7 +55,7 @@ main:
 - name: train_split_fraction
   label: Fraction
   type: double
-  default: 0.8
+  default: 0.6
   decimals: 2
   range: 0,1
 
@@ -84,13 +84,13 @@ main:
 - name: test_split
   label: Test split by
   type: list
-  default: "files"
+  default: "samples"
   options: "files,samples"
 
 - name: test_split_fraction
   label: Fraction
   type: double
-  default: 0.1
+  default: 0.2
   decimals: 2
   range: 0,1
 
