@@ -832,8 +832,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 # make or update ds.event_times from event_times dict
                 event_times = annot.Events(self.event_times)
                 ds_event_times = event_times.to_dataset()
-                self.ds['event_times'] = ds_event_times.event_times
-                self.ds['event_names'] = ds_event_times.event_names
+
+                self.ds = self.ds.drop_dims(['index', 'event_time'])
+                self.ds = self.ds.combine_first(ds_event_times)
 
                 logging.info(f'   Saving dataset to {savefilename}.')
                 xb.save(savefilename, self.ds)
