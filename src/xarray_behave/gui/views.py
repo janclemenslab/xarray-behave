@@ -236,7 +236,7 @@ class TraceView(pg.PlotWidget):
         # time of current frame in trace
         self.addItem(pg.InfiniteLine(movable=False, angle=90,
                                      pos=self.m.x[int(self.m.span / 2)],
-                                     pen=pg.mkPen(color='r', width=1)))
+                                     pen=pg.mkPen(color='w', width=1)))
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
 
