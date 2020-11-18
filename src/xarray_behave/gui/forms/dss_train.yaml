@@ -19,6 +19,13 @@ main:
   type: file_dir
   default: " "
 
+
+- name: save_prefix
+  label: Prefix for saved files
+  type: string
+  default: ""
+  help: Results will be save as "{save_dir}/{save_prefix}_YYYYMMDD_HHMMSS"
+
 # populate as list from dataset
 - name: y_suffix
   label: Song type
