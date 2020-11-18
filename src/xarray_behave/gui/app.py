@@ -78,7 +78,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         self.file_menu = self.bar.addMenu("File")
         self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
-        self._add_keyed_menuitem(self.file_menu, "New from data folder", self.from_dir)
+        self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
         self.file_menu.addSeparator()
@@ -91,7 +91,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
         self.hb.addWidget(self.add_button("New dataset from file", self.from_file))
-        self.hb.addWidget(self.add_button("New dataset from data folder", self.from_dir))
+        self.hb.addWidget(self.add_button("New dataset from ethodrome folder", self.from_dir))
         self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
 
         self.cb = pg.GraphicsLayoutWidget()
@@ -841,6 +841,8 @@ class PSV(MainWindow):
         # build model:
         self.ds = ds
         self.data_source = data_source
+
+        # TODO allow vr to be a string with the video file name
         self.vr = vr
         self.cue_points = cue_points
 
@@ -930,7 +932,7 @@ class PSV(MainWindow):
         # MENU
         self.file_menu.clear()
         self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
-        self._add_keyed_menuitem(self.file_menu, "New from data folder", self.from_dir)
+        self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
         self.file_menu.addSeparator()
@@ -1571,33 +1573,85 @@ class PSV(MainWindow):
                 self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
 
     def deepss_predict(self, qt_keycode):
-        logging.info('DeepSS...')
-        ret = deepss.predict(self.ds)
-        if ret is not None:
-            events, segments = ret
+        logging.info('Predicting song using DeepSS:')
+
+        if 'song_raw' not in self.ds:
+            logging.error('   Missing `song_raw`. skipping.')
+
+        try:
+            import dss.predict
+            import dss.utils
+        except ImportError as e:
+            logging.exception(e)
+            logging.info('   Failed to import DeepSS. Install via `pip install deepss`.')
+            return
+
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_predict.yaml",
+                            title='Predict labels using DeepSS')
+
+        dialog.show()
+        result = dialog.exec_()
+
+        if result == QtGui.QDialog.Accepted:
+            form_data = dialog.form.get_form_data()
+            model_path = form_data['model_path']
+            model_path = model_path.rsplit('_',1)[0]  # split off suffix
+
+            start_seconds = form_data['start_seconds']
+            end_seconds = form_data['end_seconds']
+
+            start_index = int(start_seconds * self.fs_song)
+            end_index = end_seconds
+            if end_seconds is not None:
+                end_index = int(end_seconds * self.fs_song)
+
+            params = dss.utils.load_params(model_path)
+
+            audio = self.ds.song_raw.data[start_index:end_index]
+            if audio.shape[0] < params['nb_hist']:
+                logging.info(f"   Aborting. Audio has fewer samples ({audio.shape[0]}) shorter than network chunk size ({params['nb_hist']}). Fix by select longer audio.")
+                return
+
+            # batch size so that at least 10 batches are run - minimizes loss of annotations from batch size "quantiziation" errors
+            batch_size = 96
+            nb_batches = lambda batch_size: int(np.floor((audio.shape[0] - (((batch_size-1)) + params['nb_hist'])) / (params['stride'] * (batch_size))))
+            while nb_batches(batch_size) < 10 and batch_size > 1:
+                batch_size -= 1
+
+            logging.info('   Running inference on audio.')
+            events, segments, _ = dss.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
+                                                    event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
+                                                    event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
+                                                    segment_thres=form_data['event_thres'], segment_fillgap=form_data['segment_fillgap'],
+                                                    segment_minlen=form_data['segment_minlen'],
+                                                    )
             # remove non-song keys
             samplerate_Hz = events['samplerate_Hz']
             del events['samplerate_Hz']
             del segments['samplerate_Hz']
+
             if 'noise' in segments:
                 del segments['noise']
 
             for event_name, event_data in events.items():
                 logging.info(f"   found event '{event_name}'.")
                 self.event_times.add_name(event_name + '_dss', 'event',
-                                              np.stack((event_data['seconds'], event_data['seconds']), axis=1))
+                                            np.stack((event_data['seconds'] + start_seconds,
+                                                      event_data['seconds'] + start_seconds), axis=1))
 
             for segment_name, segment_data in segments.items():
                 logging.info(f"   found segment '{segment_name}'.")
                 self.event_times.add_name(segment_name + '_dss', 'segment',
-                                              np.stack((segment_data['onsets_seconds'], segment_data['offsets_seconds']), axis=1))
+                                            np.stack((segment_data['onsets_seconds'] + start_seconds,
+                                                      segment_data['offsets_seconds'] + start_seconds), axis=1))
 
             self.event_times = annot.Events(self.event_times, categories=self.event_times.categories)
             self.fs_other = samplerate_Hz
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
             self.update_eventtype_selector()
-            logging.info('  done.')
+
+        logging.info('Done.')
 
     def edit_annotation_types(self, qt_keycode):
 

@@ -9,6 +9,27 @@ main:
   default: " "
   filter: "*_model.h5"
 
+
+- type: text
+  text: 'Only predict song for audio between "start seconds" and "stop seconds".'
+
+- name: start_seconds
+  label: Start seconds
+  type: double
+  default: 0.0
+  decimals: 4
+  range: 0.0,10000000.0
+
+- name: end_seconds
+  label: End seconds
+  type: optional_double
+  default: 0.0
+  default_disabled: True
+  none_label: Recording end
+  decimals: 4
+  range: 0.0,1000000.0
+
+
 - type: text
   text: '<b>Event detection</b>'
 
