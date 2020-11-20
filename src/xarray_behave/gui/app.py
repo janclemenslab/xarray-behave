@@ -116,7 +116,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
     def save_swaps(self, qt_keycode=None):
         savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'],
-                            self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps_test.txt")
+                            self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps.txt")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save swaps to', str(savefilename),
                                                                 filter="txt files (*.txt);;all files (*)")
         if len(savefilename):
