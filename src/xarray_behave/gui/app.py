@@ -612,11 +612,11 @@ class MainWindow(pg.QtGui.QMainWindow):
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
-                                fix_fly_indices=False, include_song=~form_data['ignore_song'],
-                                keep_multi_channel=True,
-                                target_sampling_rate=form_data['target_samplingrate'],
-                                resample_video_data=resample_video_data,
-                                include_tracks=include_tracks, include_poses=include_poses)
+                                 fix_fly_indices=True, include_song=~form_data['ignore_song'],
+                                 keep_multi_channel=True,
+                                 target_sampling_rate=form_data['target_samplingrate'],
+                                 resample_video_data=resample_video_data,
+                                 include_tracks=include_tracks, include_poses=include_poses)
 
                 if form_data['filter_song'] == 'yes':
                     ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
