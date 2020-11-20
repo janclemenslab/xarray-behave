@@ -430,6 +430,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             if got_dss:
                 # start in independent process, otherwise GUI will freeze during training
                 import multiprocessing as mp
+                form_data['log_messages'] = True
                 train_process = mp.Process(group=None, target=dss.train.train, kwargs=form_data)
                 train_process.start()
 
@@ -465,7 +466,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 pass  # lazy load and get samplerate attr
             elif filename.endswith('.npy'):
                 data_loader = 'npy'
-            elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5'):
+            elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5') or filename.endswith('.mat'):
                 # infer data set (for hdf5) and populate form
                 try:
                     # list all data sets in file and add to list
@@ -482,7 +483,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     logging.info(fileinfo)
                     data_loader = 'audio'
                 except:
-                    pass # logging.info(f'{filename} is not an audio file readable by pysoundfile.')
+                    pass  # logging.info(f'{filename} is not an audio file readable by pysoundfile.')
 
 
             if filename.endswith('.npy'):
@@ -1792,7 +1793,7 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
                                                    target_samplingrate=target_samplingrate,
                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
                                                    skip_dialog=skip_dialog))
-    elif source.endswith('.h5') or source.endswith('.hdf5'):
+    elif source.endswith('.h5') or source.endswith('.hdf5') or source.endswith('.mat'):
         mainwin.windows.append(MainWindow.from_file(filename=source,
                                                    events_string=events_string,
                                                    target_samplingrate=target_samplingrate,
