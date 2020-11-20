@@ -723,7 +723,6 @@ def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Opti
     dataset_data['event_names'] = ds_eventtimes.event_names
     dataset_data['event_times'] = ds_eventtimes.event_times
 
-
     # MAKE THE DATASET
     ds = xr.Dataset(dataset_data, attrs={})
     ds.coords['time'] = time
