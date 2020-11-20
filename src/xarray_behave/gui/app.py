@@ -1656,10 +1656,9 @@ class PSV(MainWindow):
         logging.info('Done.')
 
     def edit_annotation_types(self, qt_keycode):
-
         if hasattr(self, 'event_times'):
             types = self.event_times.names
-            cats = self.event_times.categories
+            cats = list(self.event_times.categories.values())
             table_data = [[typ, cat] for typ, cat in zip(types, cats)]
         else:
             table_data = []
