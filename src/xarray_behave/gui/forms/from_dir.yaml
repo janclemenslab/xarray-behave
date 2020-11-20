@@ -11,6 +11,11 @@ main:
   type: bool
   default: False
 
+- name: fix_fly_indices
+  label: Fix fly indices from swap file
+  type: bool
+  default: True
+
 - name: box_size
   label: Crop width and height
   type: int
@@ -81,7 +86,6 @@ main:
     label: cues file
     type: file_open
     default: ""
-
 
 - name: generate
   label: Load Data
