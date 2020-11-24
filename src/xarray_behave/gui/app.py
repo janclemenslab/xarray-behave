@@ -18,8 +18,6 @@ import numpy as np
 import pandas as pd
 import scipy.interpolate
 import scipy.signal as ss
-import scipy.io.wavfile
-import soundfile
 import pathlib
 from dataclasses import dataclass
 from typing import Callable, Optional, Dict, Any, List
@@ -476,14 +474,22 @@ class MainWindow(pg.QtGui.QMainWindow):
                     data_loader = 'h5'
                 except:
                     pass
+            elif filename.endswith('.wav'):
+                try:  # to load as audio file
+                    import scipy.io.wavfile
+                    samplerate, _ = scipy.io.wavfile.read(filename, mmap=True)
+                    data_loader = 'wav'
+                except:
+                    pass
             else:
                 try:  # to load as audio file
+                    import soundfile
                     fileinfo = soundfile.info(filename)
                     samplerate = fileinfo.samplerate
                     logging.info(fileinfo)
                     data_loader = 'audio'
                 except:
-                    pass  # logging.info(f'{filename} is not an audio file readable by pysoundfile.')
+                    pass
 
 
             if filename.endswith('.npy'):
