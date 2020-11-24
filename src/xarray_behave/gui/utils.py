@@ -15,7 +15,7 @@ from videoreader import VideoReader
 
 
 def make_colors(nb_colors):
-    colors = None
+    colors = []
     if nb_colors > 0:
         cmap = colorcet.cm['glasbey_light']
         # cmap = colorcet.cm['glasbey_bw_minc_20_minl_50']
