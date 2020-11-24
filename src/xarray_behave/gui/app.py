@@ -1635,15 +1635,19 @@ class PSV(MainWindow):
             if 'noise' in segments:
                 del segments['noise']
 
+            suffix = ''
+            if form_data['proof_reading_mode']:
+                suffix = '_proposals'
+
             for event_name, event_data in events.items():
                 logging.info(f"   found event '{event_name}'.")
-                self.event_times.add_name(event_name + '_dss', 'event',
+                self.event_times.add_name(event_name + suffix, 'event',
                                             np.stack((event_data['seconds'] + start_seconds,
                                                       event_data['seconds'] + start_seconds), axis=1))
 
             for segment_name, segment_data in segments.items():
                 logging.info(f"   found segment '{segment_name}'.")
-                self.event_times.add_name(segment_name + '_dss', 'segment',
+                self.event_times.add_name(segment_name + suffix, 'segment',
                                             np.stack((segment_data['onsets_seconds'] + start_seconds,
                                                       segment_data['offsets_seconds'] + start_seconds), axis=1))
 
@@ -1652,8 +1656,38 @@ class PSV(MainWindow):
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
             self.update_eventtype_selector()
-
         logging.info('Done.')
+
+    def approve_active_proposals(self, qt_keycode):
+        self.approve_proposals(appprove_only_active_event = True)
+
+    def approve_all_proposals(self, qt_keycode):
+        self.approve_proposals(appprove_only_active_event = False)
+
+    def approve_proposals(self, appprove_only_active_event: bool = False):
+        t0 = self.ds.sampletime.data[self.time0]
+        t1 = self.ds.sampletime.data[self.time1]
+
+        proposal_suffix = '_proposals'
+        logging.info("Approving:")
+        for name in self.event_times.names:
+            print(appprove_only_active_event, name, self.current_event_name)
+            if appprove_only_active_event and name != self.current_event_name:
+                continue
+
+            if name.endswith(proposal_suffix):
+                # get event times within range
+                within_range_times = self.event_times.filter_range(name, t0, t1)
+                # delete from `songtype_proposals`, add to `songtype`
+                self.event_times.add_name(name=name[:-len(proposal_suffix)],
+                              category=self.event_times.categories[name],
+                              times=within_range_times,
+                              append=True,
+                              overwrite=False)
+                self.event_times.delete_range(name, t0, t1)
+                logging.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
+        logging.info("Done.")
+        self.update_xy()
 
     def edit_annotation_types(self, qt_keycode):
         if hasattr(self, 'event_times'):
