@@ -1360,7 +1360,7 @@ class PSV(MainWindow):
             if self.move_only_current_events:
                 movable = movable and self.current_event_index==event_index
 
-            event_pen = pg.mkPen(color=self.eventype_colors[event_index], width=1)
+            event_pen = pg.mkPen(color=self.eventype_colors[event_index], width=1.5)
             event_brush = pg.mkBrush(color=[*self.eventype_colors[event_index], 25])
 
             events_in_view = self.event_times.filter_range(event_name, x[0], x[-1], strict=False)

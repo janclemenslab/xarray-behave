@@ -58,7 +58,7 @@ class SegmentItem(pg.LinearRegionItem):
             self.bounds = time_bounds
         self.event_index = event_index
         self.xrange = xrange
-        # this corresponds to the undelrying only for TraveView, not for SpecView
+        # this corresponds to the underlying view only for TraceView, not for SpecView
         self._parent = self.getViewWidget
 
 
@@ -236,7 +236,7 @@ class TraceView(pg.PlotWidget):
         # time of current frame in trace
         self.addItem(pg.InfiniteLine(movable=False, angle=90,
                                      pos=self.m.x[int(self.m.span / 2)],
-                                     pen=pg.mkPen(color='w', width=1)))
+                                     pen=pg.mkPen(color='r', width=1)))
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
 

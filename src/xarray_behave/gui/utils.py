@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import h5py
+import colorcet
 
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
@@ -14,12 +15,22 @@ from videoreader import VideoReader
 
 
 def make_colors(nb_colors):
-    colors = np.zeros((1, nb_colors, 3), np.uint8)
+    colors = None
     if nb_colors > 0:
-        colors[0, :, 1:] = 220  # set saturation and brightness to 220
-        colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_colors)  # set range of hues
-        colors = cv2.cvtColor(colors, cv2.COLOR_HSV2BGR)[0].astype(np.uint8)[..., ::-1]
+        cmap = colorcet.cm['glasbey_light']
+        # cmap = colorcet.cm['glasbey_bw_minc_20_minl_50']
+        cmap = colorcet.cm['glasbey_bw_minc_20_minl_30']
+        # ignore first (red)
+        colors = (cmap(np.arange(1, nb_colors+1)) * 255)[:, :3].astype(np.uint8)
     return colors
+
+# def make_colors(nb_colors):
+#     colors = np.zeros((1, nb_colors, 3), np.uint8)
+#     if nb_colors > 0:
+#         colors[0, :, 1:] = 220  # set saturation and brightness to 220
+#         colors[0, :, 0] = np.arange(0, 180, 180.0 / nb_colors)  # set range of hues
+#         colors = cv2.cvtColor(colors, cv2.COLOR_HSV2BGR)[0].astype(np.uint8)[..., ::-1]
+#     return colors
 
 
 def fast_plot(plot_widget, x, y, pen=None):
