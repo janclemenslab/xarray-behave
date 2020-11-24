@@ -44,5 +44,5 @@ setup(name='xarray_behave',
                               'sounddevice', 'scikit-image', 'opencv-python-headless', 'pyyaml', 'defopt']},
       include_package_data=True,
       zip_safe=False,
-      entry_points={'console_scripts': ['xb=xarray_behave.gui.app:cli'], }
+      entry_points={'console_scripts': ['xb=xarray_behave.gui.app:cli', 'dss-gui=xarray_behave.gui.app:cli_dss'], }
      )

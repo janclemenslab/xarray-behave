@@ -437,7 +437,7 @@ class MainWindow(pg.QtGui.QMainWindow):
     @classmethod
     def from_file(cls, filename=None, app=None, qt_keycode=None, events_string='',
                   spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
-                  skip_dialog: bool = False):
+                  skip_dialog: bool = False, is_dss: bool = False):
         if not filename:
             # enable multiple filters: *.h5, *.npy, *.npz, *.wav, *.*
             file_filter = "Any file (*.*);;WAV files (*.wav);;HDF5 files (*.h5 *.hdf5);;NPY files (*.npy);;NPZ files (*.npz)"
@@ -570,7 +570,7 @@ class MainWindow(pg.QtGui.QMainWindow):
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
                  spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
-                 box_size=None, skip_dialog: bool = False):
+                 box_size=None, skip_dialog: bool = False, is_dss: bool = False):
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                                     caption='Select data directory')
@@ -1758,7 +1758,7 @@ class PSV(MainWindow):
 
 def main(source: str = '', *, events_string: str = '', target_samplingrate: float = None,
          spec_freq_min: float = None, spec_freq_max: float=None, box_size: int = 200,
-         skip_dialog: bool = False):
+         skip_dialog: bool = False, is_dss: bool = False):
     """
     Args:
         source (str): Data source to load.
@@ -1780,6 +1780,7 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
         box_size (int): desc.
                         Not used for wav audio files (no videos).
         skip_dialog (bool): If True, skips the opening dialog and goes straight to opening the data.
+        is_dss (bool): reduced GUI for audio only data
     """
 
     QtGui.QApplication([])
@@ -1787,39 +1788,52 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
     mainwin.show()
     if not len(source):
         pass
-    elif source.endswith('.wav') or source.endswith('.npz'):
+    elif source.endswith('.wav') or source.endswith('.npz') or source.endswith('.h5') or source.endswith('.hdf5') or source.endswith('.mat'):
         mainwin.windows.append(MainWindow.from_file(filename=source,
                                                    events_string=events_string,
                                                    target_samplingrate=target_samplingrate,
                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-                                                   skip_dialog=skip_dialog))
-    elif source.endswith('.h5') or source.endswith('.hdf5') or source.endswith('.mat'):
-        mainwin.windows.append(MainWindow.from_file(filename=source,
-                                                   events_string=events_string,
-                                                   target_samplingrate=target_samplingrate,
-                                                   spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-                                                   skip_dialog=skip_dialog))
+                                                   skip_dialog=skip_dialog,
+                                                   is_dss=is_dss))
     elif source.endswith('.zarr'):
         mainwin.windows.append(MainWindow.from_zarr(filename=source,
                                                     box_size=box_size,
                                                     spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-                                                    skip_dialog=skip_dialog))
+                                                    skip_dialog=skip_dialog,
+                                                    is_dss=is_dss))
     elif os.path.isdir(source):
         mainwin.windows.append(MainWindow.from_dir(dirname=source,
                                                    events_string=events_string,
                                                    target_samplingrate=target_samplingrate, box_size=box_size,
                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-                                                   skip_dialog=skip_dialog))
+                                                   skip_dialog=skip_dialog,
+                                                   is_dss=is_dss))
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
+
+
+def main_dss(source: str = '', *, events_string: str = '', target_samplingrate: float = None,
+         spec_freq_min: float = None, spec_freq_max: float=None, box_size: int = 200,
+         skip_dialog: bool = False):
+    main(source,
+         events_string=events_string, target_samplingrate=target_samplingrate,
+         spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+         box_size=box_size, skip_dialog=skip_dialog, is_dss=True)
 
 def cli():
     import warnings
     warnings.filterwarnings("ignore")
     logging.basicConfig(level=logging.INFO)
     defopt.run(main)
+
+
+def cli_dss():
+    import warnings
+    warnings.filterwarnings("ignore")
+    logging.basicConfig(level=logging.INFO)
+    defopt.run(main_dss)
 
 if __name__ == '__main__':
     cli()
