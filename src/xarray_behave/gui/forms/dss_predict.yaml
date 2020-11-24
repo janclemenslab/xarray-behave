@@ -4,7 +4,7 @@ main:
 # e.g. expected sample rate (option to resample),
 # song types (standard - append "dss", allow renaming)
 - name: model_path
-  label: model
+  label: Model
   type: file_open
   default: " "
   filter: "*_model.h5"
@@ -29,6 +29,11 @@ main:
   decimals: 4
   range: 0.0,1000000.0
 
+- name: proof_reading_mode
+  label: Proof reading mode
+  type: bool
+  default: True
+  help: If True, will append '_dssproposal' to song name. Individual proposals can be corrected approved.
 
 - type: text
   text: '<b>Event detection</b>'
@@ -40,7 +45,7 @@ main:
   range: 0,1
 
 - name: event_dist
-  label: Minimal distance between events during detection (seconds)
+  label: Minimal event interval for detection (seconds)
   type: double
   default: 0.01
   decimals: 4
@@ -48,18 +53,18 @@ main:
 
 - type: text
   text: '<i>Filter events by interval after detection</i><br />
-    Will discard events that are too close (minimal distance) or
-    too far (maximal distance) from other events.'
+    Will discard events that come too close (minimal distance) or
+    too far (maximal distance) after other events.'
 
 - name: event_dist_min
-  label: Minimal distance (seconds)
+  label: Delete events closer than (seconds)
   type: double
   default: 0.0
   decimals: 4
   range: 0,100000
 
 - name: event_dist_max
-  label: Maximal distance(seconds)
+  label: Delete events farther than (seconds)
   type: optional_double
   default: 1
   default_disabled: True
@@ -83,7 +88,7 @@ main:
     Will fill short gaps within a segement and discard short segments.'
 
 - name: segment_fillgap
-  label: Gap duration for filling (seconds)
+  label: Fill gaps shorter than (seconds)
   type: optional_double
   default: 0.02
   default_disabled: True
@@ -92,7 +97,7 @@ main:
   range: 0,1000000
 
 - name: segment_minlen
-  label: Minimal duration for discarding (seconds)
+  label: Delete segments shorter than (seconds)
   type: optional_double
   default: 0.02
   default_disabled: True

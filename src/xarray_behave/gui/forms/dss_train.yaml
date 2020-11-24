@@ -142,13 +142,6 @@ main:
   decimals: 6
   default: 0.0001
 
-- name: nb_epoch
-  label: Number of epochs
-  type: int
-  default: 400
-  range: 1,100000
-  help: Maximal number of training epochs. Will stop early if performance does not improve for 20 epochs.
-
 - name: reduce_lr_patience
   label: Reduce learning rate patience
   type: optional_int
@@ -156,6 +149,13 @@ main:
   default_disabled: True
   default: 4
   help: Reduce learning rate if performance does not improve after patience epochs.
+
+- name: nb_epoch
+  label: Number of epochs
+  type: int
+  default: 400
+  range: 1,100000
+  help: Maximal number of training epochs. Will stop early if performance does not improve for 20 epochs.
 
 - name: tensorboard
   label: Create tensorboard logs

@@ -137,12 +137,17 @@ class Events(UserDict):
         ds.attrs['possible_event_names'] = self.names  # ensure that we preserve even names w/o events that get lost in to_df
         return ds
 
-    def add_name(self, name, category='segment', times=None, overwrite: bool = False):
+    def add_name(self, name, category='segment', times=None, overwrite: bool = False, append: bool = False, sort_after_append: bool = False):
         if times is None:
             times = np.zeros((0,2))
-        if not overwrite:
+
+        if name not in self or (name in self and overwrite):
             self.update({name: times})
             self.categories[name] = category
+        elif name in self and append:
+            self[name] = np.append(self[name], times, axis=0)
+            if sort_after_append:
+                self[name].sort(axis=0)
 
     def delete_name(self, name):
         if name in self:

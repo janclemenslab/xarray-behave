@@ -120,10 +120,10 @@ class Table(QtGui.QDialog):
         return data
 
     def createButtons(self):
-        self.add_button = QtWidgets.QPushButton('Add event', self)
+        self.add_button = QtWidgets.QPushButton('Add song type', self)
         self.add_button.clicked.connect(self.add_event)
 
-        self.delete_button = QtWidgets.QPushButton('Delete event', self)
+        self.delete_button = QtWidgets.QPushButton('Delete song type', self)
         self.delete_button.clicked.connect(self.delete_event)
 
     @QtCore.Slot()

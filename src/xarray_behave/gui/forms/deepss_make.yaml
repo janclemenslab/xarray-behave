@@ -19,13 +19,13 @@ main:
   help: Folder for saving the assembled data structure.
 
 - name: make_single_class_datasets
-  label: Make training targets for individual song types
+  label: Training targets for individual song types
   type: bool
   default: True
   help: Make additional training targets for individual song types.
 
 - name: event_std_seconds
-  label: Standard deviation of event times (seconds)
+  label: Width of events (seconds)
   type: double
   default: 0.0016
   decimals: 4
@@ -33,7 +33,7 @@ main:
   help: Replace each event in the target by a Gaussian of the specified standard deviation.
 
 - name: gap_seconds
-  label: Gap duration (seconds)
+  label: Gap between segments (seconds)
   type: double
   default: 0
   range: 0,100000

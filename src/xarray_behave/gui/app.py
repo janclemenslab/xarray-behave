@@ -70,7 +70,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         if self.app is None:
             self.app = QtGui.QApplication([])
 
-        self.resize(400, 400)
+        self.resize(400, 200)
         self.setWindowTitle(title)
 
         # build menu
@@ -90,8 +90,8 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
-        self.hb.addWidget(self.add_button("New dataset from file", self.from_file))
-        self.hb.addWidget(self.add_button("New dataset from ethodrome folder", self.from_dir))
+        self.hb.addWidget(self.add_button("Load audio from file", self.from_file))
+        self.hb.addWidget(self.add_button("Create dataset from ethodrome folder", self.from_dir))
         self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
 
         self.cb = pg.GraphicsLayoutWidget()
@@ -984,12 +984,8 @@ class PSV(MainWindow):
                                 checkable=True, checked=self.show_framenumber)
 
         view_audio = self.bar.addMenu("Audio")
-        self._add_keyed_menuitem(view_audio, "Play waveform as audio", self.play_audio, "E")
+        self._add_keyed_menuitem(view_audio, "Play waveform through speakers", self.play_audio, "E")
         view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio, "Add or edit annotation types", self.edit_annotation_types)
-        view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio, "Show annotations", partial(self.toggle, 'show_songevents'), "V",
-                                checkable=True, checked=self.show_songevents)
         self._add_keyed_menuitem(view_audio, "Show all channels", partial(self.toggle, 'show_all_channels'), None,
                                 checkable=True, checked=self.show_all_channels)
         self._add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), "Q",
@@ -997,19 +993,29 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_audio, "Select previous channel", self.set_next_channel, "Up")
         self._add_keyed_menuitem(view_audio, "Select next channel", self.set_prev_channel, "Down")
         view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), "G",
+        self._add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), None,
                                 checkable=True, checked=self.show_spec)
         self._add_keyed_menuitem(view_audio, "Set display frequency limits", self.set_spec_freq)
         self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.dec_freq_res, "R")
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.inc_freq_res, "T")
         view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio, "Allow moving annotations", partial(self.toggle, 'movable_events'), "M",
+
+        view_annotations = self.bar.addMenu("Annotations")
+        self._add_keyed_menuitem(view_annotations, "Add or edit song types", self.edit_annotation_types)
+        self._add_keyed_menuitem(view_annotations, "Show annotations", partial(self.toggle, 'show_songevents'), "V",
+                                checkable=True, checked=self.show_songevents)
+        view_annotations.addSeparator()
+        self._add_keyed_menuitem(view_annotations, "Allow moving annotations", partial(self.toggle, 'movable_events'), "M",
                                 checkable=True, checked=self.movable_events)
-        self._add_keyed_menuitem(view_audio, "Move selected annotation type", partial(self.toggle, 'move_only_current_events'), None,
+        self._add_keyed_menuitem(view_annotations, "Only move active song type", partial(self.toggle, 'move_only_current_events'), None,
                                 checkable=True, checked=self.move_only_current_events)
-        self._add_keyed_menuitem(view_audio, "Delete selected annotation type in view",
+        view_annotations.addSeparator()
+        self._add_keyed_menuitem(view_annotations, "Delete active song type in view",
                                 self.delete_current_events, "U")
-        self._add_keyed_menuitem(view_audio, "Delete all annotation type in view", self.delete_all_events, "Y")
+        self._add_keyed_menuitem(view_annotations, "Delete all song types in view", self.delete_all_events, "Y")
+        view_annotations.addSeparator()
+        self._add_keyed_menuitem(view_annotations, "Approve proposals for active song type in view", self.approve_active_proposals, "G")  # make toggle?
+        self._add_keyed_menuitem(view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals, "H")
 
         view_train = self.bar.addMenu("DeepSS")
         self._add_keyed_menuitem(view_train, "Make dataset for training", self.deepss_make, None)

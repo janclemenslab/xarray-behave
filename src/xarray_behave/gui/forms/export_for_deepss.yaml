@@ -1,21 +1,33 @@
 main:
 
 - type: text
-  text: '<b>Export data for DeepSS</b>:<br />
-    Will export the audio data as a WAV file and the
+  text: '<b>Export data for DeepSS</b>: <br />
+    Will export the audio data as a NPZ or WAV file and the
     annotations as CSV. Collect data for multiple recordings
     in a single directory and make a training dataset using "DeepSS/Make Dataset".'
 
 - name: which_events
   label: Song type to export
   type: list
-  default: ['no song selected']
+  default: ['All song types']
   options: 'All song types'
   help: 'Select specific song type to export. Otherwise it will export all.
   You can also make training targets for specific song types with "DeepSS/Make Dataset".'
 
-- type: text
-  text: 'Discard data before "start seconds" and after "stop seconds".'
+- name: file_type
+  label: Audio file format
+  type: list
+  default: 'NPZ'
+  options: 'NPZ,WAV'
+  help: 'Will save audio data and samplerate as a numpy file (NPZ) or wave file (WAV).
+         If choosing WAV, data will be clipped to [-1, 1] due to
+         restrictions of the WAV file format. To prevent data loss, set a scale factor.'
+
+- name: scale_audio
+  label: Scale factor
+  type: double
+  default: 1.0
+  help: 'To prevent clipping for WAV, which clips audio to [-1, 1] if data is float.'
 
 - name: start_seconds
   label: Start seconds
@@ -32,23 +44,6 @@ main:
   none_label: Recording end
   decimals: 4
   range: 0.0,1000000.0
-
-- type: text
-  text: 'Will save audio data and samplerate as a numpy file (NPZ) or wave file (WAV).
-         If choosing WAV, data will be clipped to [-1, 1] due to
-         restrictions of the WAV file format. To prevent data loss, set a scale factor.'
-
-- name: file_type
-  label: File type
-  type: list
-  default: 'NPZ'
-  options: 'WAV,NPZ'
-
-- name: scale_audio
-  label: Scale factor
-  type: double
-  default: 1.0
-  help: 'To prevent clipping for WAV, which clips audio to [-1, 1] if data is float.'
 
 - name: okay_button
   label: Export data

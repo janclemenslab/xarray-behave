@@ -22,20 +22,18 @@ from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 from .. import annot
 
-try:
-    import dss.make_dataset
-    import dss.npy_dir
-    import dss.train
-    import dss.predict
-except ImportError as e:
-    print(e)
-    print('you may need to install DeepSS: link_to_pypi')
+# try:
+import dss.make_dataset
+import dss.npy_dir
+import dss.train
+import dss.predict
+# except ImportError as e:
+#     print(e)
+#     print('you may need to install DeepSS: link_to_pypi')
 import xarray_behave
 
 
 package_dir = xarray_behave.__path__[0]
-
-
 
 
 def data_loader_wav(filename):

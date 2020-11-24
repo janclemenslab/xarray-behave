@@ -1,7 +1,7 @@
 main:
 
 - name: data_set
-  label: Which dataset in the file?
+  label: Dataset with audio
   type: list
   default: ''
   options: ''
@@ -13,7 +13,7 @@ main:
   options: ''
 
 - name: samplerate
-  label: Sample rate of the data in Hz
+  label: Audio sample rate (Hz)
   type: int
   default: 10000
   range: 1,10000000
@@ -31,7 +31,7 @@ main:
   default: 200
 
 - name: annotation_path
-  label: file with annotations
+  label: File with annotations
   type: file_open
   default: " "
   help: 'will try default STEM + .csv'
@@ -57,21 +57,21 @@ main:
   default: 1000
 
 - name: spec_freq_min
-  label: Min freq in spec display
+  label: Minimal spectrogram frequency
   type: optional_double
   default_disabled: True
   range: 0.0,1000000.0
   default: 50.0
 
 - name: spec_freq_max
-  label: Max freq in spec display
+  label: Maximal spectrogram frequency
   type: optional_double
   default_disabled: True
   range: 0.0,1000000.0
   default: 1000.0
 
 - name: filter_song
-  label: Bandpass filter song
+  label: Bandpass filter audio
   type: stacked
   default: "no"
   options: "no,yes"
