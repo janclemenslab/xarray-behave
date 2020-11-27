@@ -156,14 +156,14 @@ class MainWindow(pg.QtGui.QMainWindow):
         if which_events is None:
             which_events = self.event_times.names
 
-        event_times = annot.Events(self.event_times.data)
+        event_times = annot.Events(self.event_times)
         for name in event_times.names:
             if name not in which_events:
                 event_times.delete_name(name)
             else:
                 event_times[name] = event_times.filter_range(name, start_seconds, end_seconds) - start_seconds
 
-        df = event_times.to_df()
+        df = event_times.to_df(preserve_empty=True)
         df = df.sort_values(by='start_seconds', ascending=True, ignore_index=True)
         df.to_csv(savefilename, index=False)
 
@@ -577,6 +577,7 @@ class MainWindow(pg.QtGui.QMainWindow):
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
                  spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
                  box_size=None, skip_dialog: bool = False, is_dss: bool = False):
+
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                                     caption='Select data directory')
@@ -628,16 +629,19 @@ class MainWindow(pg.QtGui.QMainWindow):
                 if form_data['filter_song'] == 'yes':
                     ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
 
+                event_names = []
+                event_classes = []
                 if form_data['init_annotations'] and len(form_data['events_string']):
-                    # parse events_string
-                    event_types = []
-                    event_categories = []
-                    for event in form_data['events_string'].split(';'):
-                        event_types.append(event.split(',')[0])
-                        event_categories.append(event.split(',')[1])
-                    # add new event types
-                    ds = ld.initialize_manual_song_events(ds, False, False,
-                                                          event_types, event_categories)
+                    for pair in form_data['events_string'].split(';'):
+                        items = pair.strip().split(',')
+                        if len(items)>0:
+                            event_names.append(items[0].strip())
+                        if len(items)>1:
+                            event_classes.append(items[1].strip())
+                        else:
+                            event_classes.append('segment')
+                    # ds = ld.initialize_manual_song_events(ds, False, False,
+                    #                                       event_names, event_classes)
 
                 # add event categories if they are missing in the dataset
                 if 'song_events' in ds and 'event_categories' not in ds:
@@ -648,6 +652,11 @@ class MainWindow(pg.QtGui.QMainWindow):
                     ds = ds.assign_coords({'event_categories':
                                         (('event_types'),
                                         event_categories)})
+
+                # add missing song types
+                if 'song_events' not in ds:
+                    cats = {event_name: event_class for event_name, event_class in zip(event_names, event_classes)}
+                    ds.attrs['event_times'] = annot.Events(categories = cats)
 
                 # add video file
                 vr = None
@@ -952,9 +961,6 @@ class PSV(MainWindow):
         self.file_menu.addSeparator()
         self.file_menu.addAction("Exit")
 
-        edit = self.bar.addMenu("Edit")
-        self._add_keyed_menuitem(edit, "Swap flies", self.swap_flies, "X") #"X)
-
         view_play = self.bar.addMenu("Playback")
         self._add_keyed_menuitem(view_play, "Play video", self.toggle_playvideo, "Space",
                                 checkable=True, checked=not self.STOP)
@@ -978,6 +984,7 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), "C",
                                 checkable=True, checked=self.crop)
         self._add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, "F")
+        self._add_keyed_menuitem(view_video, "Swap flies", self.swap_flies, "X")
         view_video.addSeparator()
         self._add_keyed_menuitem(view_video, "Move poses", partial(self.toggle, 'move_poses'), "B",
                                 checkable=True, checked=self.move_poses)
@@ -1860,13 +1867,34 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
         QtGui.QApplication.instance().exec_()
 
 
-def main_dss(source: str = '', *, events_string: str = '', target_samplingrate: float = None,
-         spec_freq_min: float = None, spec_freq_max: float=None, box_size: int = 200,
+def main_dss(source: str = '', *, song_types_string: str = '',
+         spec_freq_min: float = None, spec_freq_max: float=None,
          skip_dialog: bool = False):
+    """
+    Args:
+        source (str): Data source to load.
+            Optional - will open an empty GUI if omitted.
+            Source can be the path to:
+            - an audio file,
+            - a numpy file (npy or npz),
+            - an h5 file
+            - an xarray-behave dataset constructed from an ethodrome data folder saved as a zarr file,
+            - an ethodrome data folder (e.g. 'dat/localhost-xxx').
+        song_types_string (str): Initialize song types for annotations.
+                             String of the form "song_name,song_category;song_name,song_category".
+                             Avoid spaces or trailing ';'.
+                             Need to wrap the string in "..." in the terminal
+                             "song_name" can be any string w/o space, ",", or ";"
+                             "song_category" can be "event" (e.g. pulse) or "segment" (sine, syllable)
+        spec_freq_min (float): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
+        spec_freq_max (float): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
+        skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
+    """
     main(source,
-         events_string=events_string, target_samplingrate=target_samplingrate,
+         events_string=song_types_string,
          spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-         box_size=box_size, skip_dialog=skip_dialog, is_dss=True)
+         skip_dialog=skip_dialog, is_dss=True)
+
 
 def cli():
     import warnings

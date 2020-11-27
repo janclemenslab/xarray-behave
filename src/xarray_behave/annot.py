@@ -8,11 +8,12 @@ import pandas as pd
 from collections import UserDict
 import pandas as pd
 import numpy as np
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Union
 
 class Events(UserDict):
 
-    def __init__(self, data=None, categories=None):
+    def __init__(self, data: Optional[Dict[str, List[float]]] = None, categories: Optional[Dict[str, str]] = None,
+                 add_names_from_categories: bool = True):
         """[summary]
 
         Args:
@@ -49,6 +50,8 @@ class Events(UserDict):
             for name, cat in categories.items():
                 if name in self:  # update only existing keys
                     self.categories[name] = cat
+                elif add_names_from_categories:
+                    self.add_name(name=name, category=cat)
 
     @classmethod
     def from_df(cls, df, possible_event_names=[]):
@@ -121,6 +124,9 @@ class Events(UserDict):
                 if name not in df.name.values:
                     stop_seconds = np.nan if cat == 'event' else 0  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
                     df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=stop_seconds)
+        # make sure start and stop seconds are numeric
+        df['start_seconds'] = pd.to_numeric(df['start_seconds'], errors='coerce')
+        df['stop_seconds'] = pd.to_numeric(df['stop_seconds'], errors='coerce')
         return df
 
     def to_dataset(self):
@@ -274,7 +280,10 @@ class Events(UserDict):
         categories = dict()
         for name in self.names:
             if len(self[name])==0:
-                categories[name] = None
+                if not hasattr(self, 'categories') or name not in self.categories:
+                    categories[name] = None
+                elif hasattr(self, 'categories') and name in self.categories:
+                    categories[name] = self.categories[name]
             else:
                 first_start = self.start_seconds(name)[0]
                 first_stop = self.stop_seconds(name)[0]
