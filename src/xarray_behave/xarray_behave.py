@@ -645,6 +645,12 @@ def load_audio(filepath: str, dataset: Optional[str] = None):
     data, sampling_rate = soundfile.read(filepath)
     return data, sampling_rate
 
+def load_wav(filepath: str, dataset: Optional[str] = None):
+    import scipy.io.wavfile
+    samplerate, data = scipy.io.wavfile.read(filepath)
+    data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
+    return data, samplerate
+
 def load_h5(filepath: str, dataset: Optional[str] = 'samples'):
     import h5py
     logging.info(f"Loading dataset {dataset} from HDF5 file {filepath}.")
@@ -660,7 +666,7 @@ def load_h5(filepath: str, dataset: Optional[str] = 'samples'):
 #     samplingrate = None
 #     return data, samplingrate
 
-data_loaders = {'audio': load_audio, 'npy': load_npy, 'npz': load_npz, 'h5': load_h5, 'wav': load_audio}
+data_loaders = {'audio': load_audio, 'npy': load_npy, 'npz': load_npz, 'h5': load_h5, 'wav': load_wav}
 
 def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Optional[float] = None,
               samplerate: Optional[float] = None, dataset: Optional[str] = None,
