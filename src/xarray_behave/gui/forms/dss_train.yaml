@@ -136,6 +136,11 @@ main:
 - type: text
   text: '<b>Training parameters</b>'
 
+- name: batch_size
+  label: Batch size
+  type: int
+  default: 32
+
 - name: learning_rate
   label: Learning rate
   type: double
