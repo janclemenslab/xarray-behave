@@ -1,12 +1,9 @@
+from typing import Iterable
 import cv2
 import numpy as np
 import h5py
 import colorcet
-
-try:
-    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
-except ImportError:
-    pass
+from typing import Iterable
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets
@@ -14,7 +11,7 @@ import logging
 from videoreader import VideoReader
 
 
-def make_colors(nb_colors):
+def make_colors(nb_colors: int) -> Iterable:
     colors = []
     if nb_colors > 0:
         cmap = colorcet.cm['glasbey_light']
