@@ -99,12 +99,8 @@ def test_delete(test_events):
 
 def test_make_empty():
 
-    import pandas as pd
-    import xarray_behave as xb
-    from xarray_behave import event_utils
-    from xarray_behave.annot import *
     evt = Events(categories={'sine': 'segment', 'pulse': 'event', 'vibration': 'event'})
-    evt = Events(categories={'sine': [], 'pulse': [], 'vibration': []})
+    evt = Events(data={'sine': [], 'pulse': [], 'vibration': []})
     print(evt)
     df = evt.to_df()
     print(df)
