@@ -7,9 +7,6 @@ import os.path
 import zarr
 import numpy as np
 
-import xarray_behave as xb
-from .formbuilder import YamlFormWidget, YamlDialog
-
 import dss.make_dataset as dsm
 import dss.npy_dir
 
@@ -18,18 +15,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.io.wavfile
 
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
-import pyqtgraph as pg
 from .. import annot
 
-# try:
 import dss.make_dataset
 import dss.npy_dir
 import dss.train
 import dss.predict
-# except ImportError as e:
-#     print(e)
-#     print('you may need to install DeepSS: link_to_pypi')
+
 import xarray_behave
 
 
