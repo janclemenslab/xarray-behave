@@ -40,8 +40,13 @@ from .. import (xarray_behave as xb,
 from . import (colormaps,
                utils,
                views,
-               table,
-               deepss)
+               table)
+
+try:
+    from . import deepss
+except Exception as e:
+    logging.exception(e)
+    logging.warning(f'Failed to import the DeepSS module.\nIgnore if you do not want to use DeepSS.\nOtherwise follow these instructions to install:\nhttps://janclemenslab.org/deepss/install.html')
 
 from .formbuilder import YamlDialog
 
@@ -71,6 +76,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         self.resize(400, 200)
         self.setWindowTitle(title)
+        self.setWindowIcon(QtGui.QIcon(package_dir  + '/gui/icon.png'))
 
         # build menu
         self.bar = self.menuBar()
