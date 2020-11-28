@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Text
 # from PySide2 import QtWidgets, QtCore
 # modified from https://sleap.ai/_modules/sleap/gui/formbuilder.html
 import yaml
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
@@ -72,7 +72,7 @@ class YamlFormWidget(QtWidgets.QGroupBox):
     >>> widget = YamlFormWidget.from_name("foo")
 
     Args:
-        yaml_file: filename of YAML file to load.
+        yaml_file: filename of YAML file to load, or dict.
         which_form (optional): key to form in YAML file, default is "main".
             this allows a single YAML file to contain data for multiple forms.
     """
@@ -82,16 +82,18 @@ class YamlFormWidget(QtWidgets.QGroupBox):
 
     def __init__(
         self,
-        yaml_file: Text,
+        yaml_file: Union[Text, Dict],
         which_form: Text = "main",
         field_options_lists: Optional[Dict[Text, list]] = None,
         *args,
         **kwargs,
     ):
         super(YamlFormWidget, self).__init__(*args, **kwargs)
-
-        with open(yaml_file, "r") as form_yaml:
-            items_to_create = yaml.load(form_yaml, Loader=yaml.SafeLoader)
+        if isinstance(yaml_file, dict):
+            items_to_create = yaml_file
+        else:
+            with open(yaml_file, "r") as form_yaml:
+                items_to_create = yaml.load(form_yaml, Loader=yaml.SafeLoader)
 
         self.which_form = which_form
         self.form_layout = FormBuilderLayout(

@@ -243,12 +243,16 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         savefilename_trunk = os.path.splitext(savefilename)[0]
 
-        # get via dialog:
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/export_for_deepss.yaml",
+        yaml_file=yaml_file=package_dir + "/gui/forms/export_for_deepss.yaml"
+        with open(yaml_file, "r") as form_yaml:
+            items_to_create = yaml.load(form_yaml, Loader=yaml.SafeLoader)
+
+        for name in self.event_times.names:
+            items_to_create['main'].insert(2, {'name': f'include_{name}', 'label': name, 'type':'bool', 'default':True})
+
+        dialog = YamlDialog(yaml_file=items_to_create,
                             title=f'Export song and annotations for DeepSS')
-        event_names = self.event_times.names
-        event_names.insert(0, 'all song types')
-        dialog.form.fields['which_events'].set_options(event_names)
+
         dialog.form.fields['start_seconds'].setRange(0, np.max(self.ds.sampletime))
         dialog.form.fields['end_seconds'].setRange(0, np.max(self.ds.sampletime))
         dialog.form.fields['end_seconds'].setValue(np.max(self.ds.sampletime))
@@ -260,10 +264,10 @@ class MainWindow(pg.QtGui.QMainWindow):
         if result == QtGui.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
 
-            if form_data['which_events'] == 'all song types':
-                which_events = self.event_times.names
-            else:
-                which_events = [form_data['which_events']]
+            which_events = []
+            for key, val in form_data.items():
+                if key.startswith('include_') and val:
+                    which_events.append(key[len('include_'):])
 
             start_seconds = form_data['start_seconds']
             end_seconds = form_data['end_seconds']

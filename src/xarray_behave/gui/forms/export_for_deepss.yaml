@@ -6,13 +6,8 @@ main:
     annotations as CSV. Collect data for multiple recordings
     in a single directory and make a training dataset using "DeepSS/Make Dataset".'
 
-- name: which_events
-  label: Song type to export
-  type: list
-  default: ['All song types']
-  options: 'All song types'
-  help: 'Select specific song type to export. Otherwise it will export all.
-  You can also make training targets for specific song types with "DeepSS/Make Dataset".'
+- type: text
+  text: 'Include which song types?'
 
 - name: file_type
   label: Audio file format
