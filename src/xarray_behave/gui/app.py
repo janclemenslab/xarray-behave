@@ -58,7 +58,7 @@ class DataSource:
 
 class MainWindow(pg.QtGui.QMainWindow):
 
-    def __init__(self, parent=None, title="xb.gui"):
+    def __init__(self, parent=None, title="dss-gui"):
         super().__init__(parent)
 
         self.windows = []
@@ -67,6 +67,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
             self.app = QtGui.QApplication([])
+        self.app.setWindowIcon(QtGui.QIcon(package_dir  + '/gui/icon.png'))
 
         self.resize(400, 200)
         self.setWindowTitle(title)
