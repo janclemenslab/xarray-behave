@@ -6,8 +6,6 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 from collections import UserDict
-import pandas as pd
-import numpy as np
 from typing import Optional, List, Dict, Any, Union
 
 class Events(UserDict):
