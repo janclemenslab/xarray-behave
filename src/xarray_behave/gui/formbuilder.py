@@ -27,14 +27,12 @@ what's supported in the YAML file, what exactly each field type does, or if you
 want to add a new type of supported form field.
 """
 
-import yaml
 
-from typing import Any, Dict, List, Optional, Text
 
 # from PySide2 import QtWidgets, QtCore
 # modified from https://sleap.ai/_modules/sleap/gui/formbuilder.html
 import yaml
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Text
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
