@@ -589,7 +589,7 @@ class MainWindow(pg.QtGui.QMainWindow):
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
                  spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
-                 box_size=None, skip_dialog: bool = False, is_dss: bool = False):
+                 box_size=None, pixel_size_mm=None, skip_dialog: bool = False, is_dss: bool = False):
 
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
@@ -599,12 +599,11 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 title=f'Dataset from data directory {dirname}')
 
             # initialize form data with cli args
-            if spec_freq_min is not None:
-                dialog.form['spec_freq_min'] = spec_freq_min
-            if spec_freq_max is not None:
-                dialog.form['spec_freq_max'] = spec_freq_max
+            dialog.form['pixel_size_mm'] = pixel_size_mm  # and un-disable
+            dialog.form['spec_freq_min'] = spec_freq_min
+            dialog.form['spec_freq_max'] = spec_freq_max
             if box_size is not None:
-                dialog.form['box_size'] = box_size
+                dialog.form['box_size_px'] = box_size
             if target_samplingrate is not None:
                 dialog.form['target_samplingrate'] = target_samplingrate
             if len(events_string):
@@ -637,6 +636,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                  keep_multi_channel=True,
                                  target_sampling_rate=form_data['target_samplingrate'],
                                  resample_video_data=resample_video_data,
+                                 pixel_size_mm=pixel_size_mm,
                                  include_tracks=include_tracks, include_poses=include_poses)
 
                 if form_data['filter_song'] == 'yes':
@@ -692,13 +692,14 @@ class MainWindow(pg.QtGui.QMainWindow):
                 return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
                         fmin=dialog.form['spec_freq_min'],
                         fmax=dialog.form['spec_freq_max'],
-                        box_size=dialog.form['box_size'],
+                        box_size=dialog.form['box_size_px'],
                         data_source=DataSource('dir', dirname))
 
     @classmethod
     def from_zarr(cls, filename=None, app=None, qt_keycode=None,
                   spec_freq_min=None, spec_freq_max=None,
                   box_size=None, skip_dialog: bool = False):
+
         if not filename:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select dataset')
         if filename:
@@ -832,6 +833,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                     # TODO: replace with method in annot.Events
                     self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
 
+                # scale tracks back to original units upon save
+                logging.info(f'Converting spatial units back to {self.original_spatial_units} if required.')
+                self.ds = xb.convert_spatial_units(self.ds, to_units=self.original_spatial_units)
+
                 # update ds.event_times from event_times dict
                 event_times = annot.Events(self.event_times)
                 ds_event_times = event_times.to_dataset()
@@ -922,6 +927,14 @@ class PSV(MainWindow):
 
         self.fly_colors = utils.make_colors(self.nb_flies)
         self.bodypart_colors = utils.make_colors(self.nb_bodyparts)
+
+        # scale tracks back to px - required for display purposes
+        names = ['body_positions', 'pose_positions', 'pose_positions_allo']
+        # save original spatial units so we can convert back upon save
+        for name in names:
+            if name in names:
+                self.original_spatial_units = self.ds[name].attrs['spatial_units']
+        self.ds = xb.convert_spatial_units(self.ds, to_units='pixels')
 
         self.STOP = True
         self.swap_events = []
@@ -1822,30 +1835,34 @@ class PSV(MainWindow):
             itemList.item(ii).setForeground(QtGui.QColor(*col))
 
 
-def main(source: str = '', *, events_string: str = '', target_samplingrate: float = None,
-         spec_freq_min: float = None, spec_freq_max: float=None, box_size: int = 200,
+def main(source: str = '', *, events_string: str = '',
+         target_samplingrate: Optional[float] = None,
+         spec_freq_min: Optional[float] = None, spec_freq_max: Optional[float] = None,
+         box_size: int = 200, pixel_size_mm: Optional[float] = None,
          skip_dialog: bool = False, is_dss: bool = False):
     """
     Args:
         source (str): Data source to load.
-            Optional - will open an empty file if omitted.
-            Source can be the path to a wav audio file,
-            to an xarray-behave dataset saved as a zarr file,
-            or to a data folder (e.g. 'dat/localhost-xxx').
-        dataset
-        events_string (str): "event_name,event_category;event_name,event_category".
+            Optional - will open an empty GUI if omitted.
+            Source can be the path to:
+            - an audio file,
+            - a numpy file (npy or npz),
+            - an h5 file
+            - an xarray-behave dataset constructed from an ethodrome data folder saved as a zarr file,
+            - an ethodrome data folder (e.g. 'dat/localhost-xxx').
+        song_types_string (str): Initialize song types for annotations.
+                             String of the form "song_name,song_category;song_name,song_category".
                              Avoid spaces or trailing ';'.
                              Need to wrap the string in "..." in the terminal
-                             "event_name" can be any string w/o space, ",", or ";"
-                             "event_category" can by event (pulse) or segment (sine, syllable)
-                             Only used if source is a data folder or a wav audio file.
+                             "song_name" can be any string w/o space, ",", or ";"
+                             "song_category" can be "event" (e.g. pulse) or "segment" (sine, syllable
         target_samplingrate (float): [description]. If 0, will use frame times. Defaults to None.
                                      Only used if source is a data folder or a wav audio file.
-        spec_freq_min (float): [description].
-        spec_freq_max (float): [description].
-        box_size (int): desc.
-                        Not used for wav audio files (no videos).
-        skip_dialog (bool): If True, skips the opening dialog and goes straight to opening the data.
+        spec_freq_min (float): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
+        spec_freq_max (float): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
+        box_size (int): Crop size around tracked fly. Not used for wav audio files (no videos).
+        pixel_size_mm (float): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
+        skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
         is_dss (bool): reduced GUI for audio only data
     """
 
@@ -1872,6 +1889,7 @@ def main(source: str = '', *, events_string: str = '', target_samplingrate: floa
                                                    events_string=events_string,
                                                    target_samplingrate=target_samplingrate, box_size=box_size,
                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+                                                   pixel_size_mm=pixel_size_mm,
                                                    skip_dialog=skip_dialog,
                                                    is_dss=is_dss))
 
