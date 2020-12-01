@@ -18,7 +18,7 @@ from . import (loaders as ld,
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
              keep_multi_channel: bool = False, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
-             make_mask: bool = False, fix_fly_indices: bool = True) -> xr.Dataset:
+             fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None) -> xr.Dataset:
     """[summary]
 
     Args:
@@ -32,9 +32,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         include_song (bool, optional): [description]. Defaults to True.
         include_tracks (bool, optional): [description]. Defaults to True.
         include_poses (bool, optional): [description]. Defaults to True.
-        make_mask (bool, optional): ..., Defaults to False.
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
-
+        pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
     Returns:
         xarray.Dataset
     """
@@ -303,6 +302,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # BODY POSITION
     fps = None
+    if pixel_size_mm is None:
+        pixel_size_mm = np.nan
+
     if with_tracks:
         logging.info('   tracking')
         frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
@@ -334,6 +336,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                         'time_units': 'seconds',
                                         'video_fps': fps,
                                         'spatial_units': 'pixels',
+                                        'pixel_size_mm': pixel_size_mm,
                                         'background': background,
                                         'tracks_fixed': with_fixed_tracks})
         dataset_data['body_positions'] = positions
@@ -375,6 +378,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                     'time_units': 'seconds',
                                     'video_fps': fps,
                                     'spatial_units': 'pixels',
+                                    'pixel_size_mm': pixel_size_mm,
                                     'poses_from': poses_from})
         dataset_data['pose_positions'] = poses
 
@@ -390,6 +394,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                          'time_units': 'seconds',
                                          'video_fps': fps,
                                          'spatial_units': 'pixels',
+                                         'pixel_size_mm': pixel_size_mm,
                                          'poses_from': poses_from})
         dataset_data['pose_positions_allo'] = poses_allo
     # MAKE THE DATASET
@@ -399,6 +404,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         dataset.coords['time'] = time
     if 'nearest_frame' not in dataset:
         dataset.coords['nearest_frame'] = (('time'), nearest_frame)
+
+    # convert spatial units to mm using info in attrs
+    dataset = convert_spatial_units(dataset, to_units='mm',
+                                    names = ['body_positions', 'pose_positions', 'pose_positions_allo'])
 
     if target_sampling_rate is None:
         target_sampling_rate = fps
@@ -557,6 +566,41 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
     # MAKE ONE DATASET
     feature_dataset = xr.Dataset(ds_dict, attrs={})
     return feature_dataset
+
+
+def convert_spatial_units(ds: xr.Dataset, to_units: Optional[str] = None, names: Optional[List[str]] = None) -> xr.Dataset:
+    """px <-> mm using attrs['pixels_to_mm'] and attrs['spatial_units'].
+
+    Args:
+        ds (xr.Dataset): xb Dataset to process
+        to_units (Optional[str], optional): Target units - either 'pixels' or 'mm'. Defaults to None (always convert mm <-> px).
+        names (Optional[List[str]], optional): Names of DataArrays/sets in ds to convert. Defaults to None.
+
+    Returns:
+        xr.Dataset: with converted spatial units
+    """
+    if names is None:
+        names = ['body_positions', 'pose_positions', 'pose_positions_allo']
+
+    for name in names:
+        if name in ds:
+            da = ds[name]
+            spatial_units = da.attrs['spatial_units']
+            pixel_size_mm = da.attrs['pixel_size_mm']
+
+            if pixel_size_mm is np.nan:  # can't convert so skip
+                continue
+
+            if to_units is not None and spatial_units == to_units:  # already in the correct units so skip
+                continue
+
+            if spatial_units == 'mm':  # convert to pixels
+                da /= pixel_size_mm
+                da.attrs['spatial_units'] = 'pixels'
+            elif spatial_units == 'pixels':  # convert to mm
+                da *= pixel_size_mm
+                da.attrs['spatial_units'] = 'mm'
+    return ds
 
 
 def save(savepath, dataset):
