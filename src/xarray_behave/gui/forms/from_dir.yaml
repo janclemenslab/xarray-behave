@@ -16,11 +16,19 @@ main:
   type: bool
   default: True
 
-- name: box_size
-  label: Crop width and height
+- name: box_size_px
+  label: Crop width and height (pixels)
   type: int
   range: 0,10000
   default: 200
+
+- name: pixel_size_mm
+  label: Size of a pixel in the video (mm)
+  type: optional_double
+  default_disabled: True
+  decimals: 3
+  range: 0,10000
+  default: 1.0
 
 - name: ignore_song
   label: Ignore song
