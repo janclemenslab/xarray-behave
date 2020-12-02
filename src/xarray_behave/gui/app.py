@@ -1665,7 +1665,9 @@ class PSV(MainWindow):
             while nb_batches(batch_size) < 10 and batch_size > 1:
                 batch_size -= 1
 
-            logging.info('   Running inference on audio.')
+            logging.info(f'   Running inference on audio.')
+            logging.info(f'   Model from {model_path}.')
+
             events, segments, _ = dss.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
                                                     event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
                                                     event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
@@ -1687,19 +1689,17 @@ class PSV(MainWindow):
                 suffix = '_proposals'
 
             for event_name, event_data in events.items():
-                logging.info(f"   found event '{event_name}'.")
+                logging.info(f"   found {len(event_data['seconds'])} instances of event '{event_name}'.")
                 self.event_times.add_name(event_name + suffix, 'event',
                                             np.stack((event_data['seconds'] + start_seconds,
                                                       event_data['seconds'] + start_seconds), axis=1))
 
             detected_segment_names = np.unique(segments['sequence'])
-            logging.info(f"   found the following segments '{detected_segment_names}'.")
+            logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
             for name, onset_seconds, offset_seconds in zip(segments['sequence'], segments['onsets_seconds'], segments['offsets_seconds']):
-                self.event_times.add_name(name + suffix, 'segment',
-                                          np.stack((onset_seconds  + start_seconds,
-                                                    offset_seconds + start_seconds)))
+                self.event_times.add_time(name + suffix, onset_seconds + start_seconds, offset_seconds + start_seconds, category='segment')
 
-            self.event_times = annot.Events(self.event_times, categories=self.event_times.categories)
+            # self.event_times = annot.Events(self.event_times, categories=self.event_times.categories)  # why ???
             # self.fs_other = samplerate_Hz
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
@@ -1707,10 +1707,10 @@ class PSV(MainWindow):
         logging.info('Done.')
 
     def approve_active_proposals(self, qt_keycode):
-        self.approve_proposals(appprove_only_active_event = True)
+        self.approve_proposals(appprove_only_active_event=True)
 
     def approve_all_proposals(self, qt_keycode):
-        self.approve_proposals(appprove_only_active_event = False)
+        self.approve_proposals(appprove_only_active_event=False)
 
     def approve_proposals(self, appprove_only_active_event: bool = False):
         t0 = self.ds.sampletime.data[self.time0]
@@ -1734,6 +1734,11 @@ class PSV(MainWindow):
                               overwrite=False)
                 self.event_times.delete_range(name, t0, t1)
                 logging.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
+        # update event selector in case the event did not exist yet
+        self.nb_eventtypes = len(self.event_times)
+        self.eventype_colors = utils.make_colors(self.nb_eventtypes)
+        self.update_eventtype_selector()
+
         logging.info("Done.")
         self.update_xy()
 
