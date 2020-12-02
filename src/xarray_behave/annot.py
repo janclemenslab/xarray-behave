@@ -141,7 +141,18 @@ class Events(UserDict):
         ds.attrs['possible_event_names'] = self.names  # ensure that we preserve even names w/o events that get lost in to_df
         return ds
 
-    def add_name(self, name, category='segment', times=None, overwrite: bool = False, append: bool = False, sort_after_append: bool = False):
+    def add_name(self, name: str, category='segment', times=None, overwrite: bool = False, append: bool = False, sort_after_append: bool = False):
+        """[summary]
+
+        Args:
+            name (str): Name of the segment/event.
+            category (str, optional): Song type category ('segment' or 'event'). Defaults to 'segment'.
+            times (np.array, optional): [N,2] array of floats with start (index 0) and end (index 1) of the annotations.
+                                        Defaults to None.
+            overwrite (bool, optional): Replace times and category if name exists. Defaults to False.
+            append (bool, optional): Append times if name exists. Defaults to False.
+            sort_after_append (bool, optional): Sort times by start_seconds. Defaults to False.
+        """
         if times is None:
             times = np.zeros((0,2))
 
@@ -154,21 +165,30 @@ class Events(UserDict):
                 self[name].sort(axis=0)
 
     def delete_name(self, name):
+        """Delete all annotations with that name."""
         if name in self:
             del self[name]
         if name in self.categories:
             del self.categories[name]
 
-    def add_time(self, name, start_seconds, stop_seconds=None):
-        """[summary]
+    def add_time(self, name: str, start_seconds: float, stop_seconds: float = None,
+                 add_new_name: bool = True, category: Optional[str] = None):
+        """Add a new segment/event.
 
         Args:
-            name ([type]): [description]
-            start_seconds ([type]): [description]
-            stop_seconds ([type], optional): [description]. Defaults to None.
+            name (str): name of the segment/event.
+            start_seconds (float): start of the segment/event
+            stop_seconds (float, optional): end of the segment/event (for events, should equal start). Defaults to None (use start_seconds).
+            add_new_name (bool, optional): Add new song type if name does not exist yet. Defaults to True.
+            category (str, optional): Manually specify category here.
         """
         if stop_seconds is None:
             stop_seconds = start_seconds
+
+        if name not  in self and add_new_name:
+            if category is None:
+                category = 'event' if stop_seconds==start_seconds else 'segment'
+            self.add_name(name, category=category)
 
         self[name] = np.insert(self[name],
                                len(self[name]),
