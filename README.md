@@ -6,7 +6,7 @@ Install a working conda installation with python 3.7 (see [here](https://docs.co
 If you want to use xb with DeepSS, following the [installation instructions for DeepSS](https://janclemenslab.org/deepss/install.html).
 
 ### GUI
-For using the GUI
+For using with the GUI:
 ```shell
 conda env create -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/master/env/xb_gui.yml -n xb
 ```
