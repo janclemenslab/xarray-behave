@@ -1,0 +1,12 @@
+name: xb
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - zarr
+  - python-sounddevice
+  - pip
+  - git
+  - pip:
+    - xarray-behave

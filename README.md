@@ -3,22 +3,19 @@
 ## Installation
 Install a working conda installation with python 3.7 (see [here](https://docs.conda.io/en/latest/miniconda.html)).
 
-### Non-GUI
-If you do not want to use the GUI, e.g. if just want to create, load, save datasets:
-```shell
-conda create -n xb python=3.7 -y
-conda activate xb
-conda install zarr
-python -m pip install xarray-behave
-```
-See `demo.ipynb` for usage examples.
+If you want to use xb with DeepSS, following the [installation instructions for DeepSS](https://janclemenslab.org/deepss/install.html).
 
 ### GUI
 For using the GUI
 ```shell
-conda create -n xb_gui python=3.7 -y
-conda activate xb_gui
-conda install pyside2 pyqtgraph=0.11.0rc0 zarr python-sounddevice zarr -c conda-forge -y
-python -m pip install xarray-behave[gui]
+conda env create -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/master/env/xb_gui.yml -n xb
 ```
-The gui can be started by typing `xb` in a terminal. See `xb --help` for usage/arguments/keys.
+The GUI can be started by activating the new environment `conda activate xb` and then typing `xb` in a terminal. See `xb --help` for usage/arguments/keys.
+GUI usage is documented [here](https://janclemenslab.org/deepss/tutorials_gui.html).
+
+### Non-GUI
+If you do not want to use the GUI, e.g. if just want to create, load, save datasets:
+```shell
+conda env create -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/master/env/xb.yml -n xb
+```
+See `demo.ipynb` for usage examples.
