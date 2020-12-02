@@ -1673,12 +1673,14 @@ class PSV(MainWindow):
                                                     segment_minlen=form_data['segment_minlen'],
                                                     )
             # remove non-song keys
-            samplerate_Hz = events['samplerate_Hz']
-            del events['samplerate_Hz']
-            del segments['samplerate_Hz']
-
-            if 'noise' in segments:
-                del segments['noise']
+            if events:
+                for key in events.keys():
+                    samplerate_Hz = events[key]['samplerate_Hz']
+            elif segments:
+                samplerate_Hz = segments['samplerate_Hz']
+            else:
+                logging.warning("no predictions")
+                return
 
             suffix = ''
             if form_data['proof_reading_mode']:
@@ -1690,14 +1692,15 @@ class PSV(MainWindow):
                                             np.stack((event_data['seconds'] + start_seconds,
                                                       event_data['seconds'] + start_seconds), axis=1))
 
-            for segment_name, segment_data in segments.items():
-                logging.info(f"   found segment '{segment_name}'.")
-                self.event_times.add_name(segment_name + suffix, 'segment',
-                                            np.stack((segment_data['onsets_seconds'] + start_seconds,
-                                                      segment_data['offsets_seconds'] + start_seconds), axis=1))
+            detected_segment_names = np.unique(segments['sequence'])
+            logging.info(f"   found the following segments '{detected_segment_names}'.")
+            for name, onset_seconds, offset_seconds in zip(segments['sequence'], segments['onsets_seconds'], segments['offsets_seconds']):
+                self.event_times.add_name(name + suffix, 'segment',
+                                          np.stack((onset_seconds  + start_seconds,
+                                                    offset_seconds + start_seconds)))
 
             self.event_times = annot.Events(self.event_times, categories=self.event_times.categories)
-            self.fs_other = samplerate_Hz
+            # self.fs_other = samplerate_Hz
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
             self.update_eventtype_selector()
