@@ -932,7 +932,7 @@ class PSV(MainWindow):
         names = ['body_positions', 'pose_positions', 'pose_positions_allo']
         # save original spatial units so we can convert back upon save
         for name in names:
-            if name in names:
+            if name in self.ds:
                 self.original_spatial_units = self.ds[name].attrs['spatial_units']
         self.ds = xb.convert_spatial_units(self.ds, to_units='pixels')
 
