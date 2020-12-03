@@ -66,7 +66,7 @@ def make(data_folder, store_folder,
          delete_intermediate_store: bool = True):
 
     annotation_loader = pd.read_csv
-    files_annotation = glob(data_folder + '/*.csv')
+    files_annotation = glob(data_folder + '/*_annotations.csv')
 
     # go through all annotation files and collect info on classes
     class_names = []

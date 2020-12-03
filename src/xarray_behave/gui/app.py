@@ -136,7 +136,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         Each annotation is a row with name, start_seconds, stop_seconds.
         start_seconds = stop_seconds for events like pulses."""
         try:
-            csv_filename = os.path.splitext(self.ds.attrs['datename'])[0] + '_songmanual.csv'
+            csv_filename = os.path.splitext(self.ds.attrs['datename'])[0] + '_annotations.csv'
             savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
                                 csv_filename)
         except KeyError:
@@ -290,7 +290,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 self.export_to_npz(savefilename_trunk + '.npz', start_seconds, end_seconds, form_data['scale_audio'])
 
             logging.info(f"   annotations to CSV: {savefilename_trunk + '.csv'}.")
-            self.export_to_csv(savefilename_trunk + '.csv', start_seconds, end_seconds, which_events)
+            self.export_to_csv(savefilename_trunk + '_annotations.csv', start_seconds, end_seconds, which_events)
             logging.info(f"Done.")
 
     def deepss_make(self, qt_keycode=None):
@@ -524,7 +524,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             dialog.form.fields['data_loader'].setValue(data_loader)  # select first
 
             # set default based on data file
-            annotation_path = os.path.splitext(filename)[0] + '.csv'
+            annotation_path = os.path.splitext(filename)[0] + '_annotations.csv'
             dialog.form.fields['annotation_path'].setText(annotation_path)  # select first
 
             # initialize form data with cli args
@@ -535,7 +535,6 @@ class MainWindow(pg.QtGui.QMainWindow):
             if target_samplingrate is not None:
                 dialog.form['target_samplingrate'] = target_samplingrate
             if len(events_string):
-                dialog.form['init_annotations'] = True
                 dialog.form['events_string'] = events_string
 
 
@@ -1379,7 +1378,10 @@ class PSV(MainWindow):
     def set_spec_freq(self, qt_keycode):
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/spec_freq.yaml",
                             title=f'Set frequency limits in display')
+        dialog.form['spec_freq_min'] = self.fmin
+        dialog.form['spec_freq_max'] = self.fmax
         dialog.show()
+
         result = dialog.exec_()
 
         if result == QtGui.QDialog.Accepted:
