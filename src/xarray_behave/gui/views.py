@@ -206,6 +206,13 @@ class TraceView(pg.PlotWidget):
         self.callback = callback
         self.getPlotItem().mouseClickEvent = self._click
 
+        self.threshold_line = pg.InfiniteLine(movable=True, angle=0,
+                                pos=0,
+                                pen=pg.mkPen(color='r', width=1),
+                                bounds=[0, None],
+                                label='Threshold',
+                                labelOpts={'position': 0.9})
+
     @property
     def m(self):  # make read-only
         return self._m
@@ -222,6 +229,11 @@ class TraceView(pg.PlotWidget):
     def yrange(self):
         return np.array(self.viewRange()[1])
 
+    @property
+    def threshold(self):
+        if self.threshold_line is not None:
+            return self.threshold_line.value()
+
     def update_trace(self):
         self.clear()
         if self.m.nb_channels is not None and self.m.show_all_channels and self.m.y_other is not None:
@@ -237,6 +249,8 @@ class TraceView(pg.PlotWidget):
         self.addItem(pg.InfiniteLine(movable=False, angle=90,
                                      pos=self.m.x[int(self.m.span / 2)],
                                      pen=pg.mkPen(color='r', width=1)))
+        self.addItem(self.threshold_line)
+
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
 

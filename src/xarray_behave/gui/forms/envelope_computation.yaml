@@ -1,0 +1,21 @@
+main:
+
+- name: thres_env_std
+  label: Smoothing factor for envelope (seconds)
+  type: double
+  default_disabled: True
+  range: 0.0,1.0
+  default: 0.010
+  decimals: 4
+
+- name: thres_min_dist
+  label: Minimal distance between events (seconds)
+  type: double
+  range: 0.0,100.0
+  default: 0.020
+  decimals: 4
+
+- name: set
+  label: Set parameters for envelope computation
+  type: button
+  default: main action

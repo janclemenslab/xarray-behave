@@ -947,6 +947,9 @@ class PSV(MainWindow):
         self.select_loudest_channel = False
         self.sinet0 = None
 
+        self.thres_min_dist = 0.020  # seconds
+        self.thres_env_std = 0.010  # seconds
+
         if 'song_events' in self.ds:
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
         else:
@@ -968,6 +971,7 @@ class PSV(MainWindow):
 
         self._span = int(self.fs_song)
         self._t0 = int(self.span / 2)
+        self.step = 1
 
         self.resize(1000, 800)
 
@@ -1053,7 +1057,10 @@ class PSV(MainWindow):
                                 self.delete_current_events, "U")
         self._add_keyed_menuitem(view_annotations, "Delete all song types in view", self.delete_all_events, "Y")
         view_annotations.addSeparator()
-        self._add_keyed_menuitem(view_annotations, "Approve proposals for active song type in view", self.approve_active_proposals, "G")  # make toggle?
+        self._add_keyed_menuitem(view_annotations, "Generate proposal by envelope thresholding", self.threshold, "I")
+        self._add_keyed_menuitem(view_annotations, "Adjust envelope computation", self.set_envelope_computation)
+        view_annotations.addSeparator()
+        self._add_keyed_menuitem(view_annotations, "Approve proposals for active song type in view", self.approve_active_proposals, "G")
         self._add_keyed_menuitem(view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals, "H")
 
         view_train = self.bar.addMenu("DeepSS")
@@ -1229,8 +1236,30 @@ class PSV(MainWindow):
             logging.info(f'   Deleted all  {deleted_events} of {self.current_event_name} in view.')
         else:
             logging.info(f'   No event type selected. Not deleting anything.')
-        if self.STOP:
+
+    def threshold(self, qt_keycode):
+        if self.STOP and self.current_event_name is not None:
+            if self.event_times.categories[self.current_event_name] != 'event':
+                return
+            # calc rms
+            import scipy.signal.windows
+            import peakutils
+
+            min_dist = self.thres_min_dist * self.fs_song
+            std = self.thres_env_std * self.fs_song
+            win = scipy.signal.windows.gaussian(int(std * 6), std)
+            win /= np.sum(win)
+            env = np.sqrt(np.convolve(self.y**2, win, mode='same'))
+
+            indexes = peakutils.indexes(env, thres=self.slice_view.threshold, min_dist=min_dist, thres_abs=True)
+
+            # add events to current song type
+            for t in self.x[indexes]:
+                self.event_times.add_time(self.current_event_name, t)
+                logging.info(f'  Added {self.current_event_name} at t={t:1.4f} seconds.')
+            # TODO ensure we did not add duplicates - maybe call np.unique at the end?
             self.update_xy()
+
 
     def delete_all_events(self, qt_keycode):
         deleted_events = 0
@@ -1359,6 +1388,22 @@ class PSV(MainWindow):
             self.fmax = form_data['spec_freq_max']
             logging.info(f'Set frequency range for spectrogram display to {self.fmin}:{self.fmax} Hz.')
             self.update_xy()
+
+    def set_envelope_computation(self, qt_keycode):
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/envelope_computation.yaml",
+                            title=f'Set options for envelope computation')
+
+        dialog.form['thres_min_dist'] = self.thres_min_dist
+        dialog.form['thres_env_std'] = self.thres_env_std
+
+        dialog.show()
+        result = dialog.exec_()
+
+        if result == QtGui.QDialog.Accepted:
+            form_data = dialog.form.get_form_data()  # why call this twice
+            self.thres_min_dist = form_data['thres_min_dist']
+            self.thres_env_std = form_data['thres_env_std']
+
 
     def update_xy(self):
         self.x = self.ds.sampletime.data[self.time0:self.time1]
