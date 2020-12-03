@@ -14,7 +14,7 @@ main:
   range: 0.0,1000000.0
   default: 1000.0
 
-- name: generate
+- name: set
   label: Set freqs for spec display data
   type: button
   default: main action
