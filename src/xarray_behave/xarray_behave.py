@@ -765,7 +765,7 @@ def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Opti
     dataset_data['song_raw'] = song_raw
 
     event_times = annot.Events()
-    if annotation_path is not None:
+    if annotation_path is not None and os.path.exists(annotation_path):
         try:
             df = pd.read_csv(annotation_path)
             event_times = annot.Events.from_df(df)
