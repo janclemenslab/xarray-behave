@@ -41,7 +41,8 @@ setup(name='xarray_behave',
       install_requires=['numpy', 'scipy', 'pandas', 'xarray', 'h5py', 'zarr', 'flammkuchen',
                         'dask', 'toolz', 'samplestamps', 'soundfile', 'opencv-python-headless'],
       extras_require={'gui': ['pyside2==5.13', 'pyqtgraph==0.11.0rc0', 'pyvideoreader', 'colorcet'
-                              'sounddevice', 'scikit-image', 'opencv-python-headless', 'pyyaml', 'defopt']},
+                              'sounddevice', 'scikit-image', 'opencv-python-headless', 'pyyaml',
+                              'peakutils', 'defopt']},
       include_package_data=True,
       zip_safe=False,
       entry_points={'console_scripts': ['xb=xarray_behave.gui.app:cli', 'dss-gui=xarray_behave.gui.app:cli_dss'], }
