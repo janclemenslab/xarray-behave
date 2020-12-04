@@ -240,7 +240,7 @@ class TraceView(pg.PlotWidget):
             for chan in range(self.m.nb_channels - 1):
                         self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
                                                       self.m.y_other[::self.m.step, chan],
-                                                      pen=pg.mkPen(color=[128, 128, 128])))
+                                                      pen=pg.mkPen(color=[127, 127, 127])))
         # plot selected trace
         self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
                                       np.array(self.m.y[::self.m.step])))
@@ -249,11 +249,13 @@ class TraceView(pg.PlotWidget):
         self.addItem(pg.InfiniteLine(movable=False, angle=90,
                                      pos=self.m.x[int(self.m.span / 2)],
                                      pen=pg.mkPen(color='r', width=1)))
-        self.addItem(self.threshold_line)
-
+        if self.m.threshold_mode:
+            self.addItem(self.threshold_line)
+            self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
+                                          self.m.envelope[::self.m.step],
+                                          pen=pg.mkPen(color=[255, 127, 127])))
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
-
         region = SegmentItem((onset, offset), region_typeindex, self.xrange,
                              brush=brush, movable=movable)
         self.addItem(region)

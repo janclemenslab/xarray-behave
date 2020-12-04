@@ -21,6 +21,7 @@ import pandas as pd
 import scipy.interpolate
 import scipy.signal as ss
 import pathlib
+import peakutils
 from dataclasses import dataclass
 from typing import Callable, Optional, Dict, Any, List
 
@@ -943,10 +944,11 @@ class PSV(MainWindow):
         self.move_only_current_events = True
         self.show_all_channels = True
         self.select_loudest_channel = False
+        self.threshold_mode = False
         self.sinet0 = None
 
-        self.thres_min_dist = 0.020  # seconds
-        self.thres_env_std = 0.010  # seconds
+        self.thres_min_dist = 0.025  # seconds
+        self.thres_env_std = 0.004  # seconds
 
         if 'song_events' in self.ds:
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
@@ -1055,6 +1057,8 @@ class PSV(MainWindow):
                                 self.delete_current_events, "U")
         self._add_keyed_menuitem(view_annotations, "Delete all song types in view", self.delete_all_events, "Y")
         view_annotations.addSeparator()
+        self._add_keyed_menuitem(view_annotations, "Toggle thresholding mode", partial(self.toggle, 'threshold_mode'),
+                                checkable=True, checked=self.threshold_mode)
         self._add_keyed_menuitem(view_annotations, "Generate proposal by envelope thresholding", self.threshold, "I")
         self._add_keyed_menuitem(view_annotations, "Adjust envelope computation", self.set_envelope_computation)
         view_annotations.addSeparator()
@@ -1239,25 +1243,31 @@ class PSV(MainWindow):
         if self.STOP and self.current_event_name is not None:
             if self.event_times.categories[self.current_event_name] != 'event':
                 return
-            # calc rms
-            import scipy.signal.windows
-            import peakutils
 
-            min_dist = self.thres_min_dist * self.fs_song
-            std = self.thres_env_std * self.fs_song
-            win = scipy.signal.windows.gaussian(int(std * 6), std)
-            win /= np.sum(win)
-            env = np.sqrt(np.convolve(self.y**2, win, mode='same'))
-
-            indexes = peakutils.indexes(env, thres=self.slice_view.threshold, min_dist=min_dist, thres_abs=True)
+            indexes = peakutils.indexes(self.envelope,
+                                        thres=self.slice_view.threshold,
+                                        min_dist=self.thres_min_dist * self.fs_song,
+                                        thres_abs=True)
 
             # add events to current song type
             for t in self.x[indexes]:
                 self.event_times.add_time(self.current_event_name, t)
-                logging.info(f'  Added {self.current_event_name} at t={t:1.4f} seconds.')
+                logging.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
             # TODO ensure we did not add duplicates - maybe call np.unique at the end?
+            old_len = self.event_times[self.current_event_name].shape[0]
+            self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
+            new_len = self.event_times[self.current_event_name].shape[0]
+            if new_len != old_len:
+                logging.info(f"   Removed {old_len < new_len} duplicates in {self.current_event_name}.")
             self.update_xy()
 
+    def get_envelope(self):
+        import scipy.signal.windows
+        std = self.thres_env_std * self.fs_song
+        win = scipy.signal.windows.gaussian(int(std * 6), std)
+        win /= np.sum(win)
+        env = np.sqrt(np.convolve(self.y**2, win, mode='same'))
+        return env
 
     def delete_all_events(self, qt_keycode):
         deleted_events = 0
@@ -1404,7 +1414,7 @@ class PSV(MainWindow):
             form_data = dialog.form.get_form_data()  # why call this twice
             self.thres_min_dist = form_data['thres_min_dist']
             self.thres_env_std = form_data['thres_env_std']
-
+            self.update_xy()
 
     def update_xy(self):
         self.x = self.ds.sampletime.data[self.time0:self.time1]
@@ -1428,6 +1438,9 @@ class PSV(MainWindow):
             if self.select_loudest_channel:
                 self.loudest_channel = np.argmax(np.max(y_all, axis=0))
                 self.cb2.setCurrentIndex(self.loudest_channel)
+
+        if self.threshold_mode:
+            self.envelope = self.get_envelope()
 
         self.slice_view.update_trace()
 
