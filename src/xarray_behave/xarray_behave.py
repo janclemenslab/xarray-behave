@@ -147,9 +147,17 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         # load MANUAL SONG ANNOTATIONS
         # first try PYTHON, then matlab
         logging.info('Attempting to load manual segmentation:')
-        filepath_segmentation_manual_csv = Path(root, res_path, datename, f'{datename}_songmanual.csv')
+
+        filepath_segmentation_manual_csv_new = Path(root, res_path, datename, f'{datename}_annotations.csv')
+        filepath_segmentation_manual_csv_old = Path(root, res_path, datename, f'{datename}_songmanual.csv')
+        if os.path.exists(filepath_segmentation_manual_csv_new):
+            filepath_segmentation_manual_csv = filepath_segmentation_manual_csv_new
+        else:
+            filepath_segmentation_manual_csv = filepath_segmentation_manual_csv_old
+
         filepath_segmentation_manual_zarr = Path(root, res_path, datename, f'{datename}_songmanual.zarr')
         filepath_segmentation_manual_matlab = Path(root, res_path, datename, f'{datename}_songmanual.mat')
+
         if os.path.exists(filepath_segmentation_manual_csv):
             manual_event_seconds, manual_event_categories = ld.load_manual_annotation_csv(filepath_segmentation_manual_csv)  # need to extract event_seconds and categories from that one
             with_segmentation_manual = True
