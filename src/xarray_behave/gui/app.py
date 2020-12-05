@@ -1419,7 +1419,7 @@ class PSV(MainWindow):
 
     def update_xy(self):
         self.x = self.ds.sampletime.data[self.time0:self.time1]
-        self.step = int(max(1, np.ceil(len(self.x) / self.fs_song)))  # make sure step is >= 1
+        self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
         self.y_other = None
 
         if 'song' in self.ds and self.current_channel_name == 'Merged channels':
@@ -2001,13 +2001,3 @@ def cli():
     warnings.filterwarnings("ignore")
     logging.basicConfig(level=logging.INFO)
     defopt.run(main, show_defaults=False)
-
-
-# def cli_dss():
-#     import warnings
-#     warnings.filterwarnings("ignore")
-#     logging.basicConfig(level=logging.INFO)
-#     defopt.run(main_dss, show_defaults=False)
-
-# if __name__ == '__main__':
-#     cli()
