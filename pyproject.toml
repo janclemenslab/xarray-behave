@@ -20,7 +20,6 @@ gui = ['pyside2', 'pyqtgraph==0.11.0rc0', 'pyvideoreader', 'opencv-python-headle
 
 [tool.flit.scripts]
 xb = "xarray_behave.gui.app:cli"
-dss-gui = "xarray_behave.gui.app:cli_dss"
 
 [tool.pytest.ini_options]
 minversion = "6.0"

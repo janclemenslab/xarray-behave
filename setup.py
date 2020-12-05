@@ -45,5 +45,5 @@ setup(name='xarray_behave',
                               'peakutils', 'defopt']},
       include_package_data=True,
       zip_safe=False,
-      entry_points={'console_scripts': ['xb=xarray_behave.gui.app:cli', 'dss-gui=xarray_behave.gui.app:cli_dss'], }
+      entry_points={'console_scripts': ['xb=xarray_behave.gui.app:cli']}
      )

@@ -1060,7 +1060,7 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_annotations, "Toggle thresholding mode", partial(self.toggle, 'threshold_mode'),
                                 checkable=True, checked=self.threshold_mode)
         self._add_keyed_menuitem(view_annotations, "Generate proposal by envelope thresholding", self.threshold, "I")
-        self._add_keyed_menuitem(view_annotations, "Adjust envelope computation", self.set_envelope_computation)
+        self._add_keyed_menuitem(view_annotations, "Adjust thresholding mode", self.set_envelope_computation)
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Approve proposals for active song type in view", self.approve_active_proposals, "G")
         self._add_keyed_menuitem(view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals, "H")
@@ -1105,6 +1105,7 @@ class PSV(MainWindow):
             lut = (colormap._lut * 255).view(np.ndarray)  # convert matplotlib colormap from 0-1 to 0 -255 for Qt
         else:
             logging.warning(f'Unknown colormap "{cmap_name}"" provided. Using default (turbo).')
+            lut = None
 
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=lut)
@@ -1258,7 +1259,7 @@ class PSV(MainWindow):
             self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
             new_len = self.event_times[self.current_event_name].shape[0]
             if new_len != old_len:
-                logging.info(f"   Removed {old_len < new_len} duplicates in {self.current_event_name}.")
+                logging.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
             self.update_xy()
 
     def get_envelope(self):
@@ -1418,7 +1419,7 @@ class PSV(MainWindow):
 
     def update_xy(self):
         self.x = self.ds.sampletime.data[self.time0:self.time1]
-        self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
+        self.step = int(max(1, np.ceil(len(self.x) / self.fs_song)))  # make sure step is >= 1
         self.y_other = None
 
         if 'song' in self.ds and self.current_channel_name == 'Merged channels':
@@ -1968,7 +1969,8 @@ def main(source: str = '', *, events_string: str = '',
 def main_dss(source: str = '', *, song_types_string: str = '',
          spec_freq_min: float = None, spec_freq_max: float=None,
          skip_dialog: bool = False):
-    """
+    """GUI for annotating song and training and using DeepSS networks.
+
     Args:
         source (str): Data source to load.
             Optional - will open an empty GUI if omitted.
@@ -1998,14 +2000,14 @@ def cli():
     import warnings
     warnings.filterwarnings("ignore")
     logging.basicConfig(level=logging.INFO)
-    defopt.run(main)
+    defopt.run(main, show_defaults=False)
 
 
-def cli_dss():
-    import warnings
-    warnings.filterwarnings("ignore")
-    logging.basicConfig(level=logging.INFO)
-    defopt.run(main_dss)
+# def cli_dss():
+#     import warnings
+#     warnings.filterwarnings("ignore")
+#     logging.basicConfig(level=logging.INFO)
+#     defopt.run(main_dss, show_defaults=False)
 
-if __name__ == '__main__':
-    cli()
+# if __name__ == '__main__':
+#     cli()
