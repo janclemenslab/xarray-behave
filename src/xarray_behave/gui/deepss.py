@@ -88,7 +88,7 @@ def make(data_folder, store_folder,
     class_names.insert(0, 'noise')
     class_types.insert(0, 'segment')
 
-    file_bases = [f.rpartition('.')[0] for f in files_annotation]
+    file_bases = [f[:-len('_annotations.csv')] for f in files_annotation]
     data_files = []
     for file_base in file_bases:
         if os.path.exists(file_base + '.npz'):
@@ -173,7 +173,7 @@ def make(data_folder, store_folder,
         nb_samples = x.shape[0]
 
         # load annotations
-        df = annotation_loader(file_base + '.csv')
+        df = annotation_loader(file_base + '_annotations.csv')
         df = df.dropna()
 
         # make initial annotation matrix
