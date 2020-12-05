@@ -18,4 +18,5 @@ If you do not want to use the GUI, e.g. if just want to create, load, save datas
 ```shell
 conda env create -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/master/env/xb.yml -n xb
 ```
+
 See `demo.ipynb` for usage examples.
