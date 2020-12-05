@@ -246,7 +246,7 @@ class TraceView(pg.PlotWidget):
         # plot selected trace
         self.addItem(pg.PlotCurveItem(x=self.m.x[::self.m.step],
                                       y=np.array(self.m.y[::self.m.step]),
-                                      pen=pg.mkPen(color=[196, 196, 196], width=1.5)))
+                                      pen=pg.mkPen(color=[196, 196, 196], width=2)))
         self.autoRange(padding=0)
         # time of current frame in trace
         self.addItem(pg.InfiniteLine(movable=False, angle=90,
