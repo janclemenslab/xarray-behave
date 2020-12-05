@@ -197,6 +197,7 @@ class TraceView(pg.PlotWidget):
         # this should be just a link/ref so changes in ds made by the controller will propagate
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
         self.disableAutoRange()
+        self.enableAutoRange(False, False)
 
         # leave enought space so axes are aligned aligned
         y_axis = self.getAxis('left')
@@ -208,7 +209,7 @@ class TraceView(pg.PlotWidget):
 
         self.threshold_line = pg.InfiniteLine(movable=True, angle=0,
                                 pos=0,
-                                pen=pg.mkPen(color='r', width=1),
+                                pen=pg.mkPen(color='r', width=2, alpha=0.25),
                                 bounds=[0, None],
                                 label='Threshold',
                                 labelOpts={'position': 0.9})
@@ -238,22 +239,27 @@ class TraceView(pg.PlotWidget):
         self.clear()
         if self.m.nb_channels is not None and self.m.show_all_channels and self.m.y_other is not None:
             for chan in range(self.m.nb_channels - 1):
-                        self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
-                                                      self.m.y_other[::self.m.step, chan],
-                                                      pen=pg.mkPen(color=[127, 127, 127])))
+                self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
+                                                self.m.y_other[::self.m.step, chan],
+                                                pen=pg.mkPen(color=[127, 127, 127])))
+
         # plot selected trace
-        self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
-                                      np.array(self.m.y[::self.m.step])))
+        self.addItem(pg.PlotCurveItem(x=self.m.x[::self.m.step],
+                                      y=np.array(self.m.y[::self.m.step]),
+                                      pen=pg.mkPen(color=[196, 196, 196], width=1.5)))
         self.autoRange(padding=0)
         # time of current frame in trace
         self.addItem(pg.InfiniteLine(movable=False, angle=90,
                                      pos=self.m.x[int(self.m.span / 2)],
                                      pen=pg.mkPen(color='r', width=1)))
+
+
         if self.m.threshold_mode:
             self.addItem(self.threshold_line)
             self.addItem(pg.PlotCurveItem(self.m.x[::self.m.step],
                                           self.m.envelope[::self.m.step],
-                                          pen=pg.mkPen(color=[255, 127, 127])))
+                                          pen=pg.mkPen(color=[196, 98, 98], width=2)))
+
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
         region = SegmentItem((onset, offset), region_typeindex, self.xrange,
