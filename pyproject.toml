@@ -16,7 +16,8 @@ description-file = "README.md"
 
 [tool.flit.metadata.requires-extra]
 gui = ['pyside2', 'pyqtgraph==0.11.0rc0', 'pyvideoreader', 'opencv-python-headless',
-       'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet']
+       'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet',
+       'peakutils']
 
 [tool.flit.scripts]
 xb = "xarray_behave.gui.app:cli"
