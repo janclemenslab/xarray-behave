@@ -162,7 +162,10 @@ def eventtimes_to_traces(ds, event_times):
         logging.info(f'   {event_name}')
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
         if event_category == 'event':
+            # times = ds.song_events.time.sel(time=event_times[event_name][:, 0], method='nearest').data
             times = ds.song_events.time.sel(time=event_times[event_name].ravel(), method='nearest').data
+            times = np.unique(times)
+
             # this is sloooooow
             for time in times:
                 idx = np.where(ds.time==time)[0]
