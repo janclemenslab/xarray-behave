@@ -67,7 +67,7 @@ class DataSource:
 
 class MainWindow(pg.QtGui.QMainWindow):
 
-    def __init__(self, parent=None, title="dss-gui"):
+    def __init__(self, parent=None, title="DeepSS"):
         super().__init__(parent)
 
         self.windows = []
@@ -783,9 +783,9 @@ class MainWindow(pg.QtGui.QMainWindow):
         if 'song_raw' in ds:  # this will take a long time:
             if f_high is None:
                 f_high = ds.song_raw.attrs['sampling_rate_Hz'] / 2 - 1
-            logging.info(f'Filtering `song_raw` between {f_low} and {f_high} Hz.')
             sos_bp = ss.butter(5, [f_low, f_high], 'bandpass', output='sos',
                                 fs=ds.song_raw.attrs['sampling_rate_Hz'])
+            logging.info(f'Filtering `song_raw` between {f_low} and {f_high} Hz.')
             ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
         if 'song' in ds:
             if f_high is None:
@@ -1510,11 +1510,7 @@ class PSV(MainWindow):
         if self.current_event_index != region.event_index:
             event_name_to_move = self.event_times.names[region.event_index]
 
-        # this could be done by the view:
-        f = scipy.interpolate.interp1d(region.xrange, self.trange,
-                                       bounds_error=False, fill_value='extrapolate')
-        new_region = f(region.getRegion())
-
+        new_region = region.getRegion()
         # need to figure out event_name of the moved one if moving non-selected event
         self.event_times.move_time(event_name_to_move, region.bounds, new_region)
         logging.info(f'  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.')
@@ -1524,16 +1520,11 @@ class PSV(MainWindow):
         """Called when dragging an event-like song_event - will change time."""
         if self.move_only_current_events and self.current_event_index != position.event_index:
             return
-
         event_name_to_move = self.current_event_name
         if self.current_event_index != position.event_index:
             event_name_to_move = self.event_times.names[position.event_index]
 
-        # this should be done by the view:
-        # convert position to time coordinates (important for spec_view since x-axis does not correspond to time)
-        f = scipy.interpolate.interp1d(position.xrange, self.trange,
-                                       bounds_error=False, fill_value='extrapolate')
-        new_position = f(position.pos()[0])
+        new_position = position.pos()[0]
         self.event_times.move_time(event_name_to_move, position.position, new_position)
         logging.info(f'  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.')
         self.update_xy()
@@ -1611,7 +1602,7 @@ class PSV(MainWindow):
             self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.sinet0 = None
             deleted_time = self.event_times.delete_time(self.current_event_name, mouseT, tol=0.05)
-            if deleted_time is not None:
+            if deleted_time:
                 logging.info(f'  Deleted {self.current_event_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.')
             self.update_xy()
 
@@ -1785,7 +1776,6 @@ class PSV(MainWindow):
         proposal_suffix = '_proposals'
         logging.info("Approving:")
         for name in self.event_times.names:
-            print(appprove_only_active_event, name, self.current_event_name)
             if appprove_only_active_event and name != self.current_event_name:
                 continue
 
