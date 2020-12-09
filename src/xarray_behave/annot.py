@@ -224,7 +224,7 @@ class Events(UserDict):
             deleted_time = self[name][index, :]
             self[name] = np.delete(self[name], index, axis=0)
         else:
-            deleted_time = None
+            deleted_time = []
         return deleted_time
 
     def select_range(self, name: str, t0: Optional[float] = None, t1: Optional[float] = None, strict: bool = True):

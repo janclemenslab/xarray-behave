@@ -1602,7 +1602,7 @@ class PSV(MainWindow):
             self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.sinet0 = None
             deleted_time = self.event_times.delete_time(self.current_event_name, mouseT, tol=0.05)
-            if deleted_time:
+            if len(deleted_time):
                 logging.info(f'  Deleted {self.current_event_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.')
             self.update_xy()
 
