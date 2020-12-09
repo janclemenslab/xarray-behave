@@ -18,6 +18,7 @@ from . import (loaders as ld,
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
              keep_multi_channel: bool = False, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
+             fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
              lazy_load_song: bool = False) -> xr.Dataset:
     """[summary]
 
@@ -43,6 +44,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
     filepath_daq = Path(root, dat_path, datename, f'{datename}_daq.h5')
     ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
+
+    if target_sampling_rate == 0:
+        resample_video_data = False
     if not resample_video_data:
         logging.info(f'  setting targetsamplingrate to avg. fps.')
         target_sampling_rate = 1 / np.mean(np.diff(ss.frames2times.y))
@@ -214,15 +218,19 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # build interpolator to get neareast frame for each sample in the new grid
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
+    frame_samples = interp_duplicates(frame_samples)
+
     interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
                                               kind='nearest', bounds_error=False, fill_value=np.nan)
     # construct desired sample grid for data
     step = int(sampling_rate / target_sampling_rate)
+
     if resample_video_data:
         target_samples = np.arange(first_sample, last_sample, step, dtype=np.uintp)
     else:
         target_samples = frame_samples
         resample_video_data = True  # <- this means we can remove a lot of code below (needs some more testing though)
+
     time = ss.sample_time(target_samples) - ref_time
     # get neareast frame for each sample in the sample grid
     nearest_frame = interpolator(target_samples).astype(np.uintp)
@@ -259,32 +267,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                             'amplitude_units': 'volts'})
             dataset_data['non_song_raw'] = non_song_raw
 
-
-    if not resample_video_data:
-        logging.info(f'Resampling event data to match frame times.')
-        frame_times = ss.frame_time(frame_numbers) - ref_time
-        time = frame_times
-
-        len_list = [time.shape[0]]
-        if with_tracks:
-            len_list.append(body_pos.shape[0])
-        # if with_segmentation_manual or with_segmentation:
-        #     len_list.append(song_events.shape[0])
-        if with_poses:
-            len_list.append(pose_pos.shape[0])
-        min_len = min(len_list)
-        logging.info(f'Cutting all data to {min_len} frames.')
-
     logging.info('Making all datasets:')
     if with_segmentation_manual or with_segmentation_manual_matlab or with_segmentation:
         logging.info('   segmentations')
         song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
-
-        if not resample_video_data:
-            time = time[:min_len]
-            song_events = song_events[:min_len]
-            nearest_frame = nearest_frame[:min_len]
-
         song_events = xr.DataArray(data=song_events,  # start with empty song_events matrix
                                    dims=['time', 'event_types'],
                                    coords={'time': time,
@@ -295,10 +281,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                           'sampling_rate_Hz': sampling_rate / step,
                                           'time_units': 'seconds',
                                           'event_times': event_seconds})
-
         # now populate from event_times attribute
         song_events_ds = event_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
-                                                        song_events.attrs['event_times'])
+                                                          song_events.attrs['event_times'])
         dataset_data['song_events'] = song_events_ds.song_events
         try:
             ds_eventtimes = annot.Events(event_seconds).to_dataset()
@@ -327,12 +312,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             interpolator = scipy.interpolate.interp1d(
                 frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
             body_pos = interpolator(target_samples)
-        else:
-            time = frame_times
-            nearest_frame = frame_numbers
-            time = time[:min_len]
-            nearest_frame = nearest_frame[:min_len]
-            body_pos = body_pos[:min_len]
 
         positions = xr.DataArray(data=body_pos,
                                  dims=['time', 'flies', 'bodyparts', 'coords'],
@@ -366,14 +345,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             interpolator = scipy.interpolate.interp1d(
                 frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
             pose_pos_allo = interpolator(target_samples)
-        else:
-            time = frame_times
-            nearest_frame = frame_numbers
-            # ensure all is equal length
-            time = time[:min_len]
-            nearest_frame = nearest_frame[:min_len]
-            pose_pos = pose_pos[:min_len]
-            pose_pos_allo = pose_pos_allo[:min_len]
 
         # poses in EGOCENTRIC coordinates
         poses = xr.DataArray(data=pose_pos,
@@ -611,6 +582,26 @@ def convert_spatial_units(ds: xr.Dataset, to_units: Optional[str] = None, names:
                 da.attrs['spatial_units'] = 'mm'
     return ds
 
+
+def interp_duplicates(y: np.array) -> np.array:
+    """Replace duplicates with linearly interpolated values.
+
+    Args:
+        y (np.array): array with duplicates
+
+    Returns:
+        np.array: array without duplicates
+    """
+    x = np.arange(len(y))
+
+    uni_mask = np.zeros_like(y, dtype=bool)
+    uni_mask[np.unique(y, return_index=True)[1]] = True
+
+    interp = scipy.interpolate.interp1d(x[uni_mask], y[uni_mask], kind='linear', copy=False, fill_value="extrapolate")
+
+    y[~uni_mask] = interp(x[~uni_mask])
+
+    return y
 
 def save(savepath, dataset):
     """[summary]
