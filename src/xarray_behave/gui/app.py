@@ -361,9 +361,9 @@ class MainWindow(pg.QtGui.QMainWindow):
             for field in ['seed', 'fraction_data', 'reduce_lr_patience']:
                 if field in form_data and form_data[field] is None:
                     del form_data[field]
-
-            form_data['use_separable'] = ' '.join(form_data['use_separable'])
+            form_data['use_separable'] = [item.lower()=='true' for item in form_data['use_separable']]
             if is_cli:
+                form_data['use_separable'] = ' '.join(form_data['use_separable'])
                 for field in ['ignore_boundaries', 'reduce_lr', 'tensorboard']:
                     if field in form_data:
                         if form_data[field] is False:  # rename and pre-prend "no_"
