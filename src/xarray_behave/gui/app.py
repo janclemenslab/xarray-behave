@@ -22,7 +22,7 @@ import scipy.interpolate
 import scipy.signal as ss
 import pathlib
 import peakutils
-from dataclasses import dataclass
+# from dataclasses import dataclass
 from typing import Callable, Optional, Dict, Any, List
 
 try:
@@ -58,10 +58,11 @@ sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when ke
 package_dir = xarray_behave.__path__[0]
 
 
-@dataclass
+# @dataclass
 class DataSource:
-    type: str
-    name: str
+    def __init__(self, type: str, name: str):
+        self.type = type
+        self.name = name
 
 
 class MainWindow(pg.QtGui.QMainWindow):
