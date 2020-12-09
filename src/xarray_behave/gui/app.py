@@ -1741,7 +1741,7 @@ class PSV(MainWindow):
             # remove non-song keys
             if events:
                 for key in events.keys():
-                    samplerate_Hz = events[key]['samplerate_Hz']
+                    samplerate_Hz = events['samplerate_Hz']
             elif segments:
                 samplerate_Hz = segments['samplerate_Hz']
             else:
@@ -1752,16 +1752,18 @@ class PSV(MainWindow):
             if form_data['proof_reading_mode']:
                 suffix = '_proposals'
 
-            for event_name, event_data in events.items():
-                logging.info(f"   found {len(event_data['seconds'])} instances of event '{event_name}'.")
-                self.event_times.add_name(event_name + suffix, 'event',
-                                            np.stack((event_data['seconds'] + start_seconds,
-                                                      event_data['seconds'] + start_seconds), axis=1))
+            detected_event_names = np.unique(events['sequence'])
+            logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
+            if detected_event_names:
+                for name, seconds in zip(events['sequence'], events['seconds']):
+                    self.event_times.add_time(name + suffix, seconds + start_seconds, seconds + start_seconds, category='event')
+
 
             detected_segment_names = np.unique(segments['sequence'])
             logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
-            for name, onset_seconds, offset_seconds in zip(segments['sequence'], segments['onsets_seconds'], segments['offsets_seconds']):
-                self.event_times.add_time(name + suffix, onset_seconds + start_seconds, offset_seconds + start_seconds, category='segment')
+            if detected_segment_names:
+                for name, onset_seconds, offset_seconds in zip(segments['sequence'], segments['onsets_seconds'], segments['offsets_seconds']):
+                    self.event_times.add_time(name + suffix, onset_seconds + start_seconds, offset_seconds + start_seconds, category='segment')
 
             # self.event_times = annot.Events(self.event_times, categories=self.event_times.categories)  # why ???
             # self.fs_other = samplerate_Hz
