@@ -18,7 +18,7 @@ from . import (loaders as ld,
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
              keep_multi_channel: bool = False, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
-             fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None) -> xr.Dataset:
+             lazy_load_song: bool = False) -> xr.Dataset:
     """[summary]
 
     Args:
@@ -34,6 +34,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         include_poses (bool, optional): [description]. Defaults to True.
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
+        lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
     Returns:
         xarray.Dataset
     """
@@ -179,7 +180,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         if keep_multi_channel or merge_raw_recording:
             try:
                 logging.info(f'Reading recording from {filepath_daq}.')
-                song_raw, non_song_raw = ld.load_raw_song(filepath_daq, return_nonsong_channels=True, lazy=True)
+                song_raw, non_song_raw = ld.load_raw_song(filepath_daq, return_nonsong_channels=True, lazy=lazy_load_song)
                 if keep_multi_channel:
                     res['song_raw'] = song_raw
                     res['non_song_raw'] = non_song_raw
