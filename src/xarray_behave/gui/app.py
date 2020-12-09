@@ -625,9 +625,11 @@ class MainWindow(pg.QtGui.QMainWindow):
                 else:
                     resample_video_data = True
 
+                form_data['filter_song'] = form_data['filter_song'] == 'yes'
+
                 include_tracks = not form_data['ignore_tracks']
                 include_poses = not form_data['ignore_tracks']
-
+                lazy_load_song = not form_data['filter_song']  # faster that way
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
@@ -637,9 +639,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                                  target_sampling_rate=form_data['target_samplingrate'],
                                  resample_video_data=resample_video_data,
                                  pixel_size_mm=pixel_size_mm,
+                                 lazy_load_song=lazy_load_song,
                                  include_tracks=include_tracks, include_poses=include_poses)
 
-                if form_data['filter_song'] == 'yes':
+                if form_data['filter_song']:
                     ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
 
                 event_names = []
