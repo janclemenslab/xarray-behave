@@ -207,6 +207,9 @@ class Events(UserDict):
 
     def delete_time(self, name, time, tol=0):
         nearest_start = self._find_nearest(self.start_seconds(name), time)
+        if nearest_start is None:
+            return []
+
         index = np.where(self.start_seconds(name) == nearest_start)[0][0]
 
         if self.categories[name] == 'segment':
@@ -290,9 +293,11 @@ class Events(UserDict):
         return len(indices)
 
     def _find_nearest(self, array, value):
-        array = np.asarray(array)
-        idx = (np.abs(array - value)).argmin()
-        return array[idx]
+        if not len(array):
+            return None
+        else:
+            idx = (np.abs(array - value)).argmin()
+            return array[idx]
 
     def _infer_categories(self):
         categories = dict()
