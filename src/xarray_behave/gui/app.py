@@ -304,7 +304,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 self.export_to_npz(savefilename_trunk + '.npz', start_seconds, end_seconds, form_data['scale_audio'])
 
             logging.info(f"   annotations to CSV: {savefilename_trunk + '.csv'}.")
-            self.export_to_csv(savefilename_trunk + '_annotations.csv', start_seconds, end_seconds, which_events)
+            self.export_to_csv(savefilename_trunk + '_annotations.csv', start_seconds, end_seconds, which_events, match_to_samples=True)
             logging.info(f"Done.")
 
     def deepss_make(self, qt_keycode=None):
@@ -1504,7 +1504,7 @@ class PSV(MainWindow):
             self.t0 += self.frame_interval
             cnt += 1
             if cnt % 10 == 0:
-                # logging.info(time.time() - dt0)
+                # logging.debug(time.time() - dt0)
                 dt0 = time.time()
             if self.STOP:
                 RUN = False
