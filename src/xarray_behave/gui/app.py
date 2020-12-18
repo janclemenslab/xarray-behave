@@ -154,6 +154,7 @@ class MainWindow(pg.QtGui.QMainWindow):
     def export_to_csv(self, savefilename: str = None,
                       start_seconds: float = 0, end_seconds: float = np.inf,
                       which_events: Optional[List[str]] = None,
+                      match_to_samples: bool = False,
                       qt_keycode=None):
         """[summary]
 
@@ -162,16 +163,27 @@ class MainWindow(pg.QtGui.QMainWindow):
             start_seconds (int, optional): [description]. Defaults to 0.
             end_seconds ([type], optional): [description]. Defaults to None.
             which_events ([type], optional): [description]. Defaults to None.
+            match_to_samples (bool, optiona): Will adjust seconds so that seconds * samplerate yields the correct index.
+                                              Otherwise, seconds will correspond to the correct time stamp of the event sample.
+                                              Only relevant for xb.datasets with timestamp info.
+                                              Defaults to False.
             qt_keycode ([type], optional): [description]. Defaults to None.
         """
         if which_events is None:
             which_events = self.event_times.names
 
+        samplerate = self.fs_song
         event_times = annot.Events(self.event_times)
         for name in event_times.names:
             if name not in which_events:
                 event_times.delete_name(name)
             else:
+                if match_to_samples:
+                    idx = utils.find_nearest_idx(self.ds.sampletime, event_times[name])
+                    expected_time = idx / samplerate
+                    error = expected_time - event_times[name]
+                    times_correct = self.ds.sampletime.data[idx] + error
+                    event_times[name] = times_correct
                 event_times[name] = event_times.filter_range(name, start_seconds, end_seconds) - start_seconds
 
         df = event_times.to_df(preserve_empty=True)
