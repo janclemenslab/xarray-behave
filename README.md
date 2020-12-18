@@ -4,6 +4,7 @@
 Install a working conda installation with python 3.7 (see [here](https://docs.conda.io/en/latest/miniconda.html)). If you have conda already installed, make sure you have conda v4.8.4+. If not, update from an older version with `conda update conda`.
 
 If you want to use xb with DeepSS, following the [installation instructions for DeepSS](https://janclemenslab.org/deepss/install.html).
+The [DeepSS docs](https://janclemenslab.org/deepss) also contain instructions on annotating audio recordings using the GUI.
 
 ### GUI
 For using with the GUI:
