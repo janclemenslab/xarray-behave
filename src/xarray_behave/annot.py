@@ -87,6 +87,17 @@ class Events(UserDict):
             out = cls(out, categories=cats)
         return out
 
+    def update(self, new_dict):
+        """Add all items in new_dict to self, overwrite existing items.
+        Same as python's dict.update but also keeps track of categories.
+
+        Args:
+            new_dict ([type]): [description]
+        """
+        super().update(new_dict)
+        if hasattr(self, 'categories') and hasattr(new_dict, 'categories'):
+            self.categories.update(new_dict.categories)
+
     def _init_df(self):
         return pd.DataFrame(columns=['name', 'start_seconds', 'stop_seconds'])
 
@@ -127,11 +138,30 @@ class Events(UserDict):
         df['stop_seconds'] = pd.to_numeric(df['stop_seconds'], errors='coerce')
         return df
 
-    def to_dataset(self):
-        df = self.to_df()
+    def to_lists(self, preserve_empty: bool = True):
+        """[summary]
+
+        Args:
+            preserve_empty (bool, optional):
+                In keeping with the convention that events have identical start and stop times and segments do not,
+                empty events are coded with np.nan as both start and stop and
+                empty segments are coded as np.nan as start and 0 as stop.
+                `from_df()` will obey this convention - if both start and stop are np.nan,
+                the name will be a segment,
+                if only the start is np.nan (the stop does not matter), the name will be an event
+                Defaults to True.
+
+        Returns:
+            Tuple[List[str], List[float], List[float]: with names, start_seconds, stop_seconds.
+        """
+        df = self.to_df(preserve_empty=preserve_empty)
         names = df.name.values
         start_seconds = df.start_seconds.values.astype(np.float)
         stop_seconds = df.stop_seconds.values.astype(np.float)
+        return names, start_seconds, stop_seconds
+
+    def to_dataset(self):
+        names, start_seconds, stop_seconds = self.to_lists()
 
         da_names = xr.DataArray(name='event_names', data=np.array(names, dtype='U128'), dims=['index',])
         da_times = xr.DataArray(name='event_times', data=np.array([start_seconds, stop_seconds]).T, dims=['index','event_time'], coords={'event_time': ['start_seconds', 'stop_seconds']})
