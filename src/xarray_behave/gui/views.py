@@ -257,13 +257,16 @@ class TraceView(pg.PlotWidget):
 
     def update_trace(self):
         self.clear()
-        x = self.m.x[::self.m.step]
+
         if self.m.nb_channels is not None and self.m.show_all_channels and self.m.y_other is not None:
+            y_other = self.m.y_other[::int(self.m.step*2), :]
+            x_other = self.m.x[::int(self.m.step * 2)]
             for chan in range(self.m.nb_channels - 1):
-                self.channs[chan].setData(x, self.m.y_other[::self.m.step, chan])
+                self.channs[chan].setData(x_other, y_other[:, chan])
                 self.addItem(self.channs[chan])
 
         # plot selected trace
+        x = self.m.x[::self.m.step]
         self.chann_main.setData(x=x, y=np.array(self.m.y[::self.m.step]))
         self.addItem(self.chann_main)
 
@@ -277,7 +280,6 @@ class TraceView(pg.PlotWidget):
             self.addItem(self.threshold_line)
             self.env_line.setData(x=x, y=self.m.envelope[::self.m.step])
             self.addItem(self.env_line)
-
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
         region = SegmentItem((onset, offset), region_typeindex, self.xrange,
