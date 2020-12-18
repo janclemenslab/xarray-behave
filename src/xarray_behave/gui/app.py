@@ -308,7 +308,6 @@ class MainWindow(pg.QtGui.QMainWindow):
             logging.info(f"Done.")
 
     def deepss_make(self, qt_keycode=None):
-
         data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                         caption='Select data folder')
         if not data_folder:
@@ -855,9 +854,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 # update ds.event_times from event_times dict
                 event_times = annot.Events(self.event_times)
                 ds_event_times = event_times.to_dataset()
-
-                self.ds = self.ds.drop_dims(['index', 'event_time'])
-                self.ds = self.ds.combine_first(ds_event_times)
+                if 'index' in self.ds.dims and 'event_time' in self.ds.dims:
+                    self.ds = self.ds.drop_dims(['index', 'event_time'])
+                    self.ds = self.ds.combine_first(ds_event_times)
 
                 logging.info(f'   Saving dataset to {savefilename}.')
                 xb.save(savefilename, self.ds)
