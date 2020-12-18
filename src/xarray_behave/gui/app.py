@@ -1503,7 +1503,7 @@ class PSV(MainWindow):
             self.t0 += self.frame_interval
             cnt += 1
             if cnt % 10 == 0:
-                # logging.debug(time.time() - dt0)
+                # logging.info(time.time() - dt0)
                 dt0 = time.time()
             if self.STOP:
                 RUN = False
@@ -1940,7 +1940,6 @@ def main(source: str = '', *, events_string: str = '',
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
         is_dss (bool): reduced GUI for audio only data
     """
-
     QtGui.QApplication([])
     mainwin = MainWindow()
     mainwin.show()
