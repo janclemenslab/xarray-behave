@@ -210,11 +210,11 @@ def make(data_folder, store_folder,
             # split data from each remaining file into train and test chunks according to `splits`
             split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets)
             logging.info(f'    splitting {data_splits} into {data_split_targets}.')
-            if make_single_class_datasets:
-                for name in set(data_split_targets):
-                    store[name]['x'].append(split_arrays['x'][name])
-                    store[name]['y'].append(dsm.normalize_probabilities(split_arrays['y'][name]))
-                    # make prediction targets for individual song types [OPTIONAL]
+            for name in set(data_split_targets):
+                store[name]['x'].append(split_arrays['x'][name])
+                store[name]['y'].append(dsm.normalize_probabilities(split_arrays['y'][name]))
+                # make prediction targets for individual song types [OPTIONAL]
+                if make_single_class_datasets:
                     for cnt, class_name in enumerate(class_names[1:]):
                         store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(split_arrays['y'][name][:, [0, cnt+1]]))
 
@@ -225,4 +225,3 @@ def make(data_folder, store_folder,
     dss.npy_dir.save(store_folder, store)
     if delete_intermediate_store:
         pass  # TODO delete intermediate store
-    pass
