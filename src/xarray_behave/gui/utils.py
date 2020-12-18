@@ -9,6 +9,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets
 import logging
 from videoreader import VideoReader
+from typing import Union
 
 
 def make_colors(nb_colors: int) -> Iterable:
@@ -159,3 +160,38 @@ def allkeys(obj, keys=[]):
       else: # isinstance(obj[item], h5py.Dataset):
         keys.append(obj[item].name)
   return keys
+
+
+def is_sorted(array):
+    return np.all(np.diff(array) >= 0)
+
+#`values` should be sorted
+def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
+    """Find nearest index of each value from values in array
+
+    from https://stackoverflow.com/a/46184652
+
+    Args:
+        array (np.array): array to search in
+        values (Union[int, float, np.array]): query
+
+    Returns:
+        [type]: indices of entries in array closest to each value in values
+    """
+
+    # scalar query
+    if isinstance(values, float) or isinstance(values, int):
+        return (np.abs(array - values)).argmin()
+
+    # make sure array is a numpy array
+    array = np.array(array)
+    if not is_sorted(array):
+        array = np.sort(array)
+
+    # get insert positions
+    idxs = np.searchsorted(array, values, side="left")
+
+    # find indexes where previous index is closer
+    prev_idx_is_less = ((idxs == len(array))|(np.fabs(values - array[np.maximum(idxs-1, 0)]) < np.fabs(values - array[np.minimum(idxs, len(array)-1)])))
+    idxs[prev_idx_is_less] -= 1
+    return idxs
