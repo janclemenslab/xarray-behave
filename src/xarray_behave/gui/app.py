@@ -1504,7 +1504,7 @@ class PSV(MainWindow):
             self.t0 += self.frame_interval
             cnt += 1
             if cnt % 10 == 0:
-                # logging.debug(time.time() - dt0)
+                # logging.info(time.time() - dt0)
                 dt0 = time.time()
             if self.STOP:
                 RUN = False
