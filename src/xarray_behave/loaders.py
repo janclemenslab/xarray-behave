@@ -276,29 +276,45 @@ def load_segmentation(filepath):
     File should have at least 'event_names' and 'event_indices' datasets."""
     res = dd_io.load(filepath)
     # extract event_seconds
-    song_seconds = {}
-    song_categories = {}
+    # song_seconds = {}
+    # song_categories = {}
 
-    for event_indices, event_name in zip(res['event_indices'], res['event_names']):
-        song_seconds[event_name] = event_indices / res['samplerate_Hz']
-        song_categories[event_name] = 'event'
+    # for event_seconds, event_name in zip(res['event_seconds'], res['event_names']):
+    #     song_seconds[event_name] = event_seconds  # indices / res['samplerate_Hz']
+    #     song_categories[event_name] = 'event'
 
-    # post process segments ?
-    if 'sine' in res['segment_names']:
-        logging.info('   Found sine song - attempting to post process ')
-        sine_index = res['segment_names'].index('sine')
-        res['segment_labels'][sine_index] = fill_gaps(res['segment_labels'][sine_index],
-                                                        gap_dur = 20 / 1000 * res['samplerate_Hz'])
-        res['segment_labels'][sine_index] = remove_short(res['segment_labels'][sine_index],
-                                                            min_len = 20 / 1000 * res['samplerate_Hz'])
+    # # # post process segments ?
+    # # if 'sine' in res['segment_names']:
+    # #     logging.info('   Found sine song - attempting to post process ')
+    # #     sine_index = res['segment_names'].index('sine')
+    # #     res['segment_labels'][sine_index] = fill_gaps(res['segment_labels'][sine_index],
+    # #                                                     gap_dur = 20 / 1000 * res['samplerate_Hz'])
+    # #     res['segment_labels'][sine_index] = remove_short(res['segment_labels'][sine_index],
+    # #                                                         min_len = 20 / 1000 * res['samplerate_Hz'])
 
-    # extract segment on- and offsets
-    segment_indices = event_utils.traces_to_eventtimes(res['segment_labels'], res['segment_names'], ['segment'])
-    for segment_name, segment_indices in segment_indices.items():
-        song_seconds[segment_name] = segment_indices / res['samplerate_Hz']
-        song_categories[segment_name] = 'segment'
+    # # extract segment on- and offsets
+    # segment_indices = event_utils.traces_to_eventtimes(res['segment_labels'], res['segment_names'], ['segment'])
+    # for segment_name, segment_onsets, segment_offsets in segment_indices.items():
+    #     song_seconds[segment_name] = segment_indices / res['samplerate_Hz']
+    #     song_categories[segment_name] = 'segment'
 
-    return song_seconds, song_categories
+    onsets = []
+    offsets = []
+    names = []
+
+    for event_seconds, event_names in zip(res['event_seconds'], res['event_sequence']):
+        onsets.append(event_seconds)
+        offsets.append(event_seconds)
+        names.append(event_names)
+
+    for segment_onsets, segment_offsets, segment_names in zip(res['segment_onsets'], res['segment_offsets'], res['segment_sequence']):
+        onsets.append(segment_onsets)
+        offsets.append(segment_offsets)
+        names.append(segment_names)
+
+    et = annot.Events.from_lists(names=names, start_seconds=onsets, stop_seconds=offsets)
+
+    return et, et.categories
 
 
 def load_manual_annotation_csv(filepath):
@@ -311,8 +327,7 @@ def load_manual_annotation_csv(filepath):
         event_categories = dict()
     else:
         event_seconds = annot.Events.from_df(df)
-        event_categories = event_seconds.categories
-    return event_seconds, event_categories
+    return event_seconds, event_seconds.categories
 
 
 def load_manual_annotation_zarr(filepath):
@@ -528,7 +543,7 @@ def load_raw_song(filepath_daq: str, song_channels: Optional[Sequence[int]] = No
         song_channels = np.arange(16)
 
     if lazy:
-        f = h5py.File(filepath_daq, 'r')
+        f = h5py.File(filepath_daq, mode='r', rdcc_w0=0, rdcc_nbytes=100 * (1024 ** 2), rdcc_nslots=50000)
         # convert to dask array since this allows lazily evaluated indexing...
         import dask.array as daskarray
         da = daskarray.from_array(f['samples'], chunks=(10000, 1))
