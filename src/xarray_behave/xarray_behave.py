@@ -166,7 +166,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             # logging.debug(f'   {filepath_segmentation_matlab} loaded.')
         else:
             # logging.debug(f'   {filepath_segmentation_matlab} could not be loaded.')
-            logging.info(f'   Could not load automatic segmentation from {filepath_segmentation} or {filepath_segmentation_matlab}.')
+            logging.info(f'   Could not load automatic segmentation from {filepaths_segmentation} or {filepath_segmentation_matlab}.')
 
         # load MANUAL SONG ANNOTATIONS
         # first try PYTHON, then matlab
