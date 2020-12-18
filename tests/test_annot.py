@@ -77,12 +77,25 @@ def test_to_df(test_events):
     assert df.shape==(22, 3)
 
 
-def test_to_df(test_events):
+def test_to_df_noempty(test_events):
     df = test_events.to_df(preserve_empty=False)
     assert df.shape==(20, 3)
     print(df.columns)
     assert tuple(df.columns) == ('name', 'start_seconds', 'stop_seconds')
 
+def test_to_lists(test_events):
+    names, starts, stops = test_events.to_lists()
+    assert len(names)==22
+    assert len(starts)==22
+    assert len(stops)==22
+
+
+def test_update():
+    evt_main = Events(data={'sine': [[1,2],[3,4]], 'pulse': [[5,5],[6,6]], 'vibration': [25, 25]})
+    evt_new = Events(data={'sine': [[1,2],[3,4]], 'vibration': [[7,7],[8,8]], 'whatnew': [[10,10],[18,18]]})
+    evt_main.update(evt_new)
+    assert len(evt_main.names) == 4
+    assert evt_main['vibration'].shape[0] == 2
 
 def test_filter(test_events):
     evt_list = test_events.filter_range('pulse', 5, 100)
@@ -99,7 +112,7 @@ def test_delete(test_events):
 
 def test_make_empty():
 
-    evt = Events(categories={'sine': 'segment', 'pulse': 'event', 'vibration': 'event'})
+    # evt = Events(categories={'sine': 'segment', 'pulse': 'event', 'vibration': 'event'})
     evt = Events(data={'sine': [], 'pulse': [], 'vibration': []})
     print(evt)
     df = evt.to_df()
@@ -110,5 +123,3 @@ def test_make_empty():
     print(df2)
     evt2 = Events.from_df(df2)
     print(evt2)
-
-
