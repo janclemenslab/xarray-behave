@@ -128,44 +128,24 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
         # DeepSS
         filepaths_segmentation =  glob(os.path.join(root, res_path, '*_dss_*.h5'))
+        old_style_path = Path(root, res_path, datename, f'{datename}_song.h5')
+        if old_style_path not in filepaths_segmentation and os.path.exists(old_style_path):
+            filepaths_segmentation.append(old_style_path)
+
         if filepaths_segmentation:
-            event_times = annot.Events()
-            for file in filepaths_segmentation:
-                try:
-                    this_event_times = ld.load_segmentation(file)
-                    event_times.update(this_event_times)
-                    with_segmentation = True
-                    logging.debug(f'   {file} loaded.')
-                except Exception as e:
-                    logging.debug(f'   {file} failed.')
-                    logging.exception(e)
-
-        # filepath_segmentation = Path(root, res_path, datename, f'{datename}_song.h5')
-        # filepath_segmentation_vib = Path(root, res_path, datename, f'{datename}_vibration.h5')  # UNUSED
-
-        # if os.path.exists(filepath_segmentation):
-        #     try:
-        #         auto_event_seconds, auto_event_categories = ld.load_segmentation(filepath_segmentation)
-        #         with_segmentation = True
-        #         merge_raw_recording = False  # True
-        #         logging.debug(f'   {filepath_segmentation} loaded.')
-        #     except Exception as e:
-        #         logging.debug(f'   {filepath_segmentation} failed.')
-        #         logging.exception(e)
-        #         with_segmentation = False
-        #         merge_raw_recording = False
-
-
+            try:
+                auto_event_seconds, auto_event_categories = ld.load_segmentation(filepaths_segmentation)
+                with_segmentation = True
+                logging.debug(f'   {filepaths_segmentation} loaded.')
+            except Exception as e:
+                logging.debug(f'   {filepaths_segmentation} failed.')
+                logging.exception(e)
+                with_segmentation = False
         elif not with_segmentation and os.path.exists(filepath_segmentation_matlab):
-            logging.debug(f'   failed loading {filepaths_segmentation}.')
             auto_event_seconds, auto_event_categories  = ld.load_segmentation_matlab(filepath_segmentation_matlab)
             with_segmentation = True
-            with_segmentation_matlab = True
-            merge_raw_recording = False  # True
-            with_song = True
-            # logging.debug(f'   {filepath_segmentation_matlab} loaded.')
+            logging.info(f'   {filepath_segmentation_matlab} loaded.')
         else:
-            # logging.debug(f'   {filepath_segmentation_matlab} could not be loaded.')
             logging.info(f'   Could not load automatic segmentation from {filepaths_segmentation} or {filepath_segmentation_matlab}.')
 
         # load MANUAL SONG ANNOTATIONS

@@ -270,47 +270,39 @@ def load_segmentation_matlab(filepath):
     return event_seconds, event_categories
 
 
-def load_segmentation(filepath):
-    """Load output produced by DeepSongSegmenter.
+def load_segmentation(filepaths_segmentation: Union[str, List[str]]):
+    """Load output produced by DeepSongSegmenter wrapper.
 
-    File should have at least 'event_names' and 'event_indices' datasets."""
-    res = dd_io.load(filepath)
-    # extract event_seconds
-    # song_seconds = {}
-    # song_categories = {}
+    Args:
+        filepaths_segmentation (Union[str, List[str]]): [description]
 
-    # for event_seconds, event_name in zip(res['event_seconds'], res['event_names']):
-    #     song_seconds[event_name] = event_seconds  # indices / res['samplerate_Hz']
-    #     song_categories[event_name] = 'event'
+    Returns:
+        [type]: [description]
+    """
 
-    # # # post process segments ?
-    # # if 'sine' in res['segment_names']:
-    # #     logging.info('   Found sine song - attempting to post process ')
-    # #     sine_index = res['segment_names'].index('sine')
-    # #     res['segment_labels'][sine_index] = fill_gaps(res['segment_labels'][sine_index],
-    # #                                                     gap_dur = 20 / 1000 * res['samplerate_Hz'])
-    # #     res['segment_labels'][sine_index] = remove_short(res['segment_labels'][sine_index],
-    # #                                                         min_len = 20 / 1000 * res['samplerate_Hz'])
-
-    # # extract segment on- and offsets
-    # segment_indices = event_utils.traces_to_eventtimes(res['segment_labels'], res['segment_names'], ['segment'])
-    # for segment_name, segment_onsets, segment_offsets in segment_indices.items():
-    #     song_seconds[segment_name] = segment_indices / res['samplerate_Hz']
-    #     song_categories[segment_name] = 'segment'
+    if isinstance(filepaths_segmentation, str):
+        filepaths_segmentation = list(filepaths_segmentation)
 
     onsets = []
     offsets = []
     names = []
 
-    for event_seconds, event_names in zip(res['event_seconds'], res['event_sequence']):
-        onsets.append(event_seconds)
-        offsets.append(event_seconds)
-        names.append(event_names)
+    for filepath in filepaths_segmentation:
+        try:
+            res = dd_io.load(filepath)
 
-    for segment_onsets, segment_offsets, segment_names in zip(res['segment_onsets'], res['segment_offsets'], res['segment_sequence']):
-        onsets.append(segment_onsets)
-        offsets.append(segment_offsets)
-        names.append(segment_names)
+            for event_seconds, event_names in zip(res['event_seconds'], res['event_sequence']):
+                onsets.append(event_seconds)
+                offsets.append(event_seconds)
+                names.append(event_names)
+
+            for segment_onsets, segment_offsets, segment_names in zip(res['segment_onsets'], res['segment_offsets'], res['segment_sequence']):
+                onsets.append(segment_onsets)
+                offsets.append(segment_offsets)
+                names.append(segment_names)
+        except Exception as e:
+            logging.info(f'   {filepath} failed.')
+            logging.exception(e)
 
     et = annot.Events.from_lists(names=names, start_seconds=onsets, stop_seconds=offsets)
 
