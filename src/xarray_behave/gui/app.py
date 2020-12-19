@@ -667,8 +667,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                             event_classes.append(items[1].strip())
                         else:
                             event_classes.append('segment')
-                    # ds = ld.initialize_manual_song_events(ds, False, False,
-                    #                                       event_names, event_classes)
 
                 # add event categories if they are missing in the dataset
                 if 'song_events' in ds and 'event_categories' not in ds:
@@ -798,13 +796,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                                 fs=ds.song_raw.attrs['sampling_rate_Hz'])
             logging.info(f'Filtering `song_raw` between {f_low} and {f_high} Hz.')
             ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
-        if 'song' in ds:
-            if f_high is None:
-                f_high = ds.song.attrs['sampling_rate_Hz'] / 2 - 1
-            logging.info(f'Filtering `song` between {f_low} and {f_high} Hz.')
-            sos_bp = ss.butter(5, [f_low, f_high], 'bandpass', output='sos',
-                                fs=ds.song.attrs['sampling_rate_Hz'])
-            ds.song.data = ss.sosfiltfilt(sos_bp, ds.song.data, axis=0)
         return ds
 
     @classmethod
@@ -1945,6 +1936,8 @@ def main(source: str = '', *, events_string: str = '',
     mainwin.show()
     if not len(source):
         pass
+    elif not os.path.exists(source):
+        logging.info(f'{source} does not exist - skipping.')
     elif source.endswith('.wav') or source.endswith('.npz') or source.endswith('.h5') or source.endswith('.hdf5') or source.endswith('.mat'):
         mainwin.windows.append(MainWindow.from_file(filename=source,
                                                    events_string=events_string,
