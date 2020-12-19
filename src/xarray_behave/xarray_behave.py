@@ -125,7 +125,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
         filepath_segmentation_matlab = Path(root, res_path, datename, f'{datename}_song.mat')
 
         # DeepSS
-        filepaths_segmentation =  glob(os.path.join(root, res_path, '*_dss_*.h5'))
+        filepaths_segmentation =  glob(os.path.join(root, res_path, '*_dss.h5'))
         old_style_path = Path(root, res_path, datename, f'{datename}_song.h5')
         if old_style_path not in filepaths_segmentation and os.path.exists(old_style_path):
             filepaths_segmentation.append(old_style_path)
