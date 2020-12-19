@@ -113,9 +113,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     with_segmentation = False
     with_segmentation_manual = False
     with_segmentation_manual_matlab = False
-    with_song = False
     with_song_raw = False
-    merge_raw_recording = False
     auto_event_seconds = {}
     auto_event_categories = {}
     manual_event_seconds = {}
@@ -180,7 +178,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
         # load RAW song traces
         res = dict()
-        if keep_multi_channel or merge_raw_recording:
+        if keep_multi_channel:
             try:
                 logging.info(f'Reading recording from {filepath_daq}.')
                 song_raw, non_song_raw = ld.load_raw_song(filepath_daq, return_nonsong_channels=True, lazy=lazy_load_song)
@@ -188,9 +186,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                     res['song_raw'] = song_raw
                     res['non_song_raw'] = non_song_raw
                     with_song_raw = True
-                if merge_raw_recording:
-                    res['song'] = ld.merge_channels(song_raw, sampling_rate)
-                    with_song = True
             except (FileNotFoundError, OSError) as e:
                 logging.info(f'Could not load song from {filepath_daq}.')
                 logging.debug(e)
@@ -236,15 +231,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
 
     # PREPARE DataArrays
     dataset_data = dict()
-    if with_song and merge_raw_recording:  # MERGED song recording
-        song = xr.DataArray(data=res['song'][first_sample:last_sample, 0],  # cut recording to match new grid
-                            dims=['sampletime'],
-                            coords={'sampletime': sampletime, },
-                            attrs={'description': 'Song signal merged across all recording channels.',
-                                   'sampling_rate_Hz': sampling_rate,
-                                   'time_units': 'seconds',
-                                   'amplitude_units': 'volts'})
-        dataset_data['song'] = song
 
     if with_song_raw:
         if 0 not in res['song_raw'].shape:  # xr fails saving zarr files with 0-size along any dim

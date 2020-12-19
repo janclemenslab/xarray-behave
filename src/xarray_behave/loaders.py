@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import h5py
 import flammkuchen as dd_io
-from typing import Sequence, Optional
+from typing import Sequence, Optional, Union, List
 import logging
 
 import scipy.interpolate
@@ -597,73 +597,6 @@ def load_times(filepath_timestamps, filepath_daq):
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - f0, frame_times=cam_stamps[:, 0] - f0, sample_numbers=daq_samplenumber[:, 0])
 
     return ss, last_sample, sampling_rate_Hz
-
-
-def initialize_manual_song_events(ds: xr.Dataset, from_segmentation: bool = False, force_overwrite: bool = False,
-                                  new_manual_event_types=['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual'],
-                                  new_manual_event_categories=['segment', 'event', 'event', 'event']) -> xr.Dataset:
-    """[summary]
-
-    Args:
-        ds (xarray.Dataset): [description]
-        from_segmentation (bool, optional): Init manual events from automatic events with same name.
-                                            Otherwise they initialized as empty.
-                                            If force_overwrite: will *ADD* existing manual events.
-                                            otherwise: will *ADD* auto events to existing manual events.
-                                            Defaults to False.
-        force_overwrite (bool, optional): Overwrite existing manual events.
-                                          Defaults to False.
-        new_manual_event_types = ['sine_manual', 'pulse_manual', 'vibration_manual', 'aggression_manual']
-        new_manual_event_categories = ['segment', 'event', 'event', 'event']
-    Returns:
-        xarray.Dataset: [description]
-    """
-
-    # only add new ones
-    if 'song_events' in ds:
-        new_manual_event_categories = [cat for evt, cat in zip(new_manual_event_types, new_manual_event_categories)
-                                       if evt not in ds.song_events.event_types]
-        new_manual_event_types = [evt for evt in new_manual_event_types if evt not in ds.song_events.event_types]
-
-    song_events_manual = None
-    if 'song_events' not in ds or new_manual_event_types:
-        new_manual_events = np.zeros((ds.time.shape[0],
-                                      len(new_manual_event_types)),
-                                     dtype=np.bool)
-        song_events_manual = xr.DataArray(data=new_manual_events,
-                                          dims=['time', 'event_types'],
-                                          coords={'time': ds.time,
-                                                  'event_types': new_manual_event_types,
-                                                  'event_categories': (('event_types'), new_manual_event_categories),
-                                                  'nearest_frame': (('time'), ds.nearest_frame), },
-                                          attrs={'description': 'Event times as boolean arrays.',
-                                                 'sampling_rate_Hz': ds.attrs['target_sampling_rate_Hz'],
-                                                 'time_units': 'seconds', })
-
-    # if song_events_manual is not None 'song_events' in ds and not force_overwrite:
-    if song_events_manual is not None:
-        if not force_overwrite and 'song_events' in ds:
-            combined = xr.concat([ds.song_events, song_events_manual], dim='event_types')
-        else:
-            combined = song_events_manual
-
-        if 'song_events' in ds:
-            ds.drop('song_events')
-
-        new_ds = combined.to_dataset(name='song_events')
-        attrs = ds.attrs  # for some reason, attrs are not preserved during merge...
-        ds = xr.merge((ds, new_ds))
-        ds.attrs = attrs
-
-    if from_segmentation:
-        for evt in new_manual_event_types:
-            auto_key = evt.strip('_manual')
-            if auto_key in ds.song_events.event_types:
-                if force_overwrite:  # overwrite manual events with the corresponding auto event
-                    ds.song_events.loc[:, evt] = ds.song_events.loc[:, auto_key]
-                else:  # add auto events to the corresponding manual event
-                    ds.song_events.loc[:, evt] = np.logical_or((ds.song_events.loc[:, evt], ds.song_events.loc[:, auto_key]))
-    return ds
 
 
 def fix_keys(d):
