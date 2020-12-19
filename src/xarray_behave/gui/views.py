@@ -222,20 +222,18 @@ class TraceView(pg.PlotWidget):
                                         pen=pg.mkPen(color='r', width=1))
         self.addItem(self.pos_line)
 
-
         self.channs = []
         for _ in range(self.m.nb_channels - 1):
             self.channs.append(pg.PlotCurveItem(pen=pg.mkPen(color=[127, 127, 127])))
             self.addItem(self.channs[-1])
 
-        self.chann_main = pg.PlotCurveItem(pen=pg.mkPen(color=[196, 196, 196], width=1))
+        self.chann_main = pg.PlotCurveItem(pen=pg.mkPen(color=[220, 220, 220], width=1))
         self.addItem(self.chann_main)
 
         self.annotation_items = []
 
-
     @property
-    def m(self):  # make read-only
+    def m(self):  # read-only property
         return self._m
 
     @property
@@ -258,6 +256,7 @@ class TraceView(pg.PlotWidget):
     def update_trace(self):
         self.clear()
 
+        # draw background channels
         if self.m.nb_channels is not None and self.m.show_all_channels and self.m.y_other is not None:
             y_other = self.m.y_other[::int(self.m.step*2), :]
             x_other = self.m.x[::int(self.m.step * 2)]
@@ -265,7 +264,7 @@ class TraceView(pg.PlotWidget):
                 self.channs[chan].setData(x_other, y_other[:, chan])
                 self.addItem(self.channs[chan])
 
-        # plot selected trace
+        # plot active channel
         x = self.m.x[::self.m.step]
         self.chann_main.setData(x=x, y=np.array(self.m.y[::self.m.step]))
         self.addItem(self.chann_main)
@@ -276,6 +275,7 @@ class TraceView(pg.PlotWidget):
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
         self.addItem(self.pos_line)
 
+        # draw actice envelope and threshold
         if self.m.threshold_mode:
             self.addItem(self.threshold_line)
             self.env_line.setData(x=x, y=self.m.envelope[::self.m.step])
