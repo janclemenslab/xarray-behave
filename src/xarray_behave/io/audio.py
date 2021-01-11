@@ -73,6 +73,7 @@ class Ethodrome(io.BaseProvider):
         else:
             with h5py.File(filename, 'r') as f:
                 nb_channels = f['samples'].shape[1]
+                song_channels = song_channels[song_channels < nb_channels]
                 song = f['samples'][:, song_channels]
                 if return_nonsong_channels:
                     non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
