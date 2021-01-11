@@ -28,7 +28,7 @@ def detect_events(ds):
                 offsets = offsets[offsets>np.min(onsets)]
                 onsets = onsets[onsets<np.max(offsets)]
             if len(onsets) != len(offsets):
-                print('Inconsistent segment onsets or offsets - ignoring all on- and offsets.')
+                logging.warning('Inconsistent segment onsets or offsets - ignoring all on- and offsets.')
                 onsets = []
                 offsets = []
 
@@ -207,7 +207,7 @@ def traces_to_eventtimes(traces, event_names, event_categories):
                 offsets = offsets[offsets>np.min(onsets)]
                 onsets = onsets[onsets<np.max(offsets)]
             if len(onsets) != len(offsets):
-                print('Inconsistent segment onsets or offsets - ignoring all on- and offsets.')
+                logging.warning('Inconsistent segment onsets or offsets - ignoring all on- and offsets.')
                 onsets = []
                 offsets = []
 
