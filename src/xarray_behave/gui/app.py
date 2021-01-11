@@ -646,7 +646,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
                                  fix_fly_indices=form_data['fix_fly_indices'],
                                  include_song=~form_data['ignore_song'],
-                                 keep_multi_channel=True,
                                  target_sampling_rate=form_data['target_samplingrate'],
                                  resample_video_data=resample_video_data,
                                  pixel_size_mm=pixel_size_mm,
@@ -1675,6 +1674,7 @@ class PSV(MainWindow):
                 self.other_fly, self.focal_fly], ...] = self.ds.pose_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
             self.ds.body_positions.values[self.index_other:, [
                 self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+            self.update_frame()
 
     def deepss_predict(self, qt_keycode):
         logging.info('Predicting song using DeepSS:')
