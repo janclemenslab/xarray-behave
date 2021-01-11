@@ -12,7 +12,7 @@ For using with the GUI:
 conda env create -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/master/env/xb_gui.yml -n xb
 ```
 The GUI can be started by activating the new environment `conda activate xb` and then typing `xb` in a terminal. See `xb --help` for usage/arguments/keys.
-GUI usage is documented [here](https://janclemenslab.org/deepss/tutorials_gui.html).
+GUI usage is documented [here](https://janclemenslab.org/deepss/tutorials_gui/tutorials_gui.html).
 
 ### Non-GUI
 If you do not want to use the GUI, e.g. if just want to create, load, save datasets:
