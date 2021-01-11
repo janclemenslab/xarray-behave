@@ -3,8 +3,6 @@ import pytest
 import numpy as np
 import xarray as xr
 import pandas as pd
-import xarray_behave as xb
-from xarray_behave import event_utils
 from xarray_behave.annot import *
 
 
