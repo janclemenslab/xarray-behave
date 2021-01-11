@@ -91,57 +91,6 @@ def find_nearest(array, values):
     return val, idx, dist
 
 
-def interpolate_binary_old(x0, y0, x1):
-    """Interpolate a binary trace, preserving all True/1 events.
-    More accurate than `interpolate_binary` for irregularly spaced samples but uses too much memory.
-
-    Args:
-        x0 ([type]): sample times for each point in y0
-        y0 ([type]): binary sequence (True, False) or 0, 1
-        x1 ([type]): new sample times
-
-    Returns:
-        y1: y0 values at x1
-    """
-    if y0.ndim == 1:
-        y0 = y0[..., np.newaxis]
-
-    y1 = np.zeros((len(x1), y0.shape[1]))
-    for idx in range(y0.shape[1]):
-        tt = x0[np.where(y0[:, idx])[0]]
-        _, ii, _ = find_nearest(x1, tt)
-        y1[ii.astype(np.uintp), idx] = 1
-
-    return y1
-
-
-def interpolate_binary(x0, y0, x1):
-    """Interpolate a binary trace, preserving all True/1 events.
-
-    Args:
-        x0 ([type]): sample times for each point in y0
-        y0 ([type]): binary sequence (True, False) or 0, 1
-        x1 ([type]): new sample times
-
-    Returns:
-        y1: y0 values at x1
-    """
-    fs0 = 1/np.mean(np.diff(x0))
-    fs1 = 1/np.mean(np.diff(x1))
-    ratio = fs0/fs1
-
-    if ratio > 1:  # we are downsampling
-        # if we downsample - spread out events so we catch all of them
-        y0 = scipy.ndimage.maximum_filter(y0, size=(ratio, 1))
-        # use 'nearest' here - why? could we just use linear, too?
-        interpolator = scipy.interpolate.interp1d(x0, y0, axis=0, kind='nearest', bounds_error=False, fill_value=np.nan)
-    else:  # we are upsampling
-        # using linear here prevents spreading out of events when upsampling
-        interpolator = scipy.interpolate.interp1d(x0, y0, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
-    y1 = interpolator(x1).astype(np.uintp)
-    return y1
-
-
 def merge_channels(data, sampling_rate, filter_data: bool = True):
     """Merge channels based on a running maximum.
 

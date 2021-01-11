@@ -13,11 +13,12 @@ from typing import List, Optional
 from . import (loaders as ld,
                metrics as mt,
                event_utils,
-               annot)
+               annot,
+               io)
 
 
 def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
-             keep_multi_channel: bool = False, resample_video_data: bool = True,
+             resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
              fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
              lazy_load_song: bool = False) -> xr.Dataset:
@@ -56,31 +57,21 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     with_tracks = False
     with_fixed_tracks = False
     if include_tracks:
-        logging.info('Attempting to load automatic tracking:')
-        filepath_tracks = Path(root, res_path, datename, f'{datename}_tracks_fixed.h5')
-        filepath_tracks_nonfixed = Path(root, res_path, datename, f'{datename}_tracks.h5')
-        if os.path.exists(filepath_tracks):
-        # try:
-            body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks)
-            with_tracks = True
-            with_fixed_tracks = True
-            logging.debug(f'  {filepath_tracks} loaded.')
-        elif os.path.exists(filepath_tracks_nonfixed):
-        # except (FileNotFoundError, OSError) as e:
-            logging.debug(f'  {filepath_tracks} not found.')
-            # logging.debug(e)
-            # try:
-            #     logging.info(f'Trying non-fixed tracks at {filepath_tracks_nonfixed}.')
-            body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = ld.load_tracks(filepath_tracks_nonfixed)
-            with_tracks = True
-            logging.debug(f'  {filepath_tracks_nonfixed} loaded.')
+        logging.info('Loading tracks:')
+        tracks_loader = io.get_loader(kind='tracks', basename=os.path.join(root, res_path, datename, datename))
+        if tracks_loader:
+            try:
+                body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = tracks_loader.load(tracks_loader.path)
+                with_tracks = True
+                with_fixed_tracks = tracks_loader.path.endswith('_tracks_fixed.h5')
+                logging.info(f'  {tracks_loader.path} loaded.')
+            except Exception as e:
+                logging.info(f'  Loading {tracks_loader.path} failed.')
+                logging.exception(e)
         else:
-            logging.debug(f'  {filepath_tracks_nonfixed} not found.')
-            logging.info(f'   Could not load automatic tracking from {filepath_tracks} or {filepath_tracks_nonfixed}.')
+            logging.info('   Found no tracks.')
+        logging.info('Done.')
 
-            # except (FileNotFoundError, OSError) as e:
-            #     logging.info(f'   This failed, too:')
-            #     logging.debug(e)
     if not with_tracks:
         first_tracked_frame = int(ss.frame(0))
         last_tracked_frame = int(ss.frame(last_sample_number))
@@ -88,111 +79,82 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     else:
         logging.info(f'Tracked frame {first_tracked_frame} to {last_tracked_frame}.')
 
-    # LOAD POSES from DEEPPOSEKIT
+    # LOAD POSES
     with_poses = False
     poses_from = None
     if include_poses:
-        logging.info(f'Attempting to load poses:')
-        filepath_poses = Path(root, res_path, datename, f'{datename}_poses_dpk.zarr')
-        filepath_poses_leap = Path(root, res_path, datename, f'{datename}_poses.h5')
-        if os.path.exists(filepath_poses):
-            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_deepposekit(filepath_poses)
-            with_poses = pose_pos.shape[0]>0  # ensure non-empty poses
-            poses_from = 'DeepPoseKit'
-            logging.debug(f'  {filepath_poses} loaded.')
-        elif os.path.exists(filepath_poses_leap):
-            logging.debug(f'  {filepath_poses} not found.')
-            pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = ld.load_poses_leap(filepath_poses_leap)
-            with_poses = pose_pos.shape[0]>0  # ensure non-empty poses
-            poses_from = 'LEAP'
+        logging.info(f'Loading poses:')
+        poses_loader = io.get_loader(kind='poses', basename=os.path.join(root, res_path, datename, datename))
+        if poses_loader:
+            try:
+                pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = poses_loader.load(poses_loader.path)
+                with_poses = True
+                poses_from = poses_loader.NAME
+                logging.info(f'   {poses_loader.path} loaded.')
+            except Exception as e:
+                logging.info(f'   Loading {poses_loader.path} failed.')
+                logging.exception(e)
         else:
-            logging.debug(f'  {filepath_poses_leap} not found.')
-            logging.info(f'   Could not load pose from {filepath_poses} or {filepath_poses_leap} or .')
+            logging.info(f'   Found no poses.')
+        logging.info('Done.')
 
-    # instead of these flags - just check for existence of dict keys??
-    with_segmentation = False
-    with_segmentation_manual = False
-    with_segmentation_manual_matlab = False
-    with_song_raw = False
+    # Init empty audio and event data
+    song_raw = None
+    non_song_raw = None
     auto_event_seconds = {}
     auto_event_categories = {}
     manual_event_seconds = {}
     manual_event_categories = {}
 
     if include_song:
-        logging.info('Attempting to load automatic segmentation:')
-        # load AUTOMATIC SEGMENTATION
-        filepath_segmentation_matlab = Path(root, res_path, datename, f'{datename}_song.mat')
+        logging.info(f'Loading automatic annotations:')
+        annot_loader = io.get_loader(kind='annotations', basename=os.path.join(root, res_path, datename, datename), stop_after_match=False)
+        if annot_loader:
+            if isinstance(annot_loader, str):
+                annot_loader = list(annot_loader)
 
-        # DeepSS
-        filepaths_segmentation =  glob(os.path.join(root, res_path, '*_dss.h5'))
-        old_style_path = Path(root, res_path, datename, f'{datename}_song.h5')
-        if old_style_path not in filepaths_segmentation and os.path.exists(old_style_path):
-            filepaths_segmentation.append(old_style_path)
-
-        if filepaths_segmentation:
-            try:
-                auto_event_seconds, auto_event_categories = ld.load_segmentation(filepaths_segmentation)
-                with_segmentation = True
-                logging.debug(f'   {filepaths_segmentation} loaded.')
-            except Exception as e:
-                logging.debug(f'   {filepaths_segmentation} failed.')
-                logging.exception(e)
-                with_segmentation = False
-        elif not with_segmentation and os.path.exists(filepath_segmentation_matlab):
-            auto_event_seconds, auto_event_categories  = ld.load_segmentation_matlab(filepath_segmentation_matlab)
-            with_segmentation = True
-            logging.info(f'   {filepath_segmentation_matlab} loaded.')
+            for al in annot_loader:
+                try:
+                    this_event_seconds, this_event_categories = al.load()
+                    auto_event_seconds.update(this_event_seconds)
+                    auto_event_categories.update(this_event_categories)
+                    logging.info(f'   {al.path} loaded.')
+                except Exception as e:
+                    logging.info(f'   Loading {al.path} failed.')
+                    logging.exception(e)
         else:
-            logging.info(f'   Could not load automatic segmentation from {filepaths_segmentation} or {filepath_segmentation_matlab}.')
+            logging.info(f'   Found no automatic annotations.')
+        logging.info('Done.')
 
         # load MANUAL SONG ANNOTATIONS
-        # first try PYTHON, then matlab
-        logging.info('Attempting to load manual segmentation:')
+        logging.info(f'Loading manual annotations:')
+        manual_annot_loader = io.get_loader(kind='annotations_manual', basename=os.path.join(root, res_path, datename, datename))
+        if manual_annot_loader:
+            try:
+                manual_event_seconds, manual_event_categories = manual_annot_loader.load(manual_annot_loader.path)
+                logging.info(f'   {manual_annot_loader.path} loaded.')
+            except Exception as e:
+                logging.info(f'   Loading {manual_annot_loader.path} failed.')
+                logging.exception(e)
 
-        filepath_segmentation_manual_csv_new = Path(root, res_path, datename, f'{datename}_annotations.csv')
-        filepath_segmentation_manual_csv_old = Path(root, res_path, datename, f'{datename}_songmanual.csv')
-        if os.path.exists(filepath_segmentation_manual_csv_new):
-            filepath_segmentation_manual_csv = filepath_segmentation_manual_csv_new
         else:
-            filepath_segmentation_manual_csv = filepath_segmentation_manual_csv_old
-
-        filepath_segmentation_manual_zarr = Path(root, res_path, datename, f'{datename}_songmanual.zarr')
-        filepath_segmentation_manual_matlab = Path(root, res_path, datename, f'{datename}_songmanual.mat')
-
-        if os.path.exists(filepath_segmentation_manual_csv):
-            manual_event_seconds, manual_event_categories = ld.load_manual_annotation_csv(filepath_segmentation_manual_csv)  # need to extract event_seconds and categories from that one
-            with_segmentation_manual = True
-            logging.debug(f'   {filepath_segmentation_manual_csv} loaded.')
-        elif os.path.exists(filepath_segmentation_manual_zarr):
-            manual_event_seconds, manual_event_categories = ld.load_manual_annotation_zarr(filepath_segmentation_manual_zarr)  # need to extract event_seconds and categories from that one
-            with_segmentation_manual = True
-            logging.debug(f'   {filepath_segmentation_manual_zarr} loaded.')
-        elif os.path.exists(filepath_segmentation_manual_matlab):
-            manual_event_seconds, manual_event_categories = ld.load_manual_annotation_matlab(filepath_segmentation_manual_matlab)
-            with_segmentation_manual = True
-            with_segmentation_manual_matlab = True
-            logging.debug(f'   {filepath_segmentation_manual_matlab} loaded.')
-        else:
-            logging.info(f'Could not load manual segmentation from {filepath_segmentation_manual_csv} or {filepath_segmentation_manual_zarr} or {filepath_segmentation_manual_matlab}.')
+            logging.info(f'   Found no manual automatic annotations.')
+        logging.info('Done.')
 
         # load RAW song traces
-        res = dict()
-        if keep_multi_channel:
+        logging.info(f'Loading audio data:')
+        audio_loader = io.get_loader(kind='audio', basename=os.path.join(root, dat_path, datename, datename))
+        if audio_loader:
             try:
-                logging.info(f'Reading recording from {filepath_daq}.')
-                song_raw, non_song_raw = ld.load_raw_song(filepath_daq, return_nonsong_channels=True, lazy=lazy_load_song)
-                if keep_multi_channel:
-                    res['song_raw'] = song_raw
-                    res['non_song_raw'] = non_song_raw
-                    with_song_raw = True
-            except (FileNotFoundError, OSError) as e:
-                logging.info(f'Could not load song from {filepath_daq}.')
-                logging.debug(e)
+                song_raw, non_song_raw, samplerate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
+                logging.info(f'   {audio_loader.path} loaded.')
+            except Exception as e:
+                logging.info(f'   Loading {audio_loader.path} failed..')
+                logging.exception(e)
+        logging.info('Done.')
 
     # merge manual and auto events -
-    # this will overwrite thing with manual overwriting existing auto events with the same key
-    # could add optional merging were values for identical keys are combined
+    # manual will overwrite existing auto events with the same key
     event_seconds = auto_event_seconds.copy()
     event_seconds.update(manual_event_seconds)
     event_categories = auto_event_categories.copy()
@@ -206,6 +168,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     first_sample = 0
     last_sample = int(last_sample_with_frame)
     ref_time = ss.sample_time(0)  # 0 seconds = first DAQ sample
+
     # time in seconds for each sample in the song recording
     sampletime = ss.sample_time(np.arange(first_sample, last_sample)) - ref_time
 
@@ -213,9 +176,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
     frame_samples = interp_duplicates(frame_samples)
-
     interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
                                               kind='nearest', bounds_error=False, fill_value=np.nan)
+
     # construct desired sample grid for data
     step = int(sampling_rate / target_sampling_rate)
 
@@ -232,9 +195,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # PREPARE DataArrays
     dataset_data = dict()
 
-    if with_song_raw:
-        if 0 not in res['song_raw'].shape:  # xr fails saving zarr files with 0-size along any dim
-            song_raw = xr.DataArray(data=res['song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
+    logging.info('Making all datasets:')
+    if song_raw is not None:
+        if 0 not in song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
+            song_raw = xr.DataArray(data=song_raw[first_sample:last_sample, :],  # cut recording to match new grid
                                     dims=['sampletime', 'channels'],
                                     coords={'sampletime': sampletime, },
                                     attrs={'description': 'Raw song recording (multi channel).',
@@ -242,8 +206,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                         'time_units': 'seconds',
                                         'amplitude_units': 'volts'})
             dataset_data['song_raw'] = song_raw
-        if 0 not in res['non_song_raw'].shape:  # xr fails saving zarr files with 0-size along any dim
-            non_song_raw = xr.DataArray(data=res['non_song_raw'][first_sample:last_sample, :],  # cut recording to match new grid
+
+    if non_song_raw is not None:
+        if 0 not in non_song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
+            non_song_raw = xr.DataArray(data=non_song_raw[first_sample:last_sample, :],  # cut recording to match new grid
                                         dims=['sampletime', 'no_song_channels'],
                                         coords={'sampletime': sampletime, },
                                         attrs={'description': 'Non song (stimulus) data.',
@@ -252,32 +218,30 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                             'amplitude_units': 'volts'})
             dataset_data['non_song_raw'] = non_song_raw
 
-    logging.info('Making all datasets:')
-    if with_segmentation_manual or with_segmentation_manual_matlab or with_segmentation:
-        logging.info('   segmentations')
-        song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
-        song_events = xr.DataArray(data=song_events,  # start with empty song_events matrix
-                                   dims=['time', 'event_types'],
-                                   coords={'time': time,
-                                           'event_types': list(event_seconds.keys()),
-                                           'event_categories': (('event_types'), list(event_categories.values())),
-                                           'nearest_frame': (('time'), nearest_frame), },
-                                   attrs={'description': 'Event times as boolean arrays.',
-                                          'sampling_rate_Hz': sampling_rate / step,
-                                          'time_units': 'seconds',
-                                          'event_times': event_seconds})
-        # now populate from event_times attribute
-        song_events_ds = event_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
-                                                          song_events.attrs['event_times'])
-        dataset_data['song_events'] = song_events_ds.song_events
-        try:
-            ds_eventtimes = annot.Events(event_seconds).to_dataset()
-            dataset_data['event_times'] = ds_eventtimes.event_times
-            dataset_data['event_names'] = ds_eventtimes.event_names
-            dataset_data['event_names'].attrs['possible_event_names'] = ds_eventtimes.attrs['possible_event_names']
-        except Exception as e:
-            logging.error('Failed to generate event_times data arrays:')
-            logging.exception(e)
+    logging.info('   segmentations')
+    song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
+    song_events = xr.DataArray(data=song_events,  # start with empty song_events matrix
+                                dims=['time', 'event_types'],
+                                coords={'time': time,
+                                        'event_types': list(event_seconds.keys()),
+                                        'event_categories': (('event_types'), list(event_categories.values())),
+                                        'nearest_frame': (('time'), nearest_frame), },
+                                attrs={'description': 'Event times as boolean arrays.',
+                                        'sampling_rate_Hz': sampling_rate / step,
+                                        'time_units': 'seconds',
+                                        'event_times': event_seconds})
+    # now populate from event_times attribute
+    song_events_ds = event_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
+                                                        song_events.attrs['event_times'])
+    dataset_data['song_events'] = song_events_ds.song_events
+    try:
+        ds_eventtimes = annot.Events(event_seconds).to_dataset()
+        dataset_data['event_times'] = ds_eventtimes.event_times
+        dataset_data['event_names'] = ds_eventtimes.event_names
+        dataset_data['event_names'].attrs['possible_event_names'] = ds_eventtimes.attrs['possible_event_names']
+    except Exception as e:
+        logging.error('Failed to generate event_times data arrays:')
+        logging.exception(e)
 
     # BODY POSITION
     fps = None
@@ -647,7 +611,7 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True,
 
     if normalize_strings:
         dataset = _normalize_strings(dataset)
-    print(dataset)
+    logging.info(dataset)
     return dataset
 
 def load_npz(filepath: str, dataset: Optional[str] = 'song'):
