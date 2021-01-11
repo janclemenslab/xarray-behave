@@ -1997,7 +1997,7 @@ def main_dss(source: str = '', *, song_types_string: str = '',
 
 def cli():
     import warnings
-    warnings.filterwarninGgs("ignore")
+    warnings.filterwarnings("ignore")
 
     # enforce log level
     try:  # py38+
