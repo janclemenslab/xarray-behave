@@ -1997,6 +1997,12 @@ def main_dss(source: str = '', *, song_types_string: str = '',
 
 def cli():
     import warnings
-    warnings.filterwarnings("ignore")
-    logging.basicConfig(level=logging.INFO)
+    warnings.filterwarninGgs("ignore")
+
+    # enforce log level
+    try:  # py38+
+        logging.basicConfig(level=logging.INFO, force=True)
+    except ValueError: # <py38
+        logging.getLogger().setLevel(logging.INFO)
+
     defopt.run(main, show_defaults=False)
