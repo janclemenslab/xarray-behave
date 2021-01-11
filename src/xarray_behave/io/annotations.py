@@ -84,10 +84,24 @@ class Deepss(io.BaseProvider):
             offsets.append(event_seconds)
             names.append(event_names)
 
+        if 'event_names' in res:  # ensure empty event types are initialized
+            for name in res['event_names']:
+                if name not in names:
+                    names.append(name)
+                    onsets.append(np.nan)
+                    offsets.append(np.nan)
+
         for segment_onsets, segment_offsets, segment_names in zip(res['segment_onsets_seconds'], res['segment_offsets_seconds'], res['segment_sequence']):
             onsets.append(segment_onsets)
             offsets.append(segment_offsets)
             names.append(segment_names)
+
+        if 'segment_names' in res:  # ensure empty segment types are initialized
+            for name in res['segment_names']:
+                if name not in names:
+                    names.append(name)
+                    onsets.append(np.nan)
+                    offsets.append(0)
 
         et = annot.Events.from_lists(names=names, start_seconds=onsets, stop_seconds=offsets)
 
