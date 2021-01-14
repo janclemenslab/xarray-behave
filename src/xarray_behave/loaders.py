@@ -525,7 +525,10 @@ def load_times(filepath_timestamps, filepath_daq):
         daq_sampleinterval = f['samplenumber'][:]
 
     # remove trailing zeros - may be left over if recording didn't finish properly
-    last_valid_idx = np.argmax(daq_stamps == 0)
+    if 0 in daq_stamps:
+        last_valid_idx = np.argmax(daq_stamps == 0)
+    else:
+        last_valid_idx = len(daq_stamps) - 1  # in case there are no trailing zeros
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:last_valid_idx, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
 
