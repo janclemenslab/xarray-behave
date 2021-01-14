@@ -225,7 +225,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                 coords={'time': time,
                                         'event_types': list(event_seconds.keys()),
                                         'event_categories': (('event_types'), list(event_categories.values())),
-                                        'nearest_frame': (('time'), nearest_frame), },
+                                        'nearest_frame': (('time'), nearest_frame),},
                                 attrs={'description': 'Event times as boolean arrays.',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
@@ -251,22 +251,20 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     if with_tracks:
         logging.info('   tracking')
         frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
+        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
         frame_times = ss.frame_time(frame_numbers) - ref_time
         fps = 1 / np.nanmean(np.diff(frame_times))
 
-        if resample_video_data:  # resample to common grid at target_sampling_rate.
-            frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
-            frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-
-            interpolator = scipy.interpolate.interp1d(
-                frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
-            body_pos = interpolator(target_samples)
+        interpolator_tracks = scipy.interpolate.interp1d(
+            frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
+        body_pos = interpolator_tracks(target_samples)
 
         positions = xr.DataArray(data=body_pos,
                                  dims=['time', 'flies', 'bodyparts', 'coords'],
                                  coords={'time': time,
                                          'bodyparts': body_parts,
                                          'nearest_frame': (('time'), nearest_frame),
+                                        #  'nearest_sample': (('time'), frame_samples.astype(np.intp)),
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
@@ -282,18 +280,17 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     if with_poses:
         logging.info('   poses')
         frame_numbers = np.arange(first_pose_frame, last_pose_frame)
+        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
         frame_times = ss.frame_time(frame_numbers) - ref_time
         fps = 1/np.nanmean(np.diff(frame_times))
 
-        if resample_video_data:  # resample to common grid at target_sampling_rate.
-            frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-            interpolator = scipy.interpolate.interp1d(
-                frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
-            pose_pos = interpolator(target_samples)
+        interpolator_pose_pos = scipy.interpolate.interp1d(
+            frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
+        pose_pos = interpolator_pose_pos(target_samples)
 
-            interpolator = scipy.interpolate.interp1d(
-                frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
-            pose_pos_allo = interpolator(target_samples)
+        interpolator_pose_pos_allo = scipy.interpolate.interp1d(
+            frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
+        pose_pos_allo = interpolator_pose_pos_allo(target_samples)
 
         # poses in EGOCENTRIC coordinates
         poses = xr.DataArray(data=pose_pos,
