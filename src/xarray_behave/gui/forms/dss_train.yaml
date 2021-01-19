@@ -120,11 +120,9 @@ main:
   label: Separable TCN blocks
   type: string_list
   default: "False False False"
-
-- type: text
-  text: 'One boolean ("True" or "False") per TCN block. Separate by spaces.
-        Produces networks with better performance with less training data.
-        Only the first few blocks should be made separable if at all.'
+  help: 'One boolean ("True" or "False") per TCN block. Separate by spaces.
+         Produces networks with better performance with less training data.
+         Only the first few blocks should be made separable if at all.'
 
 - type: text
   text: '<b>Training parameters</b>'
