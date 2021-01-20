@@ -1725,7 +1725,7 @@ class PSV(MainWindow):
             logging.info(f'   Running inference on audio.')
             logging.info(f'   Model from {model_path}.')
 
-            events, segments, _ = dss.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
+            events, segments, _, _ = dss.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
                                                     event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
                                                     event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
                                                     segment_thres=form_data['event_thres'], segment_fillgap=form_data['segment_fillgap'],
