@@ -927,7 +927,12 @@ class PSV(MainWindow):
         self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds.dims else 1
         self.focal_fly = 0
         self.other_fly = 1 if self.nb_flies > 1 else 0
-        self.nb_bodyparts = len(self.ds.poseparts) if 'poseparts' in self.ds else 1
+        if 'poseparts' in self.ds:
+            self.nb_bodyparts = len(self.ds.poseparts)
+        elif 'bodyparts' in self.ds:
+            self.nb_bodyparts = len(self.ds.bodyparts)
+        else:
+            self.nb_bodyparts = 1
 
         self.fly_colors = utils.make_colors(self.nb_flies)
         self.bodypart_colors = utils.make_colors(self.nb_bodyparts)

@@ -491,6 +491,7 @@ class MovieView(utils.FastImageWidget):
                     self.fly_poses.setData(pos=None)
                     self.fly_poses.setVisible(False)
 
+            if 'pose_positions_allo' in self.m.ds or 'body_positions' in self.m.ds:
                 if self.m.show_dot:
                     frame = self.annotate_dot(frame)
                 else:
@@ -512,18 +513,25 @@ class MovieView(utils.FastImageWidget):
 
     def annotate_dot(self, frame):
         # mark each fly with uniquely colored dots
-        pos = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, self.m.thorax_index])
+        if 'pose_positions_allo' in self.m.ds:
+            pos = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, self.m.thorax_index])
+            cols = self.m.bodypart_colors[[2, 6]]
+        elif 'body_positions' in self.m.ds:
+            pos = np.array(self.m.ds.body_positions.data[self.m.index_other, :, 1])
+            cols = self.m.bodypart_colors[[0]]
         self.fly_positions.setData(pos=pos[:,::-1],
                                    symbolBrush=self.brushes, pen=None, size=10,
                                    acceptDrags=not self.m.move_poses,
                                    focalFly=self.m.focal_fly)
 
         # mark *focal* and *other* fly with circle
-        for this_fly, color in zip((self.m.focal_fly, self.m.other_fly), self.m.bodypart_colors[[2, 6]]):
-            fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other,
-                                                       this_fly,
-                                                       self.m.thorax_index].astype(np.uintp)
-            fly_pos = np.array(fly_pos)  # in case this is a dask.array
+        for this_fly, color in zip((self.m.focal_fly, self.m.other_fly), cols):
+            if 'pose_positions_allo' in self.m.ds:
+                fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, this_fly, self.m.thorax_index]
+            elif 'body_positions' in self.m.ds:
+                fly_pos = self.m.ds.body_positions.data[self.m.index_other, this_fly, 1]
+
+            fly_pos = np.array(fly_pos).astype(np.uintp)  # in case this is a dask.array
             # only plot circle if fly is within the frame (also prevents overflow errors
             # for tracking errors that lead to VERY large position values)
             if fly_pos[0] <= frame.shape[0] and fly_pos[1] <= frame.shape[1]:
@@ -541,8 +549,11 @@ class MovieView(utils.FastImageWidget):
         return frame
 
     def crop_frame(self, frame):
-        fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, self.m.focal_fly, self.m.thorax_index].astype(np.uintp)
-        fly_pos = np.array(fly_pos)  # in case this is a dask.array
+        if 'pose_positions_allo' in self.m.ds:
+            fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, self.m.focal_fly, self.m.thorax_index]
+        elif 'body_positions' in self.m.ds:
+            fly_pos = self.m.ds.body_positions.data[self.m.index_other, self.m.focal_fly, 1]
+        fly_pos = np.array(fly_pos).astype(np.uintp)  # in case this is a dask.array
         # makes sure crop does not exceed frame bounds
         fly_pos[0] = np.clip(fly_pos[0], self.m.box_size, self.m.vr.frame_width - 1 - self.m.box_size)
         fly_pos[1] = np.clip(fly_pos[1], self.m.box_size, self.m.vr.frame_height - 1 - self.m.box_size)

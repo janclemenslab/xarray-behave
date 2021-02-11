@@ -56,8 +56,6 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True):
         paths = glob(basename + suffix)
         for path in paths:
             for provider in providers:
-                if 'dss' in path:
-                    breakpoint()
                 loader = provider.get_loader(path)
                 if loader is not None and loader.KIND == kind:
                     if stop_after_match:
