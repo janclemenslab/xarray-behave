@@ -1927,12 +1927,12 @@ def main(source: str = '', *, events_string: str = '',
                              Need to wrap the string in "..." in the terminal
                              "song_name" can be any string w/o space, ",", or ";"
                              "song_category" can be "event" (e.g. pulse) or "segment" (sine, syllable
-        target_samplingrate (float): [description]. If 0, will use frame times. Defaults to None.
+        target_samplingrate (Optional[float]): [description]. If 0, will use frame times. Defaults to None.
                                      Only used if source is a data folder or a wav audio file.
-        spec_freq_min (float): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
-        spec_freq_max (float): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
+        spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
+        spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
         box_size (int): Crop size around tracked fly. Not used for wav audio files (no videos).
-        pixel_size_mm (float): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
+        pixel_size_mm (Optional[float]): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
         is_dss (bool): reduced GUI for audio only data
     """
