@@ -1841,6 +1841,7 @@ class PSV(MainWindow):
             for event_name, event_category, event_name_old in zip(event_names, event_categories, event_names_old):
                 if event_name_old in self.event_times and event_name != event_name_old:  # rename existing
                     self.event_times[event_name] = self.event_times.pop(event_name_old)
+                    self.event_times.categories[event_name] = self.event_times.categories.pop(event_name_old)
                 elif event_name_old not in self.event_times:  # create new empty
                     self.event_times.add_name(event_name, event_category)
 
