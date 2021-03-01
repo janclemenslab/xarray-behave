@@ -1971,7 +1971,7 @@ def main(source: str = '', *, events_string: str = '',
 
 
 def main_dss(source: str = '', *, song_types_string: str = '',
-         spec_freq_min: float = None, spec_freq_max: float=None,
+         spec_freq_min: Optional[float] = None, spec_freq_max: Optional[float] = None,
          skip_dialog: bool = False):
     """GUI for annotating song and training and using DeepSS networks.
 
@@ -1990,8 +1990,8 @@ def main_dss(source: str = '', *, song_types_string: str = '',
                              Need to wrap the string in "..." in the terminal
                              "song_name" can be any string w/o space, ",", or ";"
                              "song_category" can be "event" (e.g. pulse) or "segment" (sine, syllable)
-        spec_freq_min (float): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
-        spec_freq_max (float): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
+        spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
+        spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
     """
     main(source,
