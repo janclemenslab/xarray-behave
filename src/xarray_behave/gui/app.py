@@ -678,9 +678,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                                         event_categories)})
 
                 # add missing song types
-                if 'song_events' not in ds:
+                if 'song_events' not in ds or len(ds.event_types) == 0:
                     cats = {event_name: event_class for event_name, event_class in zip(event_names, event_classes)}
                     ds.attrs['event_times'] = annot.Events(categories = cats)
+                    # FIXME update ds.song_events!!
 
                 # add video file
                 vr = None
@@ -886,7 +887,7 @@ class PSV(MainWindow):
         self.cue_points = cue_points
 
         # detect all event times and segment on/offsets
-        if 'event_times' in ds and 'event_names' in ds:
+        if 'event_times' in ds and 'event_names' in ds and len(ds['event_names']) > 0:
             self.event_times = annot.Events.from_dataset(ds)
         elif 'event_times' in ds.attrs:
             self.event_times = ds.attrs['event_times'].copy()
@@ -1709,10 +1710,12 @@ class PSV(MainWindow):
             start_seconds = form_data['start_seconds']
             end_seconds = form_data['end_seconds']
 
-            start_index = int(start_seconds * self.fs_song)
+            start_index = utils.find_nearest_idx(self.ds.sampletime.values, start_seconds)
+            # start_index = int(start_seconds * self.fs_song)
             end_index = end_seconds
             if end_seconds is not None:
-                end_index = int(end_seconds * self.fs_song)
+                end_index = utils.find_nearest_idx(self.ds.sampletime.values, end_seconds)
+                # end_index = int(end_seconds * self.fs_song)
 
             params = dss.utils.load_params(model_path)
 
@@ -1750,21 +1753,27 @@ class PSV(MainWindow):
             if form_data['proof_reading_mode']:
                 suffix = '_proposals'
 
-            detected_event_names = np.unique(events['sequence'])
-            logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
-            if detected_event_names:
-                for name, seconds in zip(events['sequence'], events['seconds']):
-                    self.event_times.add_time(name + suffix, seconds + start_seconds, seconds + start_seconds, category='event')
+            # events['seconds'] is in samples/fs - translate to time stamps via sample time
+            if 'sequence' in events and len(np.unique(events['sequence'])) > 0:
+                detected_event_names = np.unique(events['sequence'])
 
+                logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
+                event_samples = (np.array(events['seconds']) * self.fs_song  + start_index).astype(np.uintp)
+                event_seconds = self.ds.sampletime[event_samples]
+                for name, seconds in zip(events['sequence'], event_seconds):
+                    self.event_times.add_time(name + suffix, seconds, seconds, category='event')
 
-            detected_segment_names = np.unique(segments['sequence'])
-            logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
-            if detected_segment_names:
-                for name, onset_seconds, offset_seconds in zip(segments['sequence'], segments['onsets_seconds'], segments['offsets_seconds']):
-                    self.event_times.add_time(name + suffix, onset_seconds + start_seconds, offset_seconds + start_seconds, category='segment')
+            if 'sequence' in segments and len(np.unique(segments['sequence'])) > 0:
+                detected_segment_names = np.unique(segments['sequence'])
+                logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
+                onsets_samples = (np.array(segments['onsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
+                offsets_samples = (np.array(segments['offsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
 
-            # self.event_times = annot.Events(self.event_times, categories=self.event_times.categories)  # why ???
-            # self.fs_other = samplerate_Hz
+                onsets_seconds = self.ds.sampletime[onsets_samples]
+                offsets_seconds = self.ds.sampletime[offsets_samples]
+                for name, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
+                    self.event_times.add_time(name + suffix, onset_seconds, offset_seconds, category='segment')
+
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
             self.update_eventtype_selector()
@@ -1860,6 +1869,7 @@ class PSV(MainWindow):
 
     def update_eventtype_selector(self):
 
+        currentIndex = self.cb.currentIndex()
         # delete all existing entries
         while self.cb.count() > 0:
             self.cb.removeItem(0)
@@ -1874,8 +1884,8 @@ class PSV(MainWindow):
         for event_type in self.eventList:
             self.cb.addItem("Add " + event_type[1])
 
-        self.cb.currentIndexChanged.connect(self.update_xy)
-        self.cb.setCurrentIndex(0)
+        # set current index again - reset after deleting all items above
+        self.cb.setCurrentIndex(min(currentIndex, len(self.eventList)))
 
         # update menus
         # remove associated menu items
