@@ -542,10 +542,14 @@ def load_times(filepath_timestamps, filepath_daq):
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
 
     ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0], frame_times=shutter_times, sample_numbers=daq_samplenumber[:, 0], auto_monotonize=False)
-    # different refs:
-    # s0 = ss.sample_time(0)  # first sample is 0 seconds
+    # # different refs:
+    #
+    # # first sample is 0 seconds
+    # s0 = ss.sample_time(0)
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - s0, frame_times=cam_stamps[:, 0] - s0, sample_numbers=daq_samplenumber[:, 0])
-    # f0 = ss.frame_time(0)  # first frame is 0 seconds - for no-resample-video-data
+    #
+    # # first frame is 0 seconds - for no-resample-video-data
+    # f0 = ss.frame_time(0)
     # ss = SampStamp(sample_times=daq_stamps[:, 0] - f0, frame_times=cam_stamps[:, 0] - f0, sample_numbers=daq_samplenumber[:, 0])
 
     return ss, last_sample, sampling_rate_Hz
