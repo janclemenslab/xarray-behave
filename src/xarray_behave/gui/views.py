@@ -209,26 +209,12 @@ class TraceView(pg.PlotWidget):
         self.callback = callback
         self.getPlotItem().mouseClickEvent = self._click
 
-        self.env_line = pg.PlotCurveItem(pen=pg.mkPen(color=[196, 98, 98], width=1))
         self.threshold_line = pg.InfiniteLine(movable=True, angle=0,
                                 pos=0,
                                 pen=pg.mkPen(color='r', width=2, alpha=0.25),
                                 bounds=[0, None],
                                 label='Threshold',
                                 labelOpts={'position': 0.9})
-
-
-        self.pos_line = pg.InfiniteLine(movable=False, angle=90,
-                                        pen=pg.mkPen(color='r', width=1))
-        self.addItem(self.pos_line)
-
-        self.channs = []
-        for _ in range(self.m.nb_channels - 1):
-            self.channs.append(pg.PlotCurveItem(pen=pg.mkPen(color=[127, 127, 127])))
-            self.addItem(self.channs[-1])
-
-        self.chann_main = pg.PlotCurveItem(pen=pg.mkPen(color=[220, 220, 220], width=1))
-        self.addItem(self.chann_main)
 
         self.annotation_items = []
 
@@ -261,25 +247,27 @@ class TraceView(pg.PlotWidget):
             y_other = self.m.y_other[::int(self.m.step*2), :]
             x_other = self.m.x[::int(self.m.step * 2)]
             for chan in range(self.m.nb_channels - 1):
-                self.channs[chan].setData(x_other, y_other[:, chan])
-                self.addItem(self.channs[chan])
+                item = pg.PlotCurveItem(x_other, y_other[:, chan], pen=pg.mkPen(color=[127, 127, 127]))
+                self.addItem(item)
 
         # plot active channel
         x = self.m.x[::self.m.step]
-        self.chann_main.setData(x=x, y=np.array(self.m.y[::self.m.step]))
-        self.addItem(self.chann_main)
+        item = pg.PlotCurveItem(x=x, y=np.array(self.m.y[::self.m.step]), pen=pg.mkPen(color=[220, 220, 220], width=1))
+        self.addItem(item)
 
         self.autoRange(padding=0)
 
         # time of current frame in trace
-        self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
-        self.addItem(self.pos_line)
+        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90,
+                                   pen=pg.mkPen(color='r', width=1))
+        self.addItem(pos_line)
 
         # draw actice envelope and threshold
         if self.m.threshold_mode:
             self.addItem(self.threshold_line)
-            self.env_line.setData(x=x, y=self.m.envelope[::self.m.step])
-            self.addItem(self.env_line)
+            env_line = pg.PlotCurveItem(x=x, y=self.m.envelope[::self.m.step], pen=pg.mkPen(color=[196, 98, 98], width=1))
+            self.addItem(env_line)
+
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
         region = SegmentItem((onset, offset), region_typeindex, self.xrange,
