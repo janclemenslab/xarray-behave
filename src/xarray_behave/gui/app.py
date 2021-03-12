@@ -1753,18 +1753,24 @@ class PSV(MainWindow):
             if form_data['proof_reading_mode']:
                 suffix = '_proposals'
 
+            breakpoint()
             # events['seconds'] is in samples/fs - translate to time stamps via sample time
-            if 'sequence' in events and len(np.unique(events['sequence'])) > 0:
+            if 'sequence' in events:
                 detected_event_names = np.unique(events['sequence'])
-
+            else:
+                detected_event_names = []
+            if len(detected_event_names) > 0 and detected_event_names[0] is not None:
                 logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
                 event_samples = (np.array(events['seconds']) * self.fs_song  + start_index).astype(np.uintp)
                 event_seconds = self.ds.sampletime[event_samples]
                 for name, seconds in zip(events['sequence'], event_seconds):
                     self.event_times.add_time(name + suffix, seconds, seconds, category='event')
 
-            if 'sequence' in segments and len(np.unique(segments['sequence'])) > 0:
+            if 'sequence' in segments:
                 detected_segment_names = np.unique(segments['sequence'])
+            else:
+                detected_segment_names = []
+            if len(detected_segment_names) > 0 and detected_segment_names[0] is not None:
                 logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
                 onsets_samples = (np.array(segments['onsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
                 offsets_samples = (np.array(segments['offsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
