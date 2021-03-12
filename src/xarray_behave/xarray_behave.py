@@ -660,10 +660,15 @@ data_loaders = {'audio': load_audio, 'npy': load_npy, 'npz': load_npz, 'h5': loa
 
 def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Optional[float] = None,
               samplerate: Optional[float] = None, dataset: Optional[str] = None,
-              event_names=[], event_categories=[], annotation_path: Optional[str] = None):
+              event_names=[], event_categories=[], annotation_path: Optional[str] = None,
+              audio_channels: Optional[List[int]] = None):
     # TODO merge with from_data
 
     data, samplerate_from_file = data_loaders[loader_name](filepath, dataset)
+
+    if audio_channels is not None:
+        # audio_channels = np.arange(16)
+        data = data[:, audio_channels]
 
     if samplerate is None:
         samplerate = samplerate_from_file
