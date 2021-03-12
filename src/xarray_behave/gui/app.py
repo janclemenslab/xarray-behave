@@ -1753,7 +1753,6 @@ class PSV(MainWindow):
             if form_data['proof_reading_mode']:
                 suffix = '_proposals'
 
-            breakpoint()
             # events['seconds'] is in samples/fs - translate to time stamps via sample time
             if 'sequence' in events:
                 detected_event_names = np.unique(events['sequence'])
