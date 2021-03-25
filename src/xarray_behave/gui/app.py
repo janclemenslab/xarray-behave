@@ -1021,9 +1021,6 @@ class PSV(MainWindow):
         view_play.addSeparator()
         self._add_keyed_menuitem(view_play, "Zoom in song", self.zoom_in_song, "W")
         self._add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, "S")
-        view_play.addSeparator()
-        self._add_keyed_menuitem(view_play, "Go to frame", self.go_to_frame)
-        self._add_keyed_menuitem(view_play, "Go to time", self.go_to_time)
 
         view_video = self.bar.addMenu("Video")
         self._add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), "C",
@@ -1038,8 +1035,6 @@ class PSV(MainWindow):
                                 checkable=True, checked=self.show_dot)
         self._add_keyed_menuitem(view_video, "Show poses", partial(self.toggle, 'show_poses'), "P",
                                 checkable=True, checked=self.show_poses)
-        self._add_keyed_menuitem(view_video, "Show framenumber", partial(self.toggle, 'show_framenumber'), None,
-                                checkable=True, checked=self.show_framenumber)
 
         view_audio = self.bar.addMenu("Audio")
         self._add_keyed_menuitem(view_audio, "Play waveform through speakers", self.play_audio, "E")
@@ -1384,19 +1379,6 @@ class PSV(MainWindow):
 
     def jump_forward(self, qt_keycode):
         self.t0 += self.span / 2
-
-    def go_to_frame(self, qt_keycode):
-        fn, okPressed = QtGui.QInputDialog.getInt(self, "Enter frame number", "Frame number:",
-                            value=self.framenumber, min=0, max=np.max(self.ds.nearest_frame.data), step=1)
-        if okPressed:
-            time_index = np.argmax(self.ds.nearest_frame.data>fn)
-            self.t0 = int(time_index / self.fs_other * self.fs_song)
-
-    def go_to_time(self, qt_keycode):
-        time, okPressed = QtGui.QInputDialog.getDouble(self, "Enter time", "Seconds:",
-                value=self.t0 / self.fs_song, min=0, max=self.tmax /self.fs_song)
-        if okPressed:
-            self.t0 = np.argmax(self.ds.sampletime.data>time)
 
     def set_spec_freq(self, qt_keycode):
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/spec_freq.yaml",
