@@ -494,10 +494,10 @@ class MovieView(utils.FastImageWidget):
 
             self.setImage(frame, auto_scale=True)
             self.viewBox.setRange(xRange=y_range, yRange=x_range)
-            if self.m.show_framenumber:
-                self.image_view_framenumber_text.setPlainText(f'frame {self.m.framenumber}')
-            else:
-                self.image_view_framenumber_text.setPlainText('')
+            # if self.m.show_framenumber:
+            #     self.image_view_framenumber_text.setPlainText(f'frame {self.m.framenumber}')
+            # else:
+            #     self.image_view_framenumber_text.setPlainText('')
 
     def annotate_dot(self, frame):
         # mark each fly with uniquely colored dots

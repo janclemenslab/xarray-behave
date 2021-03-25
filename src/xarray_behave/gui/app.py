@@ -925,7 +925,6 @@ class PSV(MainWindow):
         self.show_poses = False
         self.move_poses = False
         self.circle_size = 8
-        self.show_framenumber = False
 
         self.cue_index = -1  # set this to -1 not to 0 so that upon first increase we will jump to 0, not to 1
 
