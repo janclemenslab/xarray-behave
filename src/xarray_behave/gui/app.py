@@ -9,20 +9,18 @@ import sys
 import logging
 import time
 from pathlib import Path
-from functools import lru_cache, partial
-import warnings
+from functools import partial
+
 import defopt
 import yaml
 import h5py
-import glob
+import functools
 
 import numpy as np
-import pandas as pd
 import scipy.interpolate
 import scipy.signal as ss
 import pathlib
 import peakutils
-# from dataclasses import dataclass
 from typing import Callable, Optional, Dict, Any, List
 
 try:
@@ -32,9 +30,15 @@ except ImportError:
 
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
+import pyqtgraph.Qt as Qt
+
+
+# # otherwise magicgui's qtpy defaults to pyqt and all hell breaks loose
+# os.environ["QT_API"] = "pyside2"
+# from magicgui import magicgui, magic_factory
+
 
 import xarray_behave
-import xarray as xr
 from .. import (xarray_behave as xb,
                 loaders as ld,
                 annot,
