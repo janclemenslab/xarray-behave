@@ -1320,13 +1320,11 @@ class PSV(MainWindow):
         if self.STOP:
             # need to update twice to fix axis limits for some reason
             self.update_xy()
-            self.update_xy()
 
     def dec_freq_res(self, qt_keycode):
         self.spec_win = int(max(2, self.spec_win // 2))
         if self.STOP:
             # need to update twice to fix axis limits for some reason
-            self.update_xy()
             self.update_xy()
 
     def toggle_playvideo(self, qt_keycode):
