@@ -1167,7 +1167,10 @@ class PSV(MainWindow):
 
     @property
     def framenumber(self):
-        return int(self.ds.coords['nearest_frame'][self.index_other].data)
+        if 'nearest_frame' in self.ds.coords:
+            return int(self.ds.coords['nearest_frame'][self.index_other].data)
+        else:
+            return None
 
     @property
     def span(self):
