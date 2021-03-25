@@ -1087,7 +1087,11 @@ class PSV(MainWindow):
         self.cb = pg.QtGui.QComboBox()
         self.cb.currentIndexChanged.connect(self.update_xy)
         self.cb.setCurrentIndex(0)
-        self.hl.addWidget(self.cb)
+        event_sel_label = pg.Qt.QtWidgets.QLabel('Song types:')
+        event_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
+        self.hl.addWidget(event_sel_label, stretch=1)
+        self.hl.addWidget(self.cb, stretch=4)
+
 
         view_audio.addSeparator()
         self.view_audio = view_audio
@@ -1103,7 +1107,10 @@ class PSV(MainWindow):
 
         self.cb2.currentIndexChanged.connect(self.update_xy)
         self.cb2.setCurrentIndex(0)
-        self.hl.addWidget(self.cb2)
+        channel_sel_label = pg.Qt.QtWidgets.QLabel('Audio channels:')
+        channel_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
+        self.hl.addWidget(channel_sel_label, stretch=1)
+        self.hl.addWidget(self.cb2, stretch=4)
 
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
@@ -1123,20 +1130,72 @@ class PSV(MainWindow):
 
         self.ly = pg.QtGui.QVBoxLayout()
         self.ly.addLayout(self.hl)
+        splitter = QtWidgets.QSplitter(pg.QtCore.Qt.Vertical)
+
+        def edit_time_finished(source=None):
+            try:
+                self.t0 = float(source.text()) * self.fs_song
+            except Exception as e:
+                print(e)
+
+        def edit_frame_finished(source=None):
+            try:
+                frame_number = float(source.text())
+                # get sampletime from framenumber
+                idx = np.argmax(self.ds.nearest_frame.data>=frame_number)
+                self.t0 = self.ds.nearest_frame[idx].time.values * self.fs_song
+            except Exception as e:
+                print(e)
+
+        def on_slider_moved(value):
+            self.t0 = value
+
+        def on_play_pressed(source):
+            self.toggle_playvideo()
+
+        self.scrollbar = pg.Qt.QtWidgets.QScrollBar(pg.QtCore.Qt.Horizontal)
+        self.tmin = np.min(self.ds.sampletime.values)
+        self.scrollbar.setMinimum(self.tmin)
+        self.scrollbar.setMaximum(self.tmax)
+        self.scrollbar.setPageStep(max((self.tmax-self.tmin)/100, self._span / self.fs_song))
+        self.scrollbar.valueChanged.connect(on_slider_moved)
+        scrollbar_layout = pg.QtGui.QHBoxLayout()
+
+        self.playButton = pg.Qt.QtWidgets.QPushButton()
+        self.playButton.setIcon(self.style().standardIcon(pg.Qt.QtWidgets.QStyle.SP_MediaPlay))
+        self.playButton.clicked.connect(functools.partial(on_play_pressed, source=self.playButton))
+
+        scrollbar_layout.addWidget(self.playButton, stretch= 0.5)
+        scrollbar_layout.addWidget(self.scrollbar, stretch=10)
+
+        self.edit_time = pg.Qt.QtWidgets.QLineEdit()
+        self.edit_time.editingFinished.connect(functools.partial(edit_time_finished, source=self.edit_time))
+        scrollbar_layout.addWidget(self.edit_time, stretch=1)
+        edit_time_label = pg.Qt.QtWidgets.QLabel('seconds')
+        edit_time_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
+        scrollbar_layout.addWidget(edit_time_label, stretch=1)
+
         if self.vr is not None:
-            self.ly.addWidget(self.movie_view, stretch=4)
-        self.ly.addWidget(self.slice_view, stretch=1)
-        self.ly.addWidget(self.spec_view, stretch=1)
+            self.edit_frame = pg.Qt.QtWidgets.QLineEdit()
+            self.edit_frame.editingFinished.connect(functools.partial(edit_frame_finished, source=self.edit_frame))
+            scrollbar_layout.addWidget(self.edit_frame, stretch=1)
+            edit_frame_label = pg.Qt.QtWidgets.QLabel('frame')
+            edit_frame_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
+            scrollbar_layout.addWidget(edit_frame_label, stretch=1)
+
+        self.ly.addLayout(scrollbar_layout)
 
         self.cw.setLayout(self.ly)
 
         self.setCentralWidget(self.cw)
 
         self.update_eventtype_selector()
-        self.show()
 
+        self.show()
         self.update_xy()
         self.update_frame()
+        self.t0 = self.t0 + 0.0000000001
+        self.span = self.span + 0.0000000001
         logging.info("xb gui initialized.")
 
     @property
@@ -1160,10 +1219,17 @@ class PSV(MainWindow):
         return self._t0
 
     @t0.setter
-    def t0(self, val):
+    def t0(self, val: float):
+        old_t0 = self._t0
         self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)  # ensure t0 stays within bounds
-        self.update_xy()
-        self.update_frame()
+        if self._t0 != old_t0:
+            self.scrollbar.setValue(self.t0)
+            self.edit_time.setText(str(self.t0 / self.fs_song))
+            if self.vr is not None:
+                self.edit_frame.setText(str(self.framenumber))
+
+            self.update_xy()
+            self.update_frame()
 
     @property
     def framenumber(self):
@@ -1324,10 +1390,13 @@ class PSV(MainWindow):
             # need to update twice to fix axis limits for some reason
             self.update_xy()
 
-    def toggle_playvideo(self, qt_keycode):
+    def toggle_playvideo(self, qt_keycode=None):
         self.STOP = not self.STOP
         if not self.STOP:
+            self.playButton.setIcon(self.style().standardIcon(pg.Qt.QtWidgets.QStyle.SP_MediaPause))
             self.play_video()
+        else:
+            self.playButton.setIcon(self.style().standardIcon(pg.Qt.QtWidgets.QStyle.SP_MediaPlay))
 
     def toggle_show_poses(self, qt_keycode):
         self.show_poses = not self.show_poses
