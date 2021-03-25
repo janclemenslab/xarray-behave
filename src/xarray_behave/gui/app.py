@@ -1132,6 +1132,16 @@ class PSV(MainWindow):
         self.ly.addLayout(self.hl)
         splitter = QtWidgets.QSplitter(pg.QtCore.Qt.Vertical)
 
+
+        if self.vr is not None:
+            splitter.addWidget(self.movie_view)
+
+        splitter.addWidget(self.slice_view)
+        splitter.addWidget(self.spec_view)
+        splitter.setSizes([400, 10, 100, 100])
+
+        self.ly.addWidget(splitter)
+
         def edit_time_finished(source=None):
             try:
                 self.t0 = float(source.text()) * self.fs_song
