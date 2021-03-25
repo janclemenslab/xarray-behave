@@ -346,7 +346,7 @@ class SpecView(pg.ImageView):
             return None
 
     def clear_annotations(self):
-        [self.removeItem(item) for item in self.old_items]  # remove annotations
+        [self.removeItem(item) for item in self.old_items]  # remove annotations <- slowest part of update_spec!!!
 
     def update_spec(self, x, y):
         # hash x to avoid re-calculation? only useful when annotating
