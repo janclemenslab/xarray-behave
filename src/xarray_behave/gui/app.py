@@ -74,7 +74,6 @@ class MainWindow(pg.QtGui.QMainWindow):
     def __init__(self, parent=None, title="DeepSS"):
         super().__init__(parent)
 
-        self.windows = []
         self.parent = parent
 
         self.app = QtWidgets.QApplication.instance()
@@ -85,6 +84,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.resize(400, 200)
         self.setWindowTitle(title)
         self.setWindowIcon(QtGui.QIcon(package_dir  + '/gui/icon.png'))
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
 
         # build menu
         self.bar = self.menuBar()
@@ -110,6 +110,20 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.cb = pg.GraphicsLayoutWidget()
         self.cb.setLayout(self.hb)
         self.setCentralWidget(self.cb)
+
+    def closeEvent(self, event):
+        # stuff_to_delete = ['ds', 'vr', 'x','y','y_other', 'event_times', 'slice_view', 'spec_view', 'movie_view', 'envelope']
+        stuff_to_delete = list(self.__dict__.keys())
+        for stuff in stuff_to_delete:
+            try:
+                del self.__dict__[stuff]
+            except KeyError:
+                pass
+            except Exception as e:
+                print(e)
+        import gc
+        gc.collect()
+        event.accept()
 
     def add_button(self, text: str, callback: Callable) -> QtWidgets.QPushButton:
         button = QtWidgets.QPushButton(self)
@@ -2025,26 +2039,26 @@ def main(source: str = '', *, events_string: str = '',
     elif not os.path.exists(source):
         logging.info(f'{source} does not exist - skipping.')
     elif source.endswith('.wav') or source.endswith('.npz') or source.endswith('.h5') or source.endswith('.hdf5') or source.endswith('.mat'):
-        mainwin.windows.append(MainWindow.from_file(filename=source,
-                                                   events_string=events_string,
-                                                   target_samplingrate=target_samplingrate,
-                                                   spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-                                                   skip_dialog=skip_dialog,
-                                                   is_dss=is_dss))
+        MainWindow.from_file(filename=source,
+                             events_string=events_string,
+                             target_samplingrate=target_samplingrate,
+                             spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+                             skip_dialog=skip_dialog,
+                             is_dss=is_dss)
     elif source.endswith('.zarr'):
-        mainwin.windows.append(MainWindow.from_zarr(filename=source,
-                                                    box_size=box_size,
-                                                    spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-                                                    skip_dialog=skip_dialog,
-                                                    is_dss=is_dss))
+        MainWindow.from_zarr(filename=source,
+                             box_size=box_size,
+                             spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+                             skip_dialog=skip_dialog,
+                             is_dss=is_dss)
     elif os.path.isdir(source):
-        mainwin.windows.append(MainWindow.from_dir(dirname=source,
-                                                   events_string=events_string,
-                                                   target_samplingrate=target_samplingrate, box_size=box_size,
-                                                   spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-                                                   pixel_size_mm=pixel_size_mm,
-                                                   skip_dialog=skip_dialog,
-                                                   is_dss=is_dss))
+        MainWindow.from_dir(dirname=source,
+                            events_string=events_string,
+                            target_samplingrate=target_samplingrate, box_size=box_size,
+                            spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
+                            pixel_size_mm=pixel_size_mm,
+                            skip_dialog=skip_dialog,
+                            is_dss=is_dss)
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
