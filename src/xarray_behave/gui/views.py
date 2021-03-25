@@ -11,7 +11,7 @@ import skimage.draw
 import scipy.signal
 import time
 import logging
-from functools import partial
+from functools import partial, lru_cache
 from typing import Tuple
 
 from .. import xarray_behave as xb
@@ -350,17 +350,27 @@ class SpecView(pg.ImageView):
 
     def update_spec(self, x, y):
         # hash x to avoid re-calculation? only useful when annotating
-        
+        t0 = time.time()
+        # t1 = time.time()
+        # logging.debug(f'  update spec - clear annotations: {t1-t0}')
+
         # S, f, t = self._calc_spec(y)
         S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
         self.S = S
         trange = (self.m.x[-1] - self.m.x[0])
+        t2 = time.time()
+        logging.debug(f'  update spec - calc spec: {t2-t0}')
+
         self.setImage(S.T, autoRange=False, scale=[trange / len(t), (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
 
         self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90,
                                         pen=pg.mkPen(color='r', width=1))
         self.addItem(self.pos_line)
+        t3 = time.time()
+        logging.debug(f'  update spec - draw: {t3-t2}')
+        t4 = time.time()
+        logging.debug(f'update spec - TOTAL: {t4-t0}')
 
     @lru_cache(maxsize=2, typed=False)
     def _calc_spec(self, y, spec_win):
