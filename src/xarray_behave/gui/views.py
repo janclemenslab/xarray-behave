@@ -352,7 +352,8 @@ class SpecView(pg.ImageView):
         # hash x to avoid re-calculation? only useful when annotating
         self.clear_annotations()
 
-        S, f, t = self._calc_spec(y)
+        # S, f, t = self._calc_spec(y)
+        S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
         self.S = S
         trange = (self.m.x[-1] - self.m.x[0])
         self.setImage(S.T, autoRange=False, scale=[trange / len(t), (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
@@ -362,13 +363,14 @@ class SpecView(pg.ImageView):
                                         pen=pg.mkPen(color='r', width=1))
         self.addItem(self.pos_line)
 
-    # @lru_cache(maxsize=2, typed=False)
-    def _calc_spec(self, y):
+    @lru_cache(maxsize=2, typed=False)
+    def _calc_spec(self, y, spec_win):
+        y = np.array(y)
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
-        self.spec_win = min(len(y), self.m.spec_win)
-        f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=self.spec_win,
-                                             noverlap=self.spec_win // 2, nfft=self.spec_win * 4, mode='magnitude')
+        spec_win = min(len(y), spec_win)
+        f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=spec_win,
+                                             noverlap=spec_win // 2, nfft=spec_win * 4, mode='magnitude')
         self.spec_t = t
 
         if self.m.fmax is not None:
