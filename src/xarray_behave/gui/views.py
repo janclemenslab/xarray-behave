@@ -350,8 +350,7 @@ class SpecView(pg.ImageView):
 
     def update_spec(self, x, y):
         # hash x to avoid re-calculation? only useful when annotating
-        self.clear_annotations()
-
+        
         # S, f, t = self._calc_spec(y)
         S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
         self.S = S
