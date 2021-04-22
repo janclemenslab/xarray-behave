@@ -1842,7 +1842,7 @@ class PSV(MainWindow):
                 event_samples = (np.array(events['seconds']) * self.fs_song  + start_index).astype(np.uintp)
                 event_seconds = self.ds.sampletime[event_samples]
                 for name, seconds in zip(events['sequence'], event_seconds):
-                    self.event_times.add_time(name + suffix, seconds, seconds, category='event')
+                    self.event_times.add_time(str(name) + str(suffix), seconds, seconds, category='event')
 
             if 'sequence' in segments:
                 detected_segment_names = np.unique(segments['sequence'])
@@ -1856,7 +1856,7 @@ class PSV(MainWindow):
                 onsets_seconds = self.ds.sampletime[onsets_samples]
                 offsets_seconds = self.ds.sampletime[offsets_samples]
                 for name, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
-                    self.event_times.add_time(name + suffix, onset_seconds, offset_seconds, category='segment')
+                    self.event_times.add_time(str(name) + str(suffix), onset_seconds, offset_seconds, category='segment')
 
             self.nb_eventtypes = len(self.event_times)
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
