@@ -1723,20 +1723,27 @@ class PSV(MainWindow):
                 else:
                     y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]
                 y = np.array(y)  # if y is a dask.array (lazy loaded)
-            if has_sounddevice:
-                sd.play(y, self.fs_song)
-            elif has_simpleaudio:
-                # normalize to 16-bit range and convert to 16-bit data
+
                 max_amp = self.MAX_AUDIO_AMP
                 if max_amp is None:
                     max_amp = np.nanmax(np.abs(y))
-                y = y * 32767 / max_amp
-                y = y.astype(np.int16)
-                # simpleaudio can only play at these rates - choose the one nearest to our rate
-                allowed_sample_rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 192000]  # Hz
-                sample_rate = min(allowed_sample_rates, key=lambda x: abs(x - int(self.fs_song)))
-                # start playback in background
-                simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
+
+                if has_sounddevice:
+                    # scale sound so we do not blow out the speakers
+                    try:
+                        y = y.astype(np.float)/np.iinfo(y.dtype).max * self.MAX_AUDIO_AMP
+                    except ValueError as e:
+                        # logging.exception(e)
+                        y = y/y.max()/10 * self.MAX_AUDIO_AMP
+                    sd.play(y, self.fs_song)
+                elif has_simpleaudio:
+                    y = y * 32767 / max_amp
+                    y = y.astype(np.int16)
+                    # simpleaudio can only play at these rates - choose the one nearest to our rate
+                    allowed_sample_rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 192000]  # Hz
+                    sample_rate = min(allowed_sample_rates, key=lambda x: abs(x - int(self.fs_song)))
+                    # start playback in background
+                    simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
             else:
                 logging.info(f'No sound module installed - install python-sounddevice')
         else:
