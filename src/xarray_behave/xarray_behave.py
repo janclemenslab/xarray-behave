@@ -353,7 +353,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
             logging.debug(f'  Could not load fly identities using info from {filepath_swap}.')
             logging.debug(e)
     logging.info('Done.')
-
     return dataset
 
 
@@ -694,7 +693,6 @@ def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Opti
         target_samplerate = samplerate
 
     dataset_data = dict()
-
     sampletime = np.arange(len(data)) / samplerate
     time = np.arange(sampletime[0], sampletime[-1], 1 / target_samplerate)
 
