@@ -1562,9 +1562,9 @@ class PSV(MainWindow):
 
             if self.event_times.categories[event_name] == 'segment':
                 for onset, offset in zip(events_in_view[:, 0], events_in_view[:, 1]):
-                    self.slice_view.add_segment(onset, offset, event_index, event_brush, movable=movable)
+                    self.slice_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable)
                     if self.show_spec:
-                        self.spec_view.add_segment(onset, offset, event_index, event_brush, movable=movable)
+                        self.spec_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable)
             elif self.event_times.categories[event_name] == 'event':
                     self.slice_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable)
                     if self.show_spec:

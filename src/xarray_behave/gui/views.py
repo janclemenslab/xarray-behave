@@ -269,9 +269,9 @@ class TraceView(pg.PlotWidget):
             self.addItem(env_line)
 
 
-    def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
+    def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True):
         region = SegmentItem((onset, offset), region_typeindex, self.xrange,
-                             brush=brush, movable=movable)
+                             brush=brush, pen=pen, movable=movable)
         self.addItem(region)
         if movable:
             region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
@@ -396,10 +396,10 @@ class SpecView(pg.ImageView):
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f[f_idx0:f_idx1], t
 
-    def add_segment(self, onset, offset, region_typeindex, brush=None, movable=True):
+    def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True):
         onset_spec, offset_spec = onset, offset
         region = SegmentItem((onset_spec, offset_spec), region_typeindex, self.xrange,
-                             time_bounds=(onset, offset), brush=brush, movable=movable)
+                             time_bounds=(onset, offset), brush=brush, pen=pen, movable=movable)
         self.addItem(region)
         self.old_items.append(region)
         if movable:
