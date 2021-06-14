@@ -611,7 +611,7 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True,
     logging.info(dataset)
     return dataset
 
-def load_npz(filepath: str, dataset: Optional[str] = 'song'):
+def load_npz(filepath: str, dataset: Optional[str] = 'data'):
     import numpy as np
     logging.info(f"Loading data from NPZ file at {filepath}.")
     with np.load(filepath) as file:

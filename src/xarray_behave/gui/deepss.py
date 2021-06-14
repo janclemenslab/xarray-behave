@@ -28,6 +28,7 @@ import xarray_behave
 package_dir = xarray_behave.__path__[0]
 
 
+# these should be xb.loaders!!
 def data_loader_wav(filename):
     # load the recording
     fs, x = scipy.io.wavfile.read(filename)
@@ -38,7 +39,7 @@ def data_loader_npz(filename):
     # load the recording
     file = np.load(filename)
     fs = file['samplerate']
-    x = file['song']
+    x = file['data']
     x = x[:, np.newaxis] if x.ndim==1 else x  # adds singleton dim for single-channel wavs
     return fs, x
 
@@ -119,7 +120,17 @@ def make(data_folder, store_folder,
                         class_types=class_types,
                         make_single_class_datasets=make_single_class_datasets,
                         store_type=zarr.DictStore, store_name='store.zarr', chunk_len=1_000_000)
-    store['train']['x'].shape, store['val']['x'].shape, store['test']['x'].shape
+
+    # save args for reproducibility
+    store.attrs['event_std_seconds'] = event_std_seconds
+    store.attrs['gap_seconds'] = gap_seconds
+    store.attrs['data_folder'] = data_folder
+    store.attrs['store_folder'] = store_folder
+    store.attrs['file_splits'] = file_splits
+    store.attrs['data_splits'] = data_splits
+    store.attrs['make_single_class_datasets'] = make_single_class_datasets
+    store.attrs['split_train_in_two'] = split_train_in_two
+    store.attrs['delete_intermediate_store'] = delete_intermediate_store
 
     # first split files into a train-test and val
     file_split_dict = collections.defaultdict(lambda: None)
@@ -140,6 +151,7 @@ def make(data_folder, store_folder,
             for part in parts:
                 if part in file_splits and file_base in file_splits[part]:
                     file_split_dict[file_base] = part
+    store.attrs['file_split_dict'] = dict(file_split_dict)
 
     data_split_targets = []
     if len(data_splits):
@@ -195,7 +207,6 @@ def make(data_folder, store_folder,
                 y[:, segment_idx] = dsm.make_gaps(y[:, segment_idx],
                                                   gap_seconds=gap_seconds,
                                                   samplerate=fs)
-
         # all validation files
         if file_split_dict[file_base] is not None:
             name = file_split_dict[file_base]
