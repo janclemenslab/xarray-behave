@@ -1108,13 +1108,23 @@ class PSV(MainWindow):
 
         # EVENT TYPE selector
         self.cb = pg.QtGui.QComboBox()
-        self.cb.currentIndexChanged.connect(self.update_xy)
         self.cb.setCurrentIndex(0)
+        self.cb.currentIndexChanged.connect(self.update_xy)
+
+        def ta():
+            if self.cb.currentText()=='Initialize song types':
+                self.edit_annotation_types()
+        self.cb.activated.connect(ta)
+
         event_sel_label = pg.Qt.QtWidgets.QLabel('Song types:')
         event_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
+        event_sel_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.hl.addWidget(event_sel_label, stretch=1)
         self.hl.addWidget(self.cb, stretch=4)
 
+        event_edit_button = pg.Qt.QtWidgets.QPushButton('Add/Edit')
+        event_edit_button.clicked.connect(functools.partial(self.edit_annotation_types, dialog=None))
+        self.hl.addWidget(event_edit_button, stretch=1)
 
         view_audio.addSeparator()
         self.view_audio = view_audio
@@ -1940,17 +1950,21 @@ class PSV(MainWindow):
         logging.info("Done.")
         self.update_xy()
 
-    def edit_annotation_types(self, qt_keycode):
-        if hasattr(self, 'event_times'):
-            types = self.event_times.names
-            cats = list(self.event_times.categories.values())
-            table_data = [[typ, cat] for typ, cat in zip(types, cats)]
-        else:
-            table_data = []
+    def edit_annotation_types(self, qt_keycode=None, dialog=None):
+        if dialog is None:
+            if hasattr(self, 'event_times'):
+                types = self.event_times.names
+                cats = list(self.event_times.categories.values())
+                table_data = [[typ, cat] for typ, cat in zip(types, cats)]
+            else:
+                table_data = []
 
-        dialog = table.Table(table_data)
-        dialog.show()
-        result = dialog.exec_()
+            dialog = table.Table(table_data, as_dialog=True)
+            dialog.show()
+            result = dialog.exec_()
+        else:
+           result = QtGui.QDialog.Accepted
+
         if result == QtGui.QDialog.Accepted:
             data = dialog.get_table_data()
 
@@ -1992,26 +2006,52 @@ class PSV(MainWindow):
             self.eventype_colors = utils.make_colors(self.nb_eventtypes)
 
             self.update_eventtype_selector()
+        if dialog is not None:  # update docked table widget
+            self.update_eventtype_dialog()
+
+    def update_eventtype_dialog(self):
+        if hasattr(self, 'event_times'):
+            types = self.event_times.names
+            cats = list(self.event_times.categories.values())
+            table_data = [[typ, cat] for typ, cat in zip(types, cats)]
+        else:
+            table_data = []
+
+        self.dialog = table.Table(table_data, as_dialog=False)
+        self.dialog.save_button = QtWidgets.QPushButton('Apply', self.dialog)
+        self.dialog.save_button.clicked.connect(functools.partial(self.edit_annotation_types, dialog=self.dialog))
+        self.dialog.button_layout.addWidget(self.dialog.save_button)
+        self.dialog.revert_button = QtWidgets.QPushButton('Revert', self.dialog)
+        self.dialog.revert_button.clicked.connect(self.update_eventtype_dialog)
+        self.dialog.button_layout.addWidget(self.dialog.revert_button)
 
     def update_eventtype_selector(self):
 
         currentIndex = self.cb.currentIndex()
+
         # delete all existing entries
         while self.cb.count() > 0:
             self.cb.removeItem(0)
 
-        self.cb.addItem("No annotation")
         if hasattr(self, 'event_times'):
             self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.event_times.names)]
             self.eventList = sorted(self.eventList)
         else:
             self.eventList = []
 
+        if not len(self.eventList):
+            self.cb.addItem("Initialize song types")
+            return
+
+        self.cb.addItem("No annotation")
         for event_type in self.eventList:
             self.cb.addItem("Add " + event_type[1])
 
         # set current index again - reset after deleting all items above
-        self.cb.setCurrentIndex(min(currentIndex, len(self.eventList)))
+        # self.cb.setCurrentIndex(min(currentIndex, len(self.eventList)))
+
+        # auto-select last in list
+        self.cb.setCurrentIndex(len(self.eventList))
 
         # update menus
         # remove associated menu items
