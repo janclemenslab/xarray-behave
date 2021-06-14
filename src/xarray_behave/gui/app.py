@@ -18,6 +18,7 @@ import functools
 
 import numpy as np
 import scipy.interpolate
+import scipy.signal.windows
 import scipy.signal as ss
 import pathlib
 import peakutils
@@ -31,12 +32,6 @@ except ImportError:
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 import pyqtgraph.Qt as Qt
-
-
-# # otherwise magicgui's qtpy defaults to pyqt and all hell breaks loose
-# os.environ["QT_API"] = "pyside2"
-# from magicgui import magicgui, magic_factory
-
 
 import xarray_behave
 from .. import (xarray_behave as xb,
@@ -62,7 +57,6 @@ sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when ke
 package_dir = xarray_behave.__path__[0]
 
 
-# @dataclass
 class DataSource:
     def __init__(self, type: str, name: str):
         self.type = type
@@ -392,7 +386,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     del form_data[field]
             form_data['use_separable'] = [item.lower()=='true' for item in form_data['use_separable']]
             if is_cli:
-                form_data['use_separable'] = ' '.join(form_data['use_separable'])
+                form_data['use_separable'] = ' '.join([str(item) for item in form_data['use_separable']])
                 for field in ['ignore_boundaries', 'reduce_lr', 'tensorboard']:
                     if field in form_data:
                         if form_data[field] is False:  # rename and pre-prend "no_"
@@ -534,7 +528,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                 except:
                     pass
 
-
             if filename.endswith('.npy'):
                 data_loader = 'npy'
 
@@ -544,6 +537,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_file.yaml",
                                 title=f'Load {filename}')
             dialog.form['target_samplingrate'] = samplerate
+            dialog.form['samplerate'] = samplerate
             dialog.form['spec_freq_max'] = samplerate / 2
 
             dialog.form.fields['data_set'].set_options(datasets)  # add datasets
@@ -857,8 +851,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                     self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
 
                 # scale tracks back to original units upon save
-                logging.info(f'Converting spatial units back to {self.original_spatial_units} if required.')
-                self.ds = xb.convert_spatial_units(self.ds, to_units=self.original_spatial_units)
+                if hasattr(self, 'original_spatial_units'):
+                    logging.info(f'Converting spatial units back to {self.original_spatial_units} if required.')
+                    self.ds = xb.convert_spatial_units(self.ds, to_units=self.original_spatial_units)
 
                 # update ds.event_times from event_times dict
                 event_times = annot.Events(self.event_times)
@@ -978,8 +973,8 @@ class PSV(MainWindow):
         self.threshold_mode = False
         self.sinet0 = None
 
-        self.thres_min_dist = 0.025  # seconds
-        self.thres_env_std = 0.004  # seconds
+        self.thres_min_dist = 0.020  # seconds
+        self.thres_env_std = 0.002  # seconds
 
         if 'song_events' in self.ds:
             self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
@@ -1065,8 +1060,8 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), None,
                                 checkable=True, checked=self.show_spec)
         self._add_keyed_menuitem(view_audio, "Set display frequency limits", self.set_spec_freq)
-        self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.dec_freq_res, "R")
-        self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.inc_freq_res, "T")
+        self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.inc_freq_res, "R")
+        self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.dec_freq_res, "T")
         view_audio.addSeparator()
 
         view_annotations = self.bar.addMenu("Annotations")
@@ -1161,19 +1156,23 @@ class PSV(MainWindow):
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=lut)
 
-        self.cw = pg.GraphicsLayoutWidget()
-
         self.ly = pg.QtGui.QVBoxLayout()
         self.ly.addLayout(self.hl)
+
         splitter = QtWidgets.QSplitter(pg.QtCore.Qt.Vertical)
 
+        splitter_horizontal = QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
 
-        if self.vr is not None:
-            splitter.addWidget(self.movie_view)
-
+        splitter.addWidget(splitter_horizontal)
         splitter.addWidget(self.slice_view)
         splitter.addWidget(self.spec_view)
-        splitter.setSizes([400, 10, 100, 100])
+        if self.vr is not None:
+            splitter_horizontal.addWidget(self.movie_view)
+            splitter_horizontal.setSizes([1, 4000, 10])
+            splitter.setSizes([400, 10, 100, 100])
+        else:
+            splitter_horizontal.setSizes([500, 50])
+            splitter.setSizes([10, 1000, 1000])
 
         self.ly.addWidget(splitter)
 
@@ -1192,23 +1191,17 @@ class PSV(MainWindow):
             except Exception as e:
                 print(e)
 
-        def on_slider_moved(value):
-            self.t0 = value
-
-        def on_play_pressed(source):
-            self.toggle_playvideo()
-
         self.scrollbar = pg.Qt.QtWidgets.QScrollBar(pg.QtCore.Qt.Horizontal)
         self.tmin = np.min(self.ds.sampletime.values)
         self.scrollbar.setMinimum(self.tmin)
         self.scrollbar.setMaximum(self.tmax)
         self.scrollbar.setPageStep(max((self.tmax-self.tmin)/100, self._span / self.fs_song))
-        self.scrollbar.valueChanged.connect(on_slider_moved)
+        self.scrollbar.valueChanged.connect(lambda value: setattr(self, 't0', value))
         scrollbar_layout = pg.QtGui.QHBoxLayout()
 
         self.playButton = pg.Qt.QtWidgets.QPushButton()
         self.playButton.setIcon(self.style().standardIcon(pg.Qt.QtWidgets.QStyle.SP_MediaPlay))
-        self.playButton.clicked.connect(functools.partial(on_play_pressed, source=self.playButton))
+        self.playButton.clicked.connect(self.toggle_playvideo)
 
         scrollbar_layout.addWidget(self.playButton, stretch= 0.5)
         scrollbar_layout.addWidget(self.scrollbar, stretch=10)
@@ -1230,8 +1223,8 @@ class PSV(MainWindow):
 
         self.ly.addLayout(scrollbar_layout)
 
+        self.cw = pg.GraphicsLayoutWidget()
         self.cw.setLayout(self.ly)
-
         self.setCentralWidget(self.cw)
 
         self.update_eventtype_selector()
@@ -1399,7 +1392,6 @@ class PSV(MainWindow):
             self.update_xy()
 
     def get_envelope(self):
-        import scipy.signal.windows
         std = self.thres_env_std * self.fs_song
         win = scipy.signal.windows.gaussian(int(std * 6), std)
         win /= np.sum(win)
@@ -1662,45 +1654,48 @@ class PSV(MainWindow):
 
     def on_position_dragged(self, fly, pos, offset):
         """Called when dragging a fly body position - will change that pos."""
-        pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, self.thorax_index]
-        try:
-            pos1 = [pos.y(), pos.x()]
-        except:
-            pos1 = pos
-        self.ds.pose_positions_allo.data[self.index_other, fly, :] += (pos1 - pos0)
-        logging.info(f'   Moved fly from {pos0} to {pos1}.')
-        self.update_frame()
+        if hasattr(self.ds, 'pose_positions_allo'):
+            pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, self.thorax_index]
+            try:
+                pos1 = [pos.y(), pos.x()]
+            except:
+                pos1 = pos
+            self.ds.pose_positions_allo.data[self.index_other, fly, :] += (pos1 - pos0)
+            logging.info(f'   Moved fly from {pos0} to {pos1}.')
+            self.update_frame()
 
     def on_poses_dragged(self, ind, pos, offset):
         """Called when dragging a fly body position - will change that pos."""
-        fly, part = np.unravel_index(ind, (self.nb_flies, self.nb_bodyparts))
-        pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, part]
-        try:
-            pos1 = [pos.y(), pos.x()]
-        except:
-            pos1 = pos
-        self.ds.pose_positions_allo.data[self.index_other, fly, part] += (pos1 - pos0)
-        logging.info(f'   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.')
-        self.update_frame()
+        if hasattr(self.ds, 'pose_positions_allo'):
+            fly, part = np.unravel_index(ind, (self.nb_flies, self.nb_bodyparts))
+            pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, part]
+            try:
+                pos1 = [pos.y(), pos.x()]
+            except:
+                pos1 = pos
+            self.ds.pose_positions_allo.data[self.index_other, fly, part] += (pos1 - pos0)
+            logging.info(f'   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.')
+            self.update_frame()
 
     def on_video_clicked(self, mouseX, mouseY, event):
         """Called when clicking the video - will select the focal fly."""
-        if event.modifiers() == QtCore.Qt.ControlModifier and self.focal_fly is not None:
-            self.on_position_dragged(self.focal_fly, pos=[mouseY, mouseX], offset=None)
-        else:
-            fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
-            fly_pos = np.array(fly_pos)  # in case this is a dask.array
-            if self.crop:  # transform fly pos to coordinates of the cropped box
-                box_center = self.ds.pose_positions_allo.data[self.index_other,
-                                                            self.focal_fly,
-                                                            self.thorax_index] + self.box_size / 2
-                box_center = np.array(box_center)  # in case this is a dask.array
-                fly_pos = fly_pos - box_center
-            fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX]))**2, axis=-1)
-            fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
-            self.other_fly = np.argmin(fly_dist)
-            logging.debug(f"Selected {self.other_fly}.")
-        self.update_frame()
+        if hasattr(self.ds, 'pose_positions_allo'):
+            if event.modifiers() == QtCore.Qt.ControlModifier and self.focal_fly is not None:
+                self.on_position_dragged(self.focal_fly, pos=[mouseY, mouseX], offset=None)
+            else:
+                fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
+                fly_pos = np.array(fly_pos)  # in case this is a dask.array
+                if self.crop:  # transform fly pos to coordinates of the cropped box
+                    box_center = self.ds.pose_positions_allo.data[self.index_other,
+                                                                self.focal_fly,
+                                                                self.thorax_index] + self.box_size / 2
+                    box_center = np.array(box_center)  # in case this is a dask.array
+                    fly_pos = fly_pos - box_center
+                fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX]))**2, axis=-1)
+                fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
+                self.other_fly = np.argmin(fly_dist)
+                logging.debug(f"Selected {self.other_fly}.")
+            self.update_frame()
 
     def on_trace_clicked(self, mouseT, mouseButton):
         """Called when traceview or specview have been clicked - will add new
