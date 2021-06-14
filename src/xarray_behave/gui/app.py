@@ -966,6 +966,9 @@ class PSV(MainWindow):
         self.STOP = True
         self.swap_events = []
         self.show_spec = True
+        self.show_trace = True
+        self.show_movie = True
+        self.show_options = True
         self.spec_win = 200
         self.show_songevents = True
         self.movable_events = True
@@ -1091,6 +1094,16 @@ class PSV(MainWindow):
 
         self._add_keyed_menuitem(self.view_train, "Predict", self.deepss_predict, None)
 
+        view_view = self.bar.addMenu("View")
+        # self._add_keyed_menuitem(view_view, "Show options", self.toggle_show_options, None,
+        #                         checkable=True, checked=self.show_options)
+        self._add_keyed_menuitem(view_view, "Show spectrogram", partial(self.toggle, 'show_spec'), None,
+                                checkable=True, checked=self.show_spec)
+        self._add_keyed_menuitem(view_view, "Show waveform", partial(self.toggle, 'show_trace'), None,
+                                checkable=True, checked=self.show_trace)
+        self._add_keyed_menuitem(view_view, "Show movie", partial(self.toggle, 'show_movie'), None,
+                                checkable=True, checked=self.show_movie)
+
         self.hl = pg.QtGui.QHBoxLayout()
 
         # EVENT TYPE selector
@@ -1122,6 +1135,8 @@ class PSV(MainWindow):
         self.hl.addWidget(channel_sel_label, stretch=1)
         self.hl.addWidget(self.cb2, stretch=4)
 
+
+        self.movie_view = None
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
 
@@ -1529,20 +1544,31 @@ class PSV(MainWindow):
         if self.threshold_mode:
             self.envelope = self.get_envelope()
 
-        self.slice_view.update_trace()
+        if self.show_trace:
+            self.slice_view.update_trace()
+            self.slice_view.show()
+        else:
+            self.slice_view.clear()
+            self.slice_view.hide()
 
         self.spec_view.clear_annotations()
         if self.show_spec:
             self.spec_view.update_spec(self.x, self.y)
+            self.spec_view.show()
         else:
             self.spec_view.clear()
+            self.spec_view.hide()
 
         if self.show_songevents:
             self.plot_song_events(self.x)
 
     def update_frame(self):
-        if self.vr is not None:
-            self.movie_view.update_frame()
+        if self.movie_view is not None:
+            if self.show_movie:
+                self.movie_view.update_frame()
+                self.movie_view.show()
+            else:
+                self.movie_view.hide()
 
     def plot_song_events(self, x):
         for event_index in range(self.nb_eventtypes):
