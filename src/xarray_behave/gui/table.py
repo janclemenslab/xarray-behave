@@ -10,19 +10,16 @@ if not hasattr(QtCore, 'Slot'):
 
 class Table(QtGui.QDialog):
 
-    def __init__(self, data=[], **kwargs):
+    def __init__(self, data=[], as_dialog=True, **kwargs):
         super().__init__(**kwargs)
         self.title = 'Edit events'
-        self.left = 0
-        self.top = 0
-        self.width = 300
-        self.height = 200
+
         self.data = data
         self.cancelled = False
-        self.initUI()
+        self.initUI(as_dialog)
 
-    def initUI(self):
-        # self.setWindowTitle(self.title)
+    def initUI(self, as_dialog=True):
+        self.setWindowTitle(self.title)
         # self.setGeometry(self.left, self.top, self.width, self.height)
 
         self.createTable()
@@ -37,18 +34,15 @@ class Table(QtGui.QDialog):
         self.button_layout.addWidget(self.delete_button)
         self.layout.addLayout(self.button_layout)
 
-        self.button_layout = QtWidgets.QHBoxLayout()
-        buttons = QtGui.QDialogButtonBox(
-            QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel,
-            QtCore.Qt.Horizontal, self)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        self.layout.addWidget(buttons)
+        if as_dialog:
+            buttons = QtGui.QDialogButtonBox(
+                QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel,
+                QtCore.Qt.Horizontal, self)
+            buttons.accepted.connect(self.accept)
+            buttons.rejected.connect(self.reject)
+            self.layout.addWidget(buttons)
 
         self.setLayout(self.layout)
-
-        # Show widget
-        self.show()
 
     def createTable(self):
        # Create table
@@ -120,10 +114,10 @@ class Table(QtGui.QDialog):
         return data
 
     def createButtons(self):
-        self.add_button = QtWidgets.QPushButton('Add song type', self)
+        self.add_button = QtWidgets.QPushButton('New', self)
         self.add_button.clicked.connect(self.add_event)
 
-        self.delete_button = QtWidgets.QPushButton('Delete song type', self)
+        self.delete_button = QtWidgets.QPushButton('Delete', self)
         self.delete_button.clicked.connect(self.delete_event)
 
     @QtCore.Slot()
@@ -137,5 +131,5 @@ class Table(QtGui.QDialog):
 
     @QtCore.Slot()
     def delete_event(self):
-        # del self.data[self.table.currentRow()]
+        del self.data[self.table.currentRow()]
         self.table.removeRow(self.table.currentRow())
