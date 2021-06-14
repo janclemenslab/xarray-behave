@@ -180,7 +180,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
                                               kind='nearest', bounds_error=False, fill_value=np.nan)
 
     # construct desired sample grid for data
-    step = int(sampling_rate / target_sampling_rate)
+    step = sampling_rate / target_sampling_rate
 
     if resample_video_data:
         target_samples = np.arange(first_sample, last_sample, step, dtype=np.uintp)
