@@ -1,5 +1,6 @@
 """Create self-documenting xarray dataset from behavioral recordings and annotations."""
 import numpy as np
+from samplestamps.samplestamps import SampStamp
 import scipy.interpolate
 import scipy.stats
 import xarray as xr
@@ -45,7 +46,19 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     # load RECORDING and TIMING INFORMATION
     filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
     filepath_daq = Path(root, dat_path, datename, f'{datename}_daq.h5')
+    filepath_video = str(Path(root, dat_path, datename, f'{datename}.mp4'))
+
+    # if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
     ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
+    # elif os.path.exists(filepath_video):
+    #     from videoreader import VideoReader
+    #     vr = VideoReader(filepath_video)
+    #     frame_times = np.arange(0, vr.number_of_frames) / vr.frame_rate
+    #     frame_times[-1] = frame_times[-2]
+    #     sample_times = frame_times
+    #     ss = SampStamp(sample_times, frame_times)
+    #     last_sample_number = vr.number_of_frames
+    #     sampling_rate = vr.frame_rate
 
     if target_sampling_rate == 0:
         resample_video_data = False
