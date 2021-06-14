@@ -252,7 +252,7 @@ class TraceView(pg.PlotWidget):
 
         # plot active channel
         x = self.m.x[::self.m.step]
-        item = pg.PlotCurveItem(x=x, y=np.array(self.m.y[::self.m.step]), pen=pg.mkPen(color=[220, 220, 220], width=1))
+        item = pg.PlotCurveItem(x=x, y=np.array(self.m.y[::self.m.step], dtype=np.float), pen=pg.mkPen(color=[220, 220, 220], width=1))
         self.addItem(item)
 
         self.autoRange(padding=0)
