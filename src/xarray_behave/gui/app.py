@@ -266,7 +266,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             song = song.compute()
         except AttributeError:
             pass
-        np.savez(savefilename, song=song, samplerate=self.fs_song)
+        np.savez(savefilename, data=song, samplerate=self.fs_song)
 
     def export_for_deepss(self, qt_keycode=None):
         try:
