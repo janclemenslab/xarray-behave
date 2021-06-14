@@ -323,6 +323,9 @@ class SpecView(pg.ImageView):
         self.callback = callback
         self.imageItem.mouseClickEvent = self._click
 
+        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90,
+                                        pen=pg.mkPen(color='r', width=1))
+        self.addItem(self.pos_line)
         if colormap is not None:
             self.imageItem.setLookupTable(colormap)  # apply the colormap
         self.old_items = []
@@ -364,9 +367,8 @@ class SpecView(pg.ImageView):
         self.setImage(S.T, autoRange=False, scale=[trange / len(t), (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
 
-        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90,
-                                        pen=pg.mkPen(color='r', width=1))
-        self.addItem(self.pos_line)
+        self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
+
         t3 = time.time()
         logging.debug(f'  update spec - draw: {t3-t2}')
         t4 = time.time()
