@@ -1355,24 +1355,37 @@ class PSV(MainWindow):
 
     def threshold(self, qt_keycode):
         if self.STOP and self.current_event_name is not None:
-            if self.event_times.categories[self.current_event_name] != 'event':
-                return
+            if self.event_times.categories[self.current_event_name] == 'event':
+                indexes = peakutils.indexes(self.envelope,
+                                            thres=self.slice_view.threshold,
+                                            min_dist=self.thres_min_dist * self.fs_song,
+                                            thres_abs=True)
 
-            indexes = peakutils.indexes(self.envelope,
-                                        thres=self.slice_view.threshold,
-                                        min_dist=self.thres_min_dist * self.fs_song,
-                                        thres_abs=True)
+                # add events to current song type
+                for t in self.x[indexes]:
+                    self.event_times.add_time(self.current_event_name, t)
+                    logging.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
+                # TODO ensure we did not add duplicates - maybe call np.unique at the end?
+                old_len = self.event_times[self.current_event_name].shape[0]
+                self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
+                new_len = self.event_times[self.current_event_name].shape[0]
+                if new_len != old_len:
+                    logging.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
+            if self.event_times.categories[self.current_event_name] == 'segment':
+                # get pos and neg crossings
+                x = np.diff((self.envelope>self.slice_view.threshold).astype(np.float))
+                onsets = np.where(x==1)[0]
+                offsets = np.where(x==-1)[0]
+                # remove incomplete segments at bounds
+                if offsets[0]<=onsets[0]:
+                    offsets = offsets[1:]
+                if onsets[-1]>=offsets[-1]:
+                    onsets = onsets[:-1]
+                # add segments to current song type
+                for onset, offset in zip(self.x[onsets], self.x[offsets]):
+                    self.event_times.add_time(self.current_event_name, onset, offset)
+                    logging.info(f"   Added {self.current_event_name} at t={offset:1.4f}:{onset:1.4f}: seconds.")
 
-            # add events to current song type
-            for t in self.x[indexes]:
-                self.event_times.add_time(self.current_event_name, t)
-                logging.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
-            # TODO ensure we did not add duplicates - maybe call np.unique at the end?
-            old_len = self.event_times[self.current_event_name].shape[0]
-            self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
-            new_len = self.event_times[self.current_event_name].shape[0]
-            if new_len != old_len:
-                logging.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
             self.update_xy()
 
     def get_envelope(self):
