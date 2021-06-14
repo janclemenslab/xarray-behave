@@ -97,9 +97,9 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.file_menu.addSeparator()
         self.file_menu.addAction("Exit")
 
-        view_train = self.bar.addMenu("DeepSS")
-        self._add_keyed_menuitem(view_train, "Make dataset for training", self.deepss_make, None)
-        self._add_keyed_menuitem(view_train, "Train", self.deepss_train, None)
+        self.view_train = self.bar.addMenu("DeepSS")
+        self._add_keyed_menuitem(self.view_train, "Make dataset for training", self.deepss_make, None)
+        self._add_keyed_menuitem(self.view_train, "Train", self.deepss_train, None)
 
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
@@ -1088,12 +1088,8 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_annotations, "Approve proposals for active song type in view", self.approve_active_proposals, "G")
         self._add_keyed_menuitem(view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals, "H")
 
-        view_train = self.bar.addMenu("DeepSS")
-        self._add_keyed_menuitem(view_train, "Make dataset for training", self.deepss_make, None)
-        self._add_keyed_menuitem(view_train, "Train", self.deepss_train, None)
-        self._add_keyed_menuitem(view_train, "Predict", self.deepss_predict, None)
 
-        self.bar.addMenu("View")
+        self._add_keyed_menuitem(self.view_train, "Predict", self.deepss_predict, None)
 
         self.hl = pg.QtGui.QHBoxLayout()
 
