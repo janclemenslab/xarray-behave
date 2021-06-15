@@ -964,6 +964,7 @@ class PSV(MainWindow):
         self.show_trace = True
         self.show_movie = True
         self.show_options = True
+        self.show_segment_text = True
         self.spec_win = 200
         self.show_songevents = True
         self.movable_events = True
@@ -1073,6 +1074,8 @@ class PSV(MainWindow):
                                 checkable=True, checked=self.movable_events)
         self._add_keyed_menuitem(view_annotations, "Only move active song type", partial(self.toggle, 'move_only_current_events'), None,
                                 checkable=True, checked=self.move_only_current_events)
+        self._add_keyed_menuitem(view_annotations, "Show segment labels", partial(self.toggle, 'show_segment_text'), None,
+                                checkable=True, checked=self.show_segment_text)
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Delete active song type in view",
                                 self.delete_current_events, "U")
@@ -1180,7 +1183,8 @@ class PSV(MainWindow):
             try:
                 self.t0 = float(source.text()) * self.fs_song
             except Exception as e:
-                print(e)
+                logging.debug(e)
+
 
         def edit_frame_finished(source=None):
             try:
@@ -1592,20 +1596,25 @@ class PSV(MainWindow):
             if self.move_only_current_events:
                 movable = movable and self.current_event_index==event_index
 
-            event_pen = pg.mkPen(color=self.eventype_colors[event_index], width=1.5)
+            event_pen = pg.mkPen(color=self.eventype_colors[event_index], width=3)
             event_brush = pg.mkBrush(color=[*self.eventype_colors[event_index], 25])
 
             events_in_view = self.event_times.filter_range(event_name, x[0], x[-1], strict=False)
 
+            if self.show_segment_text:
+                segment_text = event_name
+            else:
+                segment_text = None
+
             if self.event_times.categories[event_name] == 'segment':
                 for onset, offset in zip(events_in_view[:, 0], events_in_view[:, 1]):
-                    self.slice_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable)
+                    self.slice_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text)
                     if self.show_spec:
-                        self.spec_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable)
+                        self.spec_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text)
             elif self.event_times.categories[event_name] == 'event':
-                    self.slice_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable)
+                    self.slice_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
                     if self.show_spec:
-                        self.spec_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable)
+                        self.spec_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
 
     def play_video(self):  # TODO: get rate from ds (video fps attr)
         RUN = True
