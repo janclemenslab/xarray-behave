@@ -119,7 +119,7 @@ def make(data_folder, store_folder,
                         class_names=class_names,
                         class_types=class_types,
                         make_single_class_datasets=make_single_class_datasets,
-                        store_type=zarr.DictStore, store_name='store.zarr', chunk_len=1_000_000)
+                        store_type=zarr.TempStore, store_name='store.zarr', chunk_len=1_000_000)
 
     # save args for reproducibility
     store.attrs['event_std_seconds'] = event_std_seconds
