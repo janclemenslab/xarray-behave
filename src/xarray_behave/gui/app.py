@@ -468,17 +468,18 @@ class MainWindow(pg.QtGui.QMainWindow):
                 # start in independent process, otherwise GUI will freeze during training
                 form_data['log_messages'] = True
 
-                queue = multiprocessing.Queue()
-                stop_event = threading.Event()
+                queue = multiprocessing.Queue()  # for progress updates from the callback for display in the GUI
+                stop_event = threading.Event()  # checked in the keras callback for stopping training from the GUI
 
                 progress = pg.ProgressDialog("Training DSS network", minimum=0, maximum=form_data['nb_epoch'], wait=0, cancelText='Stop training')
-                progress.setModal(0)
+                progress.setModal(0)  # do not block the GUI!
+
+                #Custom cancel-button callback the sets the stop_event to stop training."""
                 def custom_cancel():
                     utils.invoke_in_main_thread(progress.setLabelText, "Cancelling training.")
-                    stop_event.set()
+                    stop_event.set()  # stop training
 
                 progress.canceled.connect(custom_cancel)
-                pg.QtGui.QApplication.processEvents()
 
                 form_data['_qt_progress'] = (queue, stop_event)
                 worker_training = utils.Worker(dss.train.train, **form_data)
@@ -489,7 +490,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                         if value[0] is None:
                             utils.invoke_in_main_thread(progress.cancel)
                             utils.invoke_in_main_thread(progress.close)
-                            break  # finish this thread
+                            break  # stop this thread
                         utils.invoke_in_main_thread(progress.setValue, value[0] + 1)
                         utils.invoke_in_main_thread(progress.setLabelText, str(value[1]))
                         pg.QtGui.QApplication.processEvents()
@@ -1508,13 +1509,34 @@ class PSV(MainWindow):
         if len(self.cue_points):
             self.cue_index = max(0, self.cue_index - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
-            self.t0 = self.cue_points[self.cue_index]  * self.fs_song # jump to PREV cue point
+            self.t0 = self.cue_points[self.cue_index] * self.fs_song # jump to PREV cue point
+        else:  # no cue points - jump to prev song event
+            if self.move_only_current_events:  # of the currently active type
+                names = [self.current_event_name]
+            else:  # of any type
+                names = self.event_times.names
+
+            t = (self.t0 - 1) / self.fs_song
+            nxt = self.event_times.find_prev(t, names)
+            if nxt is not None:
+                self.t0 = nxt * self.fs_song
 
     def set_next_cuepoint(self, qt_keycode):
         if len(self.cue_points):
             self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index] * self.fs_song # jump to PREV cue point
+        else:  # no cue points - jump to next song event
+            if self.move_only_current_events:  # of the currently active type
+                names = [self.current_event_name]
+            else:  # of any type
+                names = self.event_times.names
+
+            t = (self.t0 + 1) / self.fs_song
+            nxt = self.event_times.find_next(t, names)
+            if nxt is not None:
+                self.t0 = nxt * self.fs_song
+
 
     def reload_cuepoints(self, qt_keycode):
         self.cue_points = PSV.load_cuepoints()

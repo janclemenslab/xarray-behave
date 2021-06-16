@@ -322,6 +322,53 @@ class Events(UserDict):
         self[name] = np.delete(self[name], indices, axis=0)
         return len(indices)
 
+    def find_next(self, t: float, names: Optional[List[str]] = None):
+        """Find event starting after `t` of type in names.
+
+        Args:
+            t (float): Current time in seconds.
+            names (Optional[List[str]], optional):
+                List of event names to find next time in.
+                Defaults to None (search in all events of any name).
+
+        Returns:
+            float or None: time of nearest next event. None if there is no next.
+        """
+        if names is None:
+            names = self.names
+
+        nxt = []
+        for name in names:
+            cmp = self[name][:, 0] > t
+            if np.any(cmp):
+                nxt.append(self[name][np.argmax(cmp), 0])
+        if len(nxt):
+            return np.min(nxt)
+
+
+    def find_prev(self, t: float, names: Optional[List[str]] = None):
+        """Find event ending before `t` of type in names
+
+        Args:
+            t (float): Current time in seconds.
+            names (Optional[List[str]], optional):
+                List of event names to find prev time in.
+                Defaults to None (search in all events of any name).
+
+        Returns:
+            float or None: time of nearest previous event. None if there is no previous.
+        """
+        if names is None:
+            names = self.names
+
+        nxt = []
+        for name in names:
+            cmp = self[name][:, 1] < t
+            if np.any(cmp):
+                nxt.append(self[name][np.argmin(cmp)-1, 0])
+        if len(nxt):
+            return np.max(nxt) #* self.fs_song
+
     def _find_nearest(self, array, value):
         if not len(array):
             return None
