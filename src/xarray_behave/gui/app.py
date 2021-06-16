@@ -10,6 +10,8 @@ import logging
 import time
 from pathlib import Path
 from functools import partial
+import threading
+import multiprocessing
 
 import defopt
 import yaml
@@ -464,10 +466,41 @@ class MainWindow(pg.QtGui.QMainWindow):
 
             if got_dss:
                 # start in independent process, otherwise GUI will freeze during training
-                import multiprocessing as mp
                 form_data['log_messages'] = True
-                train_process = mp.Process(group=None, target=dss.train.train, kwargs=form_data)
-                train_process.start()
+
+                queue = multiprocessing.Queue()
+                stop_event = threading.Event()
+
+                progress = pg.ProgressDialog("Training DSS network", minimum=0, maximum=form_data['nb_epoch'], wait=0, cancelText='Stop training')
+                progress.setModal(0)
+                def custom_cancel():
+                    utils.invoke_in_main_thread(progress.setLabelText, "Cancelling training.")
+                    stop_event.set()
+
+                progress.canceled.connect(custom_cancel)
+                pg.QtGui.QApplication.processEvents()
+
+                form_data['_qt_progress'] = (queue, stop_event)
+                worker_training = utils.Worker(dss.train.train, **form_data)
+
+                def update_progress(queue):
+                    while True:
+                        value = queue.get()
+                        if value[0] is None:
+                            utils.invoke_in_main_thread(progress.cancel)
+                            utils.invoke_in_main_thread(progress.close)
+                            break  # finish this thread
+                        utils.invoke_in_main_thread(progress.setValue, value[0] + 1)
+                        utils.invoke_in_main_thread(progress.setLabelText, str(value[1]))
+                        pg.QtGui.QApplication.processEvents()
+
+                worker_progress = utils.Worker(update_progress, queue)
+
+                pool = pg.QtCore.QThreadPool.globalInstance()
+                pool.start(worker_progress)
+                pool.start(worker_training)
+                pg.QtGui.QApplication.processEvents()
+
 
     @classmethod
     def from_file(cls, filename=None, app=None, qt_keycode=None, events_string='',

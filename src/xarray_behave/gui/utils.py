@@ -6,7 +6,7 @@ import colorcet
 from typing import Iterable
 
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtWidgets
+from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 import logging
 from videoreader import VideoReader
 from typing import Union
@@ -195,3 +195,57 @@ def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
     prev_idx_is_less = ((idxs == len(array))|(np.fabs(values - array[np.maximum(idxs-1, 0)]) < np.fabs(values - array[np.minimum(idxs, len(array)-1)])))
     idxs[prev_idx_is_less] -= 1
     return idxs
+
+
+class Worker(pg.QtCore.QRunnable):
+# class Worker(pg.QtCore.QThread):
+    '''
+    Worker thread
+
+    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+
+    :param callback: The function callback to run on this worker thread. Supplied args and
+                     kwargs will be passed through to the runner.
+    :type callback: function
+    :param args: Arguments to pass to the callback function
+    :param kwargs: Keywords to pass to the callback function
+
+    '''
+
+    def __init__(self, fn, *args, **kwargs):
+        super(Worker, self).__init__()
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+
+    @pg.QtCore.Slot()  # QtCore.Slot
+    def run(self):
+        '''
+        Initialise the runner function with passed args, kwargs.
+        '''
+        self.fn(*self.args, **self.kwargs)
+
+
+class InvokeEvent(QtCore.QEvent):
+    EVENT_TYPE = QtCore.QEvent.Type(QtCore.QEvent.registerEventType())
+
+    def __init__(self, fn, *args, **kwargs):
+        QtCore.QEvent.__init__(self, InvokeEvent.EVENT_TYPE)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+
+
+class Invoker(QtCore.QObject):
+    def event(self, event):
+        event.fn(*event.args, **event.kwargs)
+
+        return True
+
+_invoker = Invoker()
+
+
+def invoke_in_main_thread(fn, *args, **kwargs):
+    QtCore.QCoreApplication.postEvent(_invoker,
+        InvokeEvent(fn, *args, **kwargs))
