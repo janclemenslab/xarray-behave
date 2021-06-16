@@ -282,15 +282,17 @@ class TraceView(pg.PlotWidget):
     def add_event(self, xx, event_type, pen, movable=False, text=None):
         if not len(xx):
             return
-        if not movable:
-            xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
-            yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
-            utils.fast_plot(self, xx.T, yy.T, pen)
-        else:
-            for x in xx:
-                line = EventItem(x, event_type, self.xrange, movable=True, angle=90, pen=pen)
-                line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
-                self.addItem(line)
+        # if not movable:
+        #     xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
+        #     yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
+        #     utils.fast_plot(self, xx.T, yy.T, pen)
+        # else:
+        for x in xx:
+            line = EventItem(x, event_type, self.xrange, movable=True, angle=90, pen=pen)
+            if text is not None:
+                pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
+            line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
+            self.addItem(line)
 
     def time_to_pos(self, time):
         return np.interp(time, self.m.trange, self.xrange)
@@ -418,16 +420,18 @@ class SpecView(pg.ImageView):
             return
         xx0 = xx.copy()
         # xx = self.time_to_pos(xx)
-        if not movable:
-            xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
-            yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
-            self.old_items.append(utils.fast_plot(self, xx.T, yy.T, pen))
-        else:
-            for (x, x0) in zip(xx, xx0):
-                line = EventItem(x, event_type, self.xrange, time_pos=x0, movable=True, angle=90, pen=pen)
-                line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
-                self.addItem(line)
-                self.old_items.append(line)
+        # if not movable:
+        #     xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
+        #     yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
+        #     self.old_items.append(utils.fast_plot(self, xx.T, yy.T, pen))
+        # else:
+        for (x, x0) in zip(xx, xx0):
+            line = EventItem(x, event_type, self.xrange, time_pos=x0, movable=True, angle=90, pen=pen)
+            if text is not None:
+                pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
+            line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
+            self.addItem(line)
+            self.old_items.append(line)
 
     def time_to_pos(self, time):
         return np.interp(time, self.m.trange, self.xrange)
