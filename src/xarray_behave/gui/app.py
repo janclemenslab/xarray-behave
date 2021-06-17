@@ -1218,7 +1218,7 @@ class PSV(MainWindow):
                 self.t0 = float(source.text()) * self.fs_song
             except Exception as e:
                 logging.debug(e)
-
+            source.clearFocus()  # de-focus text field upon enter so we can continue annotating right away
 
         def edit_frame_finished(source=None):
             try:
