@@ -47,10 +47,10 @@ from . import (colormaps,
                table)
 
 try:
-    from . import deepss
+    from . import das
 except Exception as e:
     logging.exception(e)
-    logging.warning(f'Failed to import the DeepSS module.\nIgnore if you do not want to use DeepSS.\nOtherwise follow these instructions to install:\nhttps://janclemenslab.org/deepss/install.html')
+    logging.warning(f'Failed to import the das module.\nIgnore if you do not want to use das.\nOtherwise follow these instructions to install:\nhttps://janclemenslab.org/das/install.html')
 
 from .formbuilder import YamlDialog
 
@@ -67,7 +67,7 @@ class DataSource:
 
 class MainWindow(pg.QtGui.QMainWindow):
 
-    def __init__(self, parent=None, title="DeepSS"):
+    def __init__(self, parent=None, title="DeepAudioSegmenter"):
         super().__init__(parent)
 
         self.parent = parent
@@ -93,9 +93,9 @@ class MainWindow(pg.QtGui.QMainWindow):
         self.file_menu.addSeparator()
         self.file_menu.addAction("Exit")
 
-        self.view_train = self.bar.addMenu("DeepSS")
-        self._add_keyed_menuitem(self.view_train, "Make dataset for training", self.deepss_make, None)
-        self._add_keyed_menuitem(self.view_train, "Train", self.deepss_train, None)
+        self.view_train = self.bar.addMenu("DAS")
+        self._add_keyed_menuitem(self.view_train, "Make dataset for training", self.das_make, None)
+        self._add_keyed_menuitem(self.view_train, "Train", self.das_train, None)
 
         # add initial buttons
         self.hb = pg.QtGui.QVBoxLayout()
@@ -264,7 +264,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             pass
         np.savez(savefilename, data=song, samplerate=self.fs_song)
 
-    def export_for_deepss(self, qt_keycode=None):
+    def export_for_das(self, qt_keycode=None):
         try:
             file_trunk = os.path.splitext(self.ds.attrs['datename'])[0]
 
@@ -280,7 +280,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         savefilename_trunk = os.path.splitext(savefilename)[0]
 
-        yaml_file=yaml_file=package_dir + "/gui/forms/export_for_deepss.yaml"
+        yaml_file=yaml_file=package_dir + "/gui/forms/export_for_das.yaml"
         with open(yaml_file, "r") as form_yaml:
             items_to_create = yaml.load(form_yaml, Loader=yaml.SafeLoader)
 
@@ -288,7 +288,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             items_to_create['main'].insert(2, {'name': f'include_{name}', 'label': name, 'type':'bool', 'default':True})
 
         dialog = YamlDialog(yaml_file=items_to_create,
-                            title=f'Export song and annotations for DeepSS')
+                            title=f'Export song and annotations for das')
 
         dialog.form.fields['start_seconds'].setRange(0, np.max(self.ds.sampletime))
         dialog.form.fields['end_seconds'].setRange(0, np.max(self.ds.sampletime))
@@ -309,7 +309,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             start_seconds = form_data['start_seconds']
             end_seconds = form_data['end_seconds']
 
-            logging.info(f"Exporting for DeepSS:")
+            logging.info(f"Exporting for das:")
             if form_data['file_type'] == 'WAV':
                 logging.info(f"   song to WAV: {savefilename_trunk + '.wav'}.")
                 self.export_to_wav(savefilename_trunk + '.wav', start_seconds, end_seconds, form_data['scale_audio'])
@@ -321,14 +321,14 @@ class MainWindow(pg.QtGui.QMainWindow):
             self.export_to_csv(savefilename_trunk + '_annotations.csv', start_seconds, end_seconds, which_events, match_to_samples=True)
             logging.info(f"Done.")
 
-    def deepss_make(self, qt_keycode=None):
+    def das_make(self, qt_keycode=None):
         data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
                                                         caption='Select data folder')
         if not data_folder:
             return
 
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/deepss_make.yaml",
-                            title=f'Assemble dataset for training DeepSS')
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_make.yaml",
+                            title=f'Assemble dataset for training das')
 
         dialog.form.fields['data_folder'].setText(data_folder)
         dialog.form.fields['store_folder'].setText(data_folder + '.npy')
@@ -350,7 +350,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     data_splits[part] = form_data[part +
                     '_split_fraction']
 
-            deepss.make(data_folder=form_data['data_folder'],
+            das.make(data_folder=form_data['data_folder'],
                         store_folder=form_data['store_folder'],
                         file_splits=file_splits, data_splits=data_splits,
                         make_single_class_datasets=form_data['make_single_class_datasets'],
@@ -359,7 +359,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                         gap_seconds=form_data['gap_seconds'])
             logging.info('Done.')
 
-    def deepss_train(self, qt_keycode):
+    def das_train(self, qt_keycode):
 
         def _filter_form_data(form_data: Dict[str, Any], is_cli: bool = False) -> Dict[str, Any]:
             """[summary]
@@ -418,7 +418,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 form_data = dialog.form.get_form_data()
                 form_data = _filter_form_data(form_data, is_cli=True)
 
-                cmd = 'python3 -m dss.train'
+                cmd = 'python3 -m das.train'
                 # FIXME formatting
                 for key, val in form_data.items():
                     cmd += f" --{key.replace('_','-')} {val}"
@@ -442,7 +442,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                               caption="Open Data Folder (*.npy)",
                                                               filter="npy folders (*.npy);;all files (*)")
         # TODO: check that this is a valid data_dir!
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_train.yaml",
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_train.yaml",
                             title='Train network',
                             # main_callback=train,
                             callbacks={'save': save, 'load': load, 'make_cli': make_cli})
@@ -457,21 +457,21 @@ class MainWindow(pg.QtGui.QMainWindow):
             form_data = dialog.form.get_form_data()
             form_data = _filter_form_data(form_data)
 
-            got_dss = False
+            got_das = False
             try:
-                import dss.train
-                got_dss = True
+                import das.train
+                got_das = True
             except ImportError:
-                logging.exception('Need to install dss. Alternatively, make scripts and run training elsewhere.')
+                logging.exception('Need to install das. Alternatively, make scripts and run training elsewhere.')
 
-            if got_dss:
+            if got_das:
                 # start in independent process, otherwise GUI will freeze during training
                 form_data['log_messages'] = True
 
                 queue = multiprocessing.Queue()  # for progress updates from the callback for display in the GUI
                 stop_event = threading.Event()  # checked in the keras callback for stopping training from the GUI
 
-                progress = pg.ProgressDialog("Training DSS network", minimum=0, maximum=form_data['nb_epoch'], wait=0, cancelText='Stop training')
+                progress = pg.ProgressDialog("Training das network", minimum=0, maximum=form_data['nb_epoch'], wait=0, cancelText='Stop training')
                 progress.setModal(0)  # do not block the GUI!
 
                 #Custom cancel-button callback the sets the stop_event to stop training."""
@@ -482,7 +482,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 progress.canceled.connect(custom_cancel)
 
                 form_data['_qt_progress'] = (queue, stop_event)
-                worker_training = utils.Worker(dss.train.train, **form_data)
+                worker_training = utils.Worker(das.train.train, **form_data)
 
                 def update_progress(queue):
                     while True:
@@ -506,7 +506,7 @@ class MainWindow(pg.QtGui.QMainWindow):
     @classmethod
     def from_file(cls, filename=None, app=None, qt_keycode=None, events_string='',
                   spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
-                  skip_dialog: bool = False, is_dss: bool = False):
+                  skip_dialog: bool = False, is_das: bool = False):
         if not filename:
             # enable multiple filters: *.h5, *.npy, *.npz, *.wav, *.*
             file_filter = "Any file (*.*);;WAV files (*.wav);;HDF5 files (*.h5 *.hdf5);;NPY files (*.npy);;NPZ files (*.npz)"
@@ -646,7 +646,7 @@ class MainWindow(pg.QtGui.QMainWindow):
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',
                  spec_freq_min=None, spec_freq_max=None, target_samplingrate=None,
-                 box_size=None, pixel_size_mm=None, skip_dialog: bool = False, is_dss: bool = False):
+                 box_size=None, pixel_size_mm=None, skip_dialog: bool = False, is_das: bool = False):
 
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
@@ -1046,7 +1046,7 @@ class PSV(MainWindow):
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Save swap files", self.save_swaps)
         self._add_keyed_menuitem(self.file_menu, "Save annotations", self.save_annotations)
-        self._add_keyed_menuitem(self.file_menu, "Export for DeepSS", self.export_for_deepss)
+        self._add_keyed_menuitem(self.file_menu, "Export for DAS", self.export_for_das)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Save dataset", self.save_dataset)
         self.file_menu.addSeparator()
@@ -1124,7 +1124,7 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals, "H")
 
 
-        self._add_keyed_menuitem(self.view_train, "Predict", self.deepss_predict, None)
+        self._add_keyed_menuitem(self.view_train, "Predict", self.das_predict, None)
 
         view_view = self.bar.addMenu("View")
         # self._add_keyed_menuitem(view_view, "Show options", self.toggle_show_options, None,
@@ -1872,22 +1872,22 @@ class PSV(MainWindow):
                 self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
             self.update_frame()
 
-    def deepss_predict(self, qt_keycode):
-        logging.info('Predicting song using DeepSS:')
+    def das_predict(self, qt_keycode):
+        logging.info('Predicting song using das:')
 
         if 'song_raw' not in self.ds:
             logging.error('   Missing `song_raw`. skipping.')
 
         try:
-            import dss.predict
-            import dss.utils
+            import das.predict
+            import das.utils
         except ImportError as e:
             logging.exception(e)
-            logging.info('   Failed to import DeepSS. Install via `pip install deepss`.')
+            logging.info('   Failed to import das. Install via `pip install das`.')
             return
 
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/dss_predict.yaml",
-                            title='Predict labels using DeepSS')
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_predict.yaml",
+                            title='Predict labels using das')
 
         dialog.show()
         result = dialog.exec_()
@@ -1907,7 +1907,7 @@ class PSV(MainWindow):
                 end_index = utils.find_nearest_idx(self.ds.sampletime.values, end_seconds)
                 # end_index = int(end_seconds * self.fs_song)
 
-            params = dss.utils.load_params(model_path)
+            params = das.utils.load_params(model_path)
 
             audio = self.ds.song_raw.data[start_index:end_index]
             if audio.shape[0] < params['nb_hist']:
@@ -1923,7 +1923,7 @@ class PSV(MainWindow):
             logging.info(f'   Running inference on audio.')
             logging.info(f'   Model from {model_path}.')
 
-            events, segments, _, _ = dss.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
+            events, segments, _, _ = das.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
                                                     event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
                                                     event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
                                                     segment_thres=form_data['event_thres'], segment_fillgap=form_data['segment_fillgap'],
@@ -2146,7 +2146,7 @@ def main(source: str = '', *, events_string: str = '',
          target_samplingrate: Optional[float] = None,
          spec_freq_min: Optional[float] = None, spec_freq_max: Optional[float] = None,
          box_size: int = 200, pixel_size_mm: Optional[float] = None,
-         skip_dialog: bool = False, is_dss: bool = False):
+         skip_dialog: bool = False, is_das: bool = False):
     """
     Args:
         source (str): Data source to load.
@@ -2170,7 +2170,7 @@ def main(source: str = '', *, events_string: str = '',
         box_size (int): Crop size around tracked fly. Not used for wav audio files (no videos).
         pixel_size_mm (Optional[float]): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
-        is_dss (bool): reduced GUI for audio only data
+        is_das (bool): reduced GUI for audio only data
     """
     QtGui.QApplication([])
     mainwin = MainWindow()
@@ -2185,13 +2185,13 @@ def main(source: str = '', *, events_string: str = '',
                              target_samplingrate=target_samplingrate,
                              spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
                              skip_dialog=skip_dialog,
-                             is_dss=is_dss)
+                             is_das=is_das)
     elif source.endswith('.zarr'):
         MainWindow.from_zarr(filename=source,
                              box_size=box_size,
                              spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
                              skip_dialog=skip_dialog,
-                             is_dss=is_dss)
+                             is_das=is_das)
     elif os.path.isdir(source):
         MainWindow.from_dir(dirname=source,
                             events_string=events_string,
@@ -2199,17 +2199,17 @@ def main(source: str = '', *, events_string: str = '',
                             spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
                             pixel_size_mm=pixel_size_mm,
                             skip_dialog=skip_dialog,
-                            is_dss=is_dss)
+                            is_das=is_das)
 
     # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
 
 
-def main_dss(source: str = '', *, song_types_string: str = '',
+def main_das(source: str = '', *, song_types_string: str = '',
          spec_freq_min: Optional[float] = None, spec_freq_max: Optional[float] = None,
          skip_dialog: bool = False):
-    """GUI for annotating song and training and using DeepSS networks.
+    """GUI for annotating song and training and using das networks.
 
     Args:
         source (str): Data source to load.
@@ -2233,7 +2233,7 @@ def main_dss(source: str = '', *, song_types_string: str = '',
     main(source,
          events_string=song_types_string,
          spec_freq_min=spec_freq_min, spec_freq_max=spec_freq_max,
-         skip_dialog=skip_dialog, is_dss=True)
+         skip_dialog=skip_dialog, is_das=True)
 
 
 def cli():

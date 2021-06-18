@@ -37,14 +37,14 @@ def remove_short(sine_pred, min_len=100):
 
 
 @io.register_provider
-class Deepss(io.BaseProvider):
+class DAS(io.BaseProvider):
 
     KIND = 'annotations'
-    NAME = 'deepss'
-    SUFFIXES = ['_song.h5', '_vibration.h5', '_pulse.h5', '_sine.h5', '_dss.h5']
+    NAME = 'das'
+    SUFFIXES = ['_song.h5', '_vibration.h5', '_pulse.h5', '_sine.h5', '_dss.h5', '_das.h5']
 
     def load(self, filename: Optional[str] = None):
-        """Load output produced by DeepSongSegmenter wrapper."""
+        """Load output produced by DeepAudioSegmenter wrapper."""
         if filename is None:
             filename = self.path
 
@@ -55,7 +55,7 @@ class Deepss(io.BaseProvider):
         res = flammkuchen.load(filename)
 
         if 'event_indices' in res or 'segment_labels' in res:  # load old style format
-            logging.info('   Converting legacy DSS format...')
+            logging.info('   Converting legacy DAS format...')
             res['event_seconds'] = np.zeros((0,))
             res['event_sequence'] = []
             for event_name, event_idx in zip(res['event_names'], res['event_indices']):

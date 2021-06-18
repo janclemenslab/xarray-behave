@@ -7,8 +7,8 @@ import os.path
 import zarr
 import numpy as np
 
-import dss.make_dataset as dsm
-import dss.npy_dir
+import das.make_dataset as dsm
+import das.npy_dir
 
 import scipy.signal
 import pandas as pd
@@ -17,10 +17,10 @@ import scipy.io.wavfile
 
 from .. import annot
 
-import dss.make_dataset
-import dss.npy_dir
-import dss.train
-import dss.predict
+import das.make_dataset
+import das.npy_dir
+import das.train
+import das.predict
 
 import xarray_behave
 
@@ -233,6 +233,6 @@ def make(data_folder, store_folder,
     logging.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/test/val samples.")
     # save as npy_dir
     logging.info(f'  Saving to {store_folder}.')
-    dss.npy_dir.save(store_folder, store)
+    das.npy_dir.save(store_folder, store)
     if delete_intermediate_store:
         pass  # TODO delete intermediate store
