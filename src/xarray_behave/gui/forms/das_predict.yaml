@@ -1,8 +1,5 @@
 main:
 
-# provide this via file dialog and display info
-# e.g. expected sample rate (option to resample),
-# song types (standard - append "dss", allow renaming)
 - name: model_path
   label: Model
   type: file_open
@@ -33,7 +30,7 @@ main:
   label: Proof reading mode
   type: bool
   default: True
-  help: If True, will append '_dssproposal' to song name. Individual proposals can be corrected approved.
+  help: If True, will append '_proposals' to song name. Individual proposals can be corrected approved.
 
 - type: text
   text: '<b>Event detection</b>'
