@@ -67,7 +67,7 @@ class DataSource:
 
 class MainWindow(pg.QtGui.QMainWindow):
 
-    def __init__(self, parent=None, title="DeepAudioSegmenter"):
+    def __init__(self, parent=None, title="Deep Audio Segmenter"):
         super().__init__(parent)
 
         self.parent = parent
