@@ -487,11 +487,12 @@ class MainWindow(pg.QtGui.QMainWindow):
                 def update_progress(queue):
                     while True:
                         value = queue.get()
-                        if value[0] is None:
+
+                        if value[0] or pool.activeThreadCount() == 1:
                             utils.invoke_in_main_thread(progress.cancel)
                             utils.invoke_in_main_thread(progress.close)
                             break  # stop this thread
-                        utils.invoke_in_main_thread(progress.setValue, value[0] + 1)
+                        utils.invoke_in_main_thread(progress.setValue, value[0])
                         utils.invoke_in_main_thread(progress.setLabelText, str(value[1]))
                         pg.QtGui.QApplication.processEvents()
 
