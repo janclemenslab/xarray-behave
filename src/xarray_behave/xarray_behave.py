@@ -18,18 +18,26 @@ from . import (loaders as ld,
                io)
 
 
-def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_rate=1_000,
-             resample_video_data: bool = True,
+def assemble(datename, root='', dat_path='dat', res_path='res',
+             filepath_timestamps: Optional[str] = None,
+             filepath_video: Optional[str] = None,
+             filepath_daq: Optional[str] = None,
+             target_sampling_rate=1_000, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
              fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
              lazy_load_song: bool = False) -> xr.Dataset:
     """[summary]
 
     Args:
-        datename ([type]): [description]
-        root (str, optional): [description]. Defaults to ''.
-        dat_path (str, optional): [description]. Defaults to 'dat'.
-        res_path (str, optional): [description]. Defaults to 'res'.
+        datename ([type]): Used to infer file paths.
+                           Constructed paths follow this schema f"{root}/{dat_path|res_path}/{datename}/{datename}_suffix.extension".
+                           Can be overridden for some paths with arguments below.
+        root (str, optional): Used to infer file paths. Defaults to ''.
+        dat_path (str, optional): Used to infer paths of video, daq, and timestamps files. Defaults to 'dat'.
+        res_path (str, optional): Used to infer paths of annotation, tracking etc files. Defaults to 'res'.
+        filepath_timestamps (str, optional): Path to the timestamps file. Defaults to None (infer path from `datename` and `dat_path`).
+        filepath_video (str, optional): Path to the video file. Defaults to None (infer path from `datename` and `dat_path`).
+        filepath_daq (str, optional): Path to the daq file. Defaults to None (infer path from `datename` and `dat_path`).
         target_sampling_rate (int, optional): Sampling rate in Hz for pose and annotation data. Defaults to 1000.
         keep_multi_channel (bool, optional): Add multi-channel data (otherwise will only add merged traces). Defaults to False.
         resample_video_data (bool, optional): Or keep video with original frame times. Defaults to True.
@@ -44,9 +52,12 @@ def assemble(datename, root='', dat_path='dat', res_path='res', target_sampling_
     """
 
     # load RECORDING and TIMING INFORMATION
-    filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
-    filepath_daq = Path(root, dat_path, datename, f'{datename}_daq.h5')
-    filepath_video = str(Path(root, dat_path, datename, f'{datename}.mp4'))
+    if filepath_daq is None:
+        filepath_daq = Path(root, dat_path, datename, f'{datename}_daq.h5')
+    if filepath_timestamps is None:
+        filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
+    if filepath_video is None:
+        filepath_video = str(Path(root, dat_path, datename, f'{datename}.mp4'))
 
     # if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
     ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
