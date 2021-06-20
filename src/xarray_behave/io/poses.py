@@ -59,8 +59,38 @@ def rotate_pose(positions, degree, origin=(0, 0)):
     return rot.dot(positions_centered.T).T + origin
 
 
+class Poses():
+    def make(self, filename: Optional[str] = None):
+        pixel_size_mm = None
+
+        poses, poses_allo, body_parts, first_pose_frame, last_pose_frame = self.load(filename)
+        xr_poses = xr.DataArray(data=poses,
+                                 dims=['frame_number', 'flies', 'bodyparts', 'coords'],
+                                 coords={'frame_number': np.arange(first_pose_frame, last_pose_frame),
+                                         'bodyparts': body_parts,
+                                         'coords': ['y', 'x']},
+                                 attrs={'description': 'coords are "allocentric" - rel. to the full frame',
+                                        'type': 'poses',
+                                        # 'video_fps': fps,
+                                        'video_file': '',
+                                        'spatial_units': 'pixels',
+                                        'pixel_size_mm': pixel_size_mm,})
+        xr_poses_allo = xr.DataArray(data=poses_allo,
+                                 dims=['frame_number', 'flies', 'bodyparts', 'coords'],
+                                 coords={'frame_number': np.arange(first_pose_frame, last_pose_frame),
+                                         'bodyparts': body_parts,
+                                         'coords': ['y', 'x']},
+                                 attrs={'description': 'coords are "allocentric" - rel. to the full frame',
+                                        'type': 'poses',
+                                        # 'video_fps': fps,
+                                        'video_file': '',
+                                        'spatial_units': 'pixels',
+                                        'pixel_size_mm': pixel_size_mm,})
+        return xr_poses, xr_poses_allo
+
+
 @io.register_provider
-class Leap(io.BaseProvider):
+class Leap(Poses, io.BaseProvider):
 
     KIND = 'poses'
     NAME = 'leap'
@@ -129,7 +159,7 @@ class Leap(io.BaseProvider):
 
 
 @io.register_provider
-class DeepPoseKit(io.BaseProvider):
+class DeepPoseKit(Poses, io.BaseProvider):
 
     KIND = 'poses'
     NAME = 'deepposekit'
@@ -180,7 +210,7 @@ class DeepPoseKit(io.BaseProvider):
 
 
 @io.register_provider
-class Sleap(io.BaseProvider):
+class Sleap(Poses, io.BaseProvider):
 
     KIND = 'poses'
     NAME = 'sleap'
