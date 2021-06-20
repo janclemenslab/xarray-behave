@@ -23,7 +23,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
              filepath_video: Optional[str] = None,
              filepath_daq: Optional[str] = None,
              target_sampling_rate=1_000, resample_video_data: bool = True,
-             include_song: bool = True, include_tracks: bool = True, include_poses: bool = True,
+             include_song: bool = True, include_tracks: bool = True, include_poses: bool = True, include_balltracker: bool = True,
              fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
              lazy_load_song: bool = False) -> xr.Dataset:
     """[summary]
@@ -44,6 +44,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         include_song (bool, optional): [description]. Defaults to True.
         include_tracks (bool, optional): [description]. Defaults to True.
         include_poses (bool, optional): [description]. Defaults to True.
+        include_balltracker (bool, optional): [description]. Defaults to True.
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
@@ -54,10 +55,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # load RECORDING and TIMING INFORMATION
     if filepath_daq is None:
         filepath_daq = Path(root, dat_path, datename, f'{datename}_daq.h5')
-    if filepath_timestamps is None:
-        filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
+        filepath_daq_is_custom = False
+    else:
+        filepath_daq_is_custom = True
+
     if filepath_video is None:
         filepath_video = str(Path(root, dat_path, datename, f'{datename}.mp4'))
+    # timestamps should be: filepath_video - ext + `_timestamps.h5`
+    if filepath_timestamps is None:
+        filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
 
     # if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
     ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
@@ -86,6 +92,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         if tracks_loader:
             try:
                 body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = tracks_loader.load(tracks_loader.path)
+                # xr_tracks = tracks_loader.make(tracks_loader.path)
                 with_tracks = True
                 with_fixed_tracks = tracks_loader.path.endswith('_tracks_fixed.h5')
                 logging.info(f'  {tracks_loader.path} loaded.')
@@ -112,6 +119,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         if poses_loader:
             try:
                 pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = poses_loader.load(poses_loader.path)
+                # xr_poses, xr_poses_allo = poses_loader.make(poses_loader.path)
                 with_poses = True
                 poses_from = poses_loader.NAME
                 logging.info(f'   {poses_loader.path} loaded.')
@@ -120,6 +128,25 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                 logging.exception(e)
         else:
             logging.info(f'   Found no poses.')
+        logging.info('Done.')
+
+    # LOAD BALLTRACKER
+    with_balltracker = False
+    if include_balltracker:
+
+        logging.info(f'Loading ball tracker:')
+        balltracker_loader = io.get_loader(kind='balltracks', basename=os.path.join(root, res_path, datename, datename))
+        if balltracker_loader:
+            try:
+                balltracks, first_balltracked_frame, last_balltracked_frame = balltracker_loader.load(balltracker_loader.path)
+                xr_balltracks = balltracker_loader.make(balltracker_loader.path)
+                balltracker_from = balltracker_loader.NAME
+                logging.info(f'   {balltracker_loader.path} loaded.')
+            except Exception as e:
+                logging.info(f'   Loading {balltracker_loader.path} failed.')
+                logging.exception(e)
+        else:
+            logging.info(f'   Found no balltracker data.')
         logging.info('Done.')
 
     # Init empty audio and event data
@@ -167,7 +194,14 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
         # load RAW song traces
         logging.info(f'Loading audio data:')
-        audio_loader = io.get_loader(kind='audio', basename=os.path.join(root, dat_path, datename, datename))
+        if not filepath_daq_is_custom:
+            basename = os.path.join(root, dat_path, datename, datename)
+        else:
+            basename = filepath_daq
+        print(basename)
+        audio_loader = io.get_loader(kind='audio',
+                                     basename=basename,
+                                     basename_is_full_name=filepath_daq_is_custom)
         if audio_loader:
             try:
                 song_raw, non_song_raw, samplerate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
@@ -347,6 +381,32 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                                          'pixel_size_mm': pixel_size_mm,
                                          'poses_from': poses_from})
         dataset_data['pose_positions_allo'] = poses_allo
+
+    # BALLTRACKS
+    if with_balltracker:
+        logging.info('   balltracker')
+        frame_numbers = np.arange(first_balltracked_frame, last_balltracked_frame)
+        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
+        frame_times = ss.frame_time(frame_numbers) - ref_time
+        fps = 1 / np.nanmean(np.diff(frame_times))
+
+        balltracks_columns = list(balltracks.columns)
+        interpolator_tracks = scipy.interpolate.interp1d(
+            frame_samples, balltracks.values, axis=0, bounds_error=False, fill_value=np.nan)
+        balltracks = interpolator_tracks(target_samples)
+
+        balltracks_xr = xr.DataArray(data=balltracks,
+                                 dims=['time', 'tracking_data'],
+                                 coords={'time': time,
+                                         'nearest_frame': (('time'), nearest_frame),
+                                        #  'nearest_sample': (('time'), frame_samples.astype(np.intp)),
+                                         'tracking_data': balltracks_columns},
+                                 attrs={'description': '',
+                                        'sampling_rate_Hz': sampling_rate / step,
+                                        'time_units': 'seconds',
+                                        'video_fps': fps,})
+        dataset_data['balltracks'] = balltracks_xr
+
     # MAKE THE DATASET
     logging.info('   assembling')
     dataset = xr.Dataset(dataset_data, attrs={})

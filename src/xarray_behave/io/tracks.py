@@ -14,10 +14,34 @@ import numpy as np
 import pandas as pd
 from .. import io
 from typing import Optional
+import logging
+import xarray as xr
+
+
+class Tracks():
+    def make(self, filename: Optional[str] = None):
+        pixel_size_mm = None
+        with_fixed_tracks = None
+        body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = self.load(filename)
+
+        positions = xr.DataArray(data=body_pos,
+                                 dims=['frame_number', 'flies', 'bodyparts', 'coords'],
+                                 coords={'frame_number': np.arange(first_tracked_frame, last_tracked_frame),
+                                         'bodyparts': body_parts,
+                                         'coords': ['y', 'x']},
+                                 attrs={'description': 'coords are "allocentric" - rel. to the full frame',
+                                        'type': 'tracks',
+                                        # 'video_fps': fps,
+                                        'video_file': '',
+                                        'spatial_units': 'pixels',
+                                        'pixel_size_mm': pixel_size_mm,
+                                        'tracks_fixed': with_fixed_tracks,
+                                        'background': background})
+        return positions
 
 
 @io.register_provider
-class Ethotracker(io.BaseProvider):
+class Ethotracker(Tracks, io.BaseProvider):
 
     KIND = 'tracks'
     NAME = 'ethotracker'
@@ -60,7 +84,7 @@ class Ethotracker(io.BaseProvider):
 
 
 @io.register_provider
-class CSV_tracks(io.BaseProvider):
+class CSV_tracks(Tracks, io.BaseProvider):
 
     KIND = 'tracks'
     NAME = 'generic csv'
@@ -77,4 +101,3 @@ class CSV_tracks(io.BaseProvider):
         # # reshape df to [frames, flies, parts, x/y]
         # return x, body_parts, first_tracked_frame, last_tracked_frame
         logging.warning('Loading generic tracks from CSV not implemented yet.')
-

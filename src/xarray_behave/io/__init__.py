@@ -32,6 +32,9 @@ class BaseProvider():
             loader = None
         return loader
 
+    def make(self, filename: Optional[str] = None, **kwargs):
+        return None
+
     def load(self, filename: Optional[str] = None, **kwargs):
         raise NotImplementedError
 
@@ -47,13 +50,33 @@ def register_provider(func):
 
 
 
-def get_loader(kind: str, basename: str, stop_after_match: bool = True):
+def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename_is_full_name: bool = False):
+    """[summary]
+
+    Args:
+        kind (str): [description]
+        basename (str): [description]
+        stop_after_match (bool, optional): [description]. Defaults to True.
+        basename_is_full_name (bool, optional): If False will append registered suffixes,
+                                                otherwise will try to find match for basename as is.
+                                                Defaults to False.
+
+    Raises:
+        ValueError: [description]
+
+    Returns:
+        [type]: [description]
+    """
     if kind not in kinds:
         raise ValueError(f'Unknow kind {kind} - must be in {kinds}.')
 
     loaders = []
     for suffix in kinds[kind]:
-        paths = glob(basename + suffix)
+        if basename_is_full_name:  # use basename as is
+            paths = glob(basename)
+        else:  # add registered suffix
+            paths = glob(basename + suffix)
+
         for path in paths:
             for provider in providers:
                 loader = provider.get_loader(path)
@@ -65,6 +88,7 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True):
     return loaders
 
 from . import (tracks,
+               balltracks,
                annotations,
                annotations_manual,
                poses,
