@@ -32,11 +32,11 @@ class BaseProvider():
             loader = None
         return loader
 
-    def make(self, filename: Optional[str] = None, **kwargs):
-        return None
+    # def make(self, filename: Optional[str] = None, **kwargs):
+    #     return None
 
-    def load(self, filename: Optional[str] = None, **kwargs):
-        raise NotImplementedError
+    # def load(self, filename: Optional[str] = None, **kwargs):
+    #     raise NotImplementedError
 
 
 # TODO set precedence - maybe with provider.PRIORITY and sort providers accordingly?

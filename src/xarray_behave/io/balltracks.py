@@ -18,13 +18,13 @@ class BallTracks():
         balltracks, first_balltracked_frame, last_balltracked_frame = self.load(filename)
 
         xr_balltracks = xr.DataArray(data=balltracks.values,
-                                    dims=['framenumber', 'tracking_data'],
-                                    coords={'framenumber': balltracks['frame counter (starts at 1)']-1,
-                                            'tracking_data': balltracks.columns},
+                                    dims=['frame_number_ball', 'data_ball'],
+                                    coords={'frame_number_ball': balltracks['frame counter (starts at 1)']-1,
+                                            'data_ball': balltracks.columns},
                                     attrs={'description': '',
                                             'loader': self.NAME,
                                             'kind': self.KIND,
-                                            'path': self.filename,})
+                                            'path': filename,})
         return xr_balltracks
 
 
@@ -33,9 +33,9 @@ class FicTrac_balltracks(io.BaseProvider, BallTracks):
 
     KIND = 'balltracks'
     NAME = 'fictrac csv'
-    SUFFIXES = ['.NONOdat']
+    SUFFIXES = ['_ball.dat']
 
-    def _load(self, filename: Optional[str] = None):
+    def load(self, filename: Optional[str] = None):
         """Load tracker data"""
         if filename is None:
             filename = self.path
@@ -100,5 +100,6 @@ class FicTrac_balltracks(io.BaseProvider, BallTracks):
                         ]
         balltracks = pd.read_csv(filename)
         balltracks.columns = column_names
-        first_balltracked_frame, last_balltracked_frame = balltracks['frame counter (starts at 1)'][0], balltracks['frame counter (starts at 1)'][-1]
+        first_balltracked_frame = balltracks['frame counter (starts at 1)'].values[0]
+        last_balltracked_frame = balltracks['frame counter (starts at 1)'].values[-1]
         return balltracks, first_balltracked_frame, last_balltracked_frame

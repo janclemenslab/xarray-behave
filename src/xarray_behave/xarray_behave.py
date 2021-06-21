@@ -67,6 +67,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     # if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
     ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
+    filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
+    if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
+        ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps, filepath_daq)
+
     # elif os.path.exists(filepath_video):
     #     from videoreader import VideoReader
     #     vr = VideoReader(filepath_video)
@@ -91,11 +95,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         tracks_loader = io.get_loader(kind='tracks', basename=os.path.join(root, res_path, datename, datename))
         if tracks_loader:
             try:
-                body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = tracks_loader.load(tracks_loader.path)
-                # xr_tracks = tracks_loader.make(tracks_loader.path)
-                with_tracks = True
+                # body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = tracks_loader.load(tracks_loader.path)
+                xr_tracks = tracks_loader.make(tracks_loader.path)
+                xr_tracks = xr_tracks.assign_coords(frametimes=('frame_number', ss.frame_time(frame=xr_tracks.frame_number)))
+                xr_tracks = xr_tracks.assign_coords(framesamples=('frame_number', ss.sample(frame=xr_tracks.frame_number)))
+                first_tracked_frame, last_tracked_frame = int(xr_tracks.frame_number[0]), int(xr_tracks.frame_number[-1])
+
                 with_fixed_tracks = tracks_loader.path.endswith('_tracks_fixed.h5')
                 logging.info(f'  {tracks_loader.path} loaded.')
+                with_tracks = True
             except Exception as e:
                 logging.info(f'  Loading {tracks_loader.path} failed.')
                 logging.exception(e)
@@ -135,13 +143,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     if include_balltracker:
 
         logging.info(f'Loading ball tracker:')
-        balltracker_loader = io.get_loader(kind='balltracks', basename=os.path.join(root, res_path, datename, datename))
+        balltracker_loader = io.get_loader(kind='balltracks', basename=os.path.join(root, dat_path, datename, datename))
         if balltracker_loader:
             try:
-                balltracks, first_balltracked_frame, last_balltracked_frame = balltracker_loader.load(balltracker_loader.path)
-                # xr_balltracks = balltracker_loader.make(balltracker_loader.path)
-                balltracker_from = balltracker_loader.NAME
+                # balltracks, first_balltracked_frame, last_balltracked_frame = balltracker_loader.load(balltracker_loader.path)
+                xr_balltracks = balltracker_loader.make(balltracker_loader.path)
+                xr_balltracks = xr_balltracks.assign_coords(frametimes_ball=('frame_number_ball', ss_ball.frame_time(frame=xr_balltracks.frame_number_ball)))
+                xr_balltracks = xr_balltracks.assign_coords(framesamples_ball=('frame_number_ball', ss_ball.sample(frame=xr_balltracks.frame_number_ball)))
+                # balltracker_from = balltracker_loader.NAME
                 logging.info(f'   {balltracker_loader.path} loaded.')
+                with_balltracker = True
             except Exception as e:
                 logging.info(f'   Loading {balltracker_loader.path} failed.')
                 logging.exception(e)
@@ -308,31 +319,22 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     if with_tracks:
         logging.info('   tracking')
-        frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
-        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        frame_times = ss.frame_time(frame_numbers) - ref_time
-        fps = 1 / np.nanmean(np.diff(frame_times))
+        fps = 1 / np.nanmean(np.diff(xr_tracks.frametimes))
+        target_frames_float = ss.times2frames(ss.sample_time(target_samples))
 
-        interpolator_tracks = scipy.interpolate.interp1d(
-            frame_samples, body_pos, axis=0, bounds_error=False, fill_value=np.nan)
-        body_pos = interpolator_tracks(target_samples)
-
-        positions = xr.DataArray(data=body_pos,
-                                 dims=['time', 'flies', 'bodyparts', 'coords'],
-                                 coords={'time': time,
-                                         'bodyparts': body_parts,
-                                         'nearest_frame': (('time'), nearest_frame),
-                                        #  'nearest_sample': (('time'), frame_samples.astype(np.intp)),
-                                         'coords': ['y', 'x']},
-                                 attrs={'description': 'coords are "allocentric" - rel. to the full frame',
+        xr_tracks = xr_tracks.interp(frame_number=target_frames_float, assume_sorted=True)
+        xr_tracks = xr_tracks.assign_coords(time=(('frame_number'), xr_tracks.frametimes - ref_time))
+        xr_tracks = xr_tracks.swap_dims({'frame_number': 'time'})
+        xr_tracks.attrs.update({'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
                                         'video_fps': fps,
                                         'spatial_units': 'pixels',
                                         'pixel_size_mm': pixel_size_mm,
-                                        'background': background,
                                         'tracks_fixed': with_fixed_tracks})
-        dataset_data['body_positions'] = positions
+        print(xr_tracks)
+        dataset_data['body_positions'] = xr_tracks
+
 
     # POSES
     if with_poses:
@@ -356,6 +358,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                              coords={'time': time,
                                      'poseparts': pose_parts,
                                      'nearest_frame': (('time'), nearest_frame),
+                                    #  'nearest_movieframe': (('time'), nearest_movieframe),
                                      'coords': ['y', 'x']},
                              attrs={'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
@@ -385,27 +388,16 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # BALLTRACKS
     if with_balltracker:
         logging.info('   balltracker')
-        frame_numbers = np.arange(first_balltracked_frame, last_balltracked_frame)
-        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        frame_times = ss.frame_time(frame_numbers) - ref_time
-        fps = 1 / np.nanmean(np.diff(frame_times))
-
-        balltracks_columns = list(balltracks.columns)
-        interpolator_tracks = scipy.interpolate.interp1d(
-            frame_samples, balltracks.values, axis=0, bounds_error=False, fill_value=np.nan)
-        balltracks = interpolator_tracks(target_samples)
-
-        balltracks_xr = xr.DataArray(data=balltracks,
-                                 dims=['time', 'tracking_data'],
-                                 coords={'time': time,
-                                         'nearest_frame': (('time'), nearest_frame),
-                                        #  'nearest_sample': (('time'), frame_samples.astype(np.intp)),
-                                         'tracking_data': balltracks_columns},
-                                 attrs={'description': '',
-                                        'sampling_rate_Hz': sampling_rate / step,
-                                        'time_units': 'seconds',
-                                        'video_fps': fps,})
-        dataset_data['balltracks'] = balltracks_xr
+        fps = 1 / np.nanmean(np.diff(xr_balltracks.frametimes_ball))
+        target_frames_float = ss_ball.times2frames(ss_ball.sample_time(target_samples))
+        xr_balltracks = xr_balltracks.interp(frame_number_ball=target_frames_float, assume_sorted=True)
+        xr_balltracks = xr_balltracks.assign_coords(time=(('frame_number_ball'), xr_balltracks.frametimes_ball - ref_time))
+        xr_balltracks = xr_balltracks.swap_dims({'frame_number_ball': 'time'})
+        xr_balltracks.attrs.update({'description': '',
+                                          'sampling_rate_Hz': sampling_rate / step,
+                                          'time_units': 'seconds',
+                                          'video_fps': fps,})
+        dataset_data['balltracks'] = xr_balltracks
 
     # MAKE THE DATASET
     logging.info('   assembling')

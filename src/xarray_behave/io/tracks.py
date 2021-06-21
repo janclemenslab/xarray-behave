@@ -31,7 +31,6 @@ class Tracks():
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'type': 'tracks',
-                                        # 'video_fps': fps,
                                         'video_file': '',
                                         'spatial_units': 'pixels',
                                         'pixel_size_mm': pixel_size_mm,
