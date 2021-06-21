@@ -52,11 +52,21 @@ class YamlDialog(QtGui.QDialog):
                 self.accept()
                 self.close()
         self.form.mainAction.connect(main_callback)
+
+        self.scroll_area = QtGui.QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        # self.scroll_area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
+        # self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setWidget(self.form)
+
+
         layout = QtGui.QVBoxLayout()
-        layout.addWidget(self.form)
+        layout.addWidget(self.scroll_area)
         for button, callback in callbacks.items():
             self.form.buttons[button].clicked.connect(callback)
         self.setLayout(layout)
+
+        self.resize(650, 800)
 
 
 class YamlFormWidget(QtWidgets.QGroupBox):
@@ -94,8 +104,9 @@ class YamlFormWidget(QtWidgets.QGroupBox):
                 items_to_create = yaml.load(form_yaml, Loader=yaml.SafeLoader)
 
         self.which_form = which_form
+
         self.form_layout = FormBuilderLayout(
-            items_to_create[self.which_form], field_options_lists=field_options_lists
+            items_to_create[self.which_form], field_options_lists=field_options_lists,
         )
 
         self.setLayout(self.form_layout)
