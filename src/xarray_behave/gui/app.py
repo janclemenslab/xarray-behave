@@ -1434,7 +1434,7 @@ class PSV(MainWindow):
         std = self.thres_env_std * self.fs_song
         win = scipy.signal.windows.gaussian(int(std * 6), std)
         win /= np.sum(win)
-        env = np.sqrt(np.convolve(self.y**2, win, mode='same'))
+        env = np.sqrt(np.convolve(self.y.astype(np.float)**2, win, mode='same'))
         return env
 
     def delete_all_events(self, qt_keycode):
