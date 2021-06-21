@@ -471,12 +471,13 @@ class MainWindow(pg.QtGui.QMainWindow):
                 queue = multiprocessing.Queue()  # for progress updates from the callback for display in the GUI
                 stop_event = threading.Event()  # checked in the keras callback for stopping training from the GUI
 
-                progress = pg.ProgressDialog("Training das network", minimum=0, maximum=form_data['nb_epoch'], wait=0, cancelText='Stop training')
+                progress = QtGui.QProgressDialog("Initializing training", "Stop training", 0, form_data['nb_epoch'], None)
                 progress.setModal(0)  # do not block the GUI!
+                progress.setWindowModality(QtCore.Qt.NonModal)
 
                 #Custom cancel-button callback the sets the stop_event to stop training."""
                 def custom_cancel():
-                    utils.invoke_in_main_thread(progress.setLabelText, "Cancelling training.")
+                    utils.invoke_in_main_thread(progress.setLabelText, "Stopping training.")
                     stop_event.set()  # stop training
 
                 progress.canceled.connect(custom_cancel)
@@ -484,21 +485,22 @@ class MainWindow(pg.QtGui.QMainWindow):
                 form_data['_qt_progress'] = (queue, stop_event)
                 worker_training = utils.Worker(das.train.train, **form_data)
 
+                pool = pg.QtCore.QThreadPool.globalInstance()
+
                 def update_progress(queue):
                     while True:
                         value = queue.get()
 
-                        if value[0] or pool.activeThreadCount() == 1:
+                        if value[0] is None or value[0] < 0 or pool.activeThreadCount() == 1:
                             utils.invoke_in_main_thread(progress.cancel)
                             utils.invoke_in_main_thread(progress.close)
                             break  # stop this thread
-                        utils.invoke_in_main_thread(progress.setValue, value[0])
-                        utils.invoke_in_main_thread(progress.setLabelText, str(value[1]))
+                        else:
+                            utils.invoke_in_main_thread(progress.setValue, value[0])
+                            utils.invoke_in_main_thread(progress.setLabelText, str(value[1]))
                         pg.QtGui.QApplication.processEvents()
 
                 worker_progress = utils.Worker(update_progress, queue)
-
-                pool = pg.QtCore.QThreadPool.globalInstance()
                 pool.start(worker_progress)
                 pool.start(worker_training)
                 pg.QtGui.QApplication.processEvents()
