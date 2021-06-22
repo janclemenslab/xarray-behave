@@ -472,10 +472,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                 stop_event = threading.Event()  # checked in the keras callback for stopping training from the GUI
 
                 progress = QtGui.QProgressDialog("Initializing training", "Stop training", 0, form_data['nb_epoch'], None)
-                progress.setModal(0)  # do not block the GUI!
+                progress.setWindowTitle('DAS training')
                 progress.setWindowModality(QtCore.Qt.NonModal)
 
-                #Custom cancel-button callback the sets the stop_event to stop training."""
+                # Custom cancel-button callback the sets the stop_event to stop training."""
                 def custom_cancel():
                     utils.invoke_in_main_thread(progress.setLabelText, "Stopping training.")
                     stop_event.set()  # stop training
