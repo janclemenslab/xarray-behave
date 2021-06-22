@@ -964,7 +964,10 @@ class PSV(MainWindow):
             raise ValueError('No time stamp info in dataset.')
 
         self.crop = True
-        self.thorax_index = 8
+        try:
+            self.thorax_index = list(self.ds.bodyparts).index('thorax')
+        except:
+            self.thorax_index = 8
         self.show_dot = True if 'body_positions' in self.ds else False
         self.old_show_dot_state = self.show_dot
         self.dot_size = 2
