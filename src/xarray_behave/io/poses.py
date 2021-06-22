@@ -65,9 +65,9 @@ class Poses():
 
         poses, poses_allo, body_parts, first_pose_frame, last_pose_frame = self.load(filename)
         xr_poses = xr.DataArray(data=poses,
-                                 dims=['frame_number', 'flies', 'bodyparts', 'coords'],
+                                 dims=['frame_number', 'flies', 'poseparts', 'coords'],
                                  coords={'frame_number': np.arange(first_pose_frame, last_pose_frame),
-                                         'bodyparts': body_parts,
+                                         'poseparts': body_parts,
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'type': 'poses',
@@ -76,9 +76,9 @@ class Poses():
                                         'spatial_units': 'pixels',
                                         'pixel_size_mm': pixel_size_mm,})
         xr_poses_allo = xr.DataArray(data=poses_allo,
-                                 dims=['frame_number', 'flies', 'bodyparts', 'coords'],
+                                 dims=['frame_number', 'flies', 'poseparts', 'coords'],
                                  coords={'frame_number': np.arange(first_pose_frame, last_pose_frame),
-                                         'bodyparts': body_parts,
+                                         'poseparts': body_parts,
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'type': 'poses',
