@@ -86,17 +86,30 @@ class FicTrac_balltracks(io.BaseProvider, BallTracks):
         #     24      delta timestamp                 Time (ms) since last frame.
         #     25      alt. timestamp                  Frame capture time (ms since midnight).
         column_names = ['frame counter (starts at 1)',
-                        'delta rotation vector (cam) x right [rad]', 'delta rotation vector (cam) y down [rad]', 'delta rotation vector (cam) z forward [rad]',
+                        'delta rotation vector (cam) x right [rad]',
+                        'delta rotation vector (cam) y down [rad]',
+                        'delta rotation vector (cam) z forward [rad]',
                         'delta rotation error score',
-                        'delta rotation vector (lab) x right [rad]', 'delta rotation vector (lab) y down [rad]', 'delta rotation vector (lab) z forward [rad]',
-                        'absolute rotation vector (cam) x right [rad]', 'absolute rotation vector (cam) y down [rad]', 'absolute rotation vector (cam) z forward [rad]',
-                        'absolute rotation vector (lab) x right [rad]', 'absolute rotation vector (lab) y down [rad]', 'absolute rotation vector (lab) z forward [rad]',
-                        'integrated x/y position [sphere radius]',
+                        'delta rotation vector (lab) x right [rad]',
+                        'delta rotation vector (lab) y down [rad]',
+                        'delta rotation vector (lab) z forward [rad]',
+                        'absolute rotation vector (cam) x right [rad]',
+                        'absolute rotation vector (cam) y down [rad]',
+                        'absolute rotation vector (cam) z forward [rad]',
+                        'absolute rotation vector (lab) x right [rad]',
+                        'absolute rotation vector (lab) y down [rad]',
+                        'absolute rotation vector (lab) z forward [rad]',
+                        'integrated x position [sphere radius]',
+                        'integrated y position [sphere radius]',
                         'integrated animal heading (lab) [rad]',
                         'animal movement direction (lab) [rad]',
                         'animal movement speed [rad/frame/sphere radius]',
-                        'integrated forward/side motion x right [rad]', 'integrated forward/side motion y down [rad]', 'integrated forward/side motion z forward [rad]',
-                        'timestamp [ms]', 'delta timestamp [ms since last frame]', 'alt. timestamp [ms since midnight ]',
+                        'integrated forward motion [rad]',
+                        'integrated side motion [rad]',
+                        'timestamp [ms]',
+                        'sequence counter [frame relative to last reset]',
+                        'delta timestamp [ms since last frame]',
+                        # 'alt. timestamp [ms since midnight ]'
                         ]
         balltracks = pd.read_csv(filename)
         balltracks.columns = column_names
