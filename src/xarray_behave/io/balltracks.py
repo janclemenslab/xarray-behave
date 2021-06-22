@@ -13,18 +13,19 @@ import xarray as xr
 class BallTracks():
 
     def make(self, filename: Optional[str] = None):
-        balltracks_xr = None
+        if filename is None:
+            filename = self.path
+
         logging.info(f'Loading ball tracker:')
         balltracks, first_balltracked_frame, last_balltracked_frame = self.load(filename)
 
         xr_balltracks = xr.DataArray(data=balltracks.values,
                                     dims=['frame_number_ball', 'data_ball'],
                                     coords={'frame_number_ball': balltracks['frame counter (starts at 1)']-1,
-                                            'data_ball': balltracks.columns},
-                                    attrs={'description': '',
-                                            'loader': self.NAME,
-                                            'kind': self.KIND,
-                                            'path': filename,})
+                                            'data_ball': list(balltracks.columns)},
+                                    attrs={'loader': self.NAME,
+                                           'kind': self.KIND,
+                                           'path': filename,})
         return xr_balltracks
 
 

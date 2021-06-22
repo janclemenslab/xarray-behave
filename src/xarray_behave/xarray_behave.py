@@ -87,22 +87,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         logging.info(f'  setting targetsamplingrate to avg. fps.')
         target_sampling_rate = 1 / np.mean(np.diff(ss.frames2times.y))
 
-    def add_time(ds, ss, dim: str = 'frame_number'):
-        ds = ds.assign_coords(frametimes=(dim, ss.frame_time(frame=ds[dim])))
-        ds = ds.assign_coords(framesamples=(dim, ss.sample(frame=ds[dim])))
-        return ds
-
-    def align_time(ds, ss, target_samples, dim='frame_number'):
-        fps = 1 / np.nanmean(np.diff(ds.frametimes))
-        target_frames_float = ss.times2frames(ss.sample_time(target_samples))
-
-        ds = ds.interp({dim: target_frames_float}, assume_sorted=True)
-        ds = ds.assign_coords(time=((dim), ds.frametimes - ref_time))
-        ds = ds.swap_dims({dim: 'time'})
-        ds.attrs.update({'video_fps': fps})
-        return ds
-
-
 
     # LOAD TRACKS
     with_tracks = False
@@ -115,8 +99,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                 xr_tracks = tracks_loader.make(tracks_loader.path)
                 xr_tracks = add_time(xr_tracks, ss, dim='frame_number')
 
-                first_tracked_frame, last_tracked_frame = int(xr_tracks.frame_number[0]), int(xr_tracks.frame_number[-1])
-
                 with_fixed_tracks = tracks_loader.path.endswith('_tracks_fixed.h5')
                 logging.info(f'  {tracks_loader.path} loaded.')
                 with_tracks = True
@@ -126,13 +108,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         else:
             logging.info('   Found no tracks.')
         logging.info('Done.')
-
-    if not with_tracks:
-        first_tracked_frame = int(ss.frame(0))
-        last_tracked_frame = int(ss.frame(last_sample_number))
-        logging.info(f'No tracks - setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
-    else:
-        logging.info(f'Tracked frame {first_tracked_frame} to {last_tracked_frame}.')
 
     # LOAD POSES
     with_poses = False
@@ -247,44 +222,34 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     event_seconds = ld.fix_keys(event_seconds)
     event_categories = ld.fix_keys(event_categories)
 
-    # PREPARE sample/time/framenumber grids
-
     # TODO:
-    # - make `nearest_frame_ball`
-    # - clean the above up - we may not need any of this
-    # - get timing from `ss_ball` if `ss` does not exist
+    # - get timing from `ss_ball` if `ss` does not exist?
     # - cope with recordings w/o daq or video!
 
-    last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
-    first_sample = 0
-    last_sample = int(last_sample_with_frame)
-
-    # time in seconds for each sample in the song recording
-    sampletime = ss.sample_time(np.arange(first_sample, last_sample))
-    # first sample = 0 seconds
-    ref_time = sampletime[0]
-    sampletime -= ref_time
-
-    # build interpolator to get neareast frame for each sample in the new grid
-    frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
-    frame_samples = ss.sample(frame_numbers)
-    frame_samples = interp_duplicates(frame_samples)
+    # PREPARE sample/time/framenumber grids
+    if not with_tracks:
+        first_tracked_frame = int(ss.frame(0))
+        last_tracked_frame = int(ss.frame(last_sample_number))
+        logging.info(f'No tracks - setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+    else:
+        first_tracked_frame, last_tracked_frame = int(xr_tracks.frame_number[0]), int(xr_tracks.frame_number[-1])
+        logging.info(f'Tracked frame {first_tracked_frame} to {last_tracked_frame}.')
 
     # construct desired sample grid for data
     step = sampling_rate / target_sampling_rate
 
     if resample_video_data:
-        target_samples = np.arange(first_sample, last_sample, step, dtype=np.uintp)
+        # in case the DAQ stopped before the video
+        last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
+        target_samples = np.arange(0, last_sample_with_frame, step, dtype=np.uintp)
     else:
+        frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
+        frame_samples = ss.sample(frame_numbers)
+        frame_samples = interp_duplicates(frame_samples)
         target_samples = frame_samples
-        resample_video_data = True  # <- this means we can remove a lot of code below (needs some more testing though)
 
+    ref_time = ss.sample_time(0)  # first sample corresponds to 0 seconds
     time = ss.sample_time(target_samples) - ref_time
-    # get neareast frame for each sample in the sample grid
-    interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
-                                              kind='nearest', bounds_error=False, fill_value=np.nan)
-    nearest_frame = interpolator(target_samples).astype(np.uintp)
-
 
     # PREPARE DataArrays
     dataset_data = dict()
@@ -292,9 +257,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     logging.info('Making all datasets:')
     if song_raw is not None:
         if 0 not in song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
-            song_raw = xr.DataArray(data=song_raw[first_sample:last_sample, :],  # cut recording to match new grid
+            song_raw = xr.DataArray(data=song_raw[:, :],  # cut recording to match new grid
                                     dims=['sampletime', 'channels'],
-                                    coords={'sampletime': sampletime, },
+                                    coords={'sampletime': ss.sample_time(np.arange(song_raw.shape[0])) - ref_time, },
                                     attrs={'description': 'Raw song recording (multi channel).',
                                         'sampling_rate_Hz': sampling_rate,
                                         'time_units': 'seconds',
@@ -303,9 +268,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     if non_song_raw is not None:
         if 0 not in non_song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
-            non_song_raw = xr.DataArray(data=non_song_raw[first_sample:last_sample, :],  # cut recording to match new grid
+            non_song_raw = xr.DataArray(data=non_song_raw[:, :],  # cut recording to match new grid
                                         dims=['sampletime', 'no_song_channels'],
-                                        coords={'sampletime': sampletime, },
+                                        coords={'sampletime': ss.sample_time(np.arange(non_song_raw.shape[0])) - ref_time, },
                                         attrs={'description': 'Non song (stimulus) data.',
                                             'sampling_rate_Hz': sampling_rate,
                                             'time_units': 'seconds',
@@ -318,8 +283,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                                 dims=['time', 'event_types'],
                                 coords={'time': time,
                                         'event_types': list(event_seconds.keys()),
-                                        'event_categories': (('event_types'), list(event_categories.values())),
-                                        'nearest_frame': (('time'), nearest_frame),},
+                                        'event_categories': (('event_types'), list(event_categories.values())),},
                                 attrs={'description': 'Event times as boolean arrays.',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
@@ -344,7 +308,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     if with_tracks:
         logging.info('   tracking')
-        xr_tracks = align_time(xr_tracks, ss, target_samples)
+        xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time)
         xr_tracks.attrs.update({'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
@@ -354,11 +318,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                                         'tracks_fixed': with_fixed_tracks})
         dataset_data['body_positions'] = xr_tracks
 
-
     # POSES
     if with_poses:
         logging.info('   poses')
-        xr_poses = align_time(xr_poses, ss, target_samples)
+        xr_poses = align_time(xr_poses, ss, target_samples, ref_time=ref_time)
         xr_poses.attrs.update({'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
@@ -369,7 +332,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         dataset_data['pose_positions'] = xr_poses
 
         # poses in ALLOcentric (frame-relative) coordinates
-        xr_poses_allo = align_time(xr_poses_allo, ss, target_samples)
+        xr_poses_allo = align_time(xr_poses_allo, ss, target_samples, ref_time=ref_time)
         xr_poses_allo.attrs.update({'description': 'coords are "allocentric" - rel. to frame',
                                          'sampling_rate_Hz': sampling_rate / step,
                                          'time_units': 'seconds',
@@ -383,7 +346,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # BALLTRACKS
     if with_balltracker:
         logging.info('   balltracker')
-        xr_balltracks = align_time(xr_balltracks, ss_ball, target_samples, dim='frame_number_ball')
+        xr_balltracks = align_time(xr_balltracks, ss_ball, target_samples, dim='frame_number_ball', suffix='_ball', ref_time=ref_time)
         xr_balltracks.attrs.update({'description': '',
                                           'sampling_rate_Hz': sampling_rate / step,
                                           'time_units': 'seconds',
@@ -396,7 +359,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     if 'time' not in dataset:
         dataset.coords['time'] = time
     if 'nearest_frame' not in dataset:
-        dataset.coords['nearest_frame'] = (('time'), nearest_frame)
+        dataset.coords['nearest_frame'] = (('time'), (time + ref_time).astype(np.intp))
 
     # convert spatial units to mm using info in attrs
     dataset = convert_spatial_units(dataset, to_units='mm',
@@ -558,6 +521,25 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
     # MAKE ONE DATASET
     feature_dataset = xr.Dataset(ds_dict, attrs={})
     return feature_dataset
+
+
+def add_time(ds, ss, dim: str = 'frame_number', suffix: str = ''):
+    ds = ds.assign_coords(frametimes=(dim, ss.frame_time(frame=ds[dim])))
+    ds = ds.assign_coords(framesamples=(dim, ss.sample(frame=ds[dim])))
+    return ds
+
+
+def align_time(ds, ss, target_samples, ref_time, dim: str = 'frame_number', suffix: str = ''):
+    fps = 1 / np.nanmean(np.diff(ds.frametimes))
+    target_frames_float = ss.times2frames(ss.sample_time(target_samples))
+
+    ds = ds.interp({dim: target_frames_float}, assume_sorted=True)
+    ds = ds.assign_coords({'time': ((dim), ds.frametimes - ref_time)})
+    ds = ds.swap_dims({dim: 'time'})
+    # drop: frametimes, framesamples, frame_number*
+    ds = ds.assign_coords({'nearest_frame' + suffix: (('time'), np.round(target_frames_float).astype(np.intp))})
+    ds.attrs.update({'video_fps': fps})
+    return ds
 
 
 def convert_spatial_units(ds: xr.Dataset, to_units: Optional[str] = None, names: Optional[List[str]] = None) -> xr.Dataset:

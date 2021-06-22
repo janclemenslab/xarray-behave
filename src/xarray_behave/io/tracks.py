@@ -20,8 +20,9 @@ import xarray as xr
 
 class Tracks():
     def make(self, filename: Optional[str] = None):
-        pixel_size_mm = None
-        with_fixed_tracks = None
+        if filename is None:
+            filename = self.path
+
         body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = self.load(filename)
 
         positions = xr.DataArray(data=body_pos,
@@ -31,11 +32,11 @@ class Tracks():
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'type': 'tracks',
-                                        'video_file': '',
                                         'spatial_units': 'pixels',
-                                        'pixel_size_mm': pixel_size_mm,
-                                        'tracks_fixed': with_fixed_tracks,
-                                        'background': background})
+                                        'background': background,
+                                        'loader': self.NAME,
+                                        'kind': self.KIND,
+                                        'path': filename,})
         return positions
 
 
