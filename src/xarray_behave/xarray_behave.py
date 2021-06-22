@@ -87,6 +87,23 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         logging.info(f'  setting targetsamplingrate to avg. fps.')
         target_sampling_rate = 1 / np.mean(np.diff(ss.frames2times.y))
 
+    def add_time(ds, ss, dim: str = 'frame_number'):
+        ds = ds.assign_coords(frametimes=(dim, ss.frame_time(frame=ds[dim])))
+        ds = ds.assign_coords(framesamples=(dim, ss.sample(frame=ds[dim])))
+        return ds
+
+    def align_time(ds, ss, target_samples, dim='frame_number'):
+        fps = 1 / np.nanmean(np.diff(ds.frametimes))
+        target_frames_float = ss.times2frames(ss.sample_time(target_samples))
+
+        ds = ds.interp({dim: target_frames_float}, assume_sorted=True)
+        ds = ds.assign_coords(time=((dim), ds.frametimes - ref_time))
+        ds = ds.swap_dims({dim: 'time'})
+        ds.attrs.update({'video_fps': fps})
+        return ds
+
+
+
     # LOAD TRACKS
     with_tracks = False
     with_fixed_tracks = False
@@ -95,10 +112,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         tracks_loader = io.get_loader(kind='tracks', basename=os.path.join(root, res_path, datename, datename))
         if tracks_loader:
             try:
-                # body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = tracks_loader.load(tracks_loader.path)
                 xr_tracks = tracks_loader.make(tracks_loader.path)
-                xr_tracks = xr_tracks.assign_coords(frametimes=('frame_number', ss.frame_time(frame=xr_tracks.frame_number)))
-                xr_tracks = xr_tracks.assign_coords(framesamples=('frame_number', ss.sample(frame=xr_tracks.frame_number)))
+                xr_tracks = add_time(xr_tracks, ss, dim='frame_number')
+
                 first_tracked_frame, last_tracked_frame = int(xr_tracks.frame_number[0]), int(xr_tracks.frame_number[-1])
 
                 with_fixed_tracks = tracks_loader.path.endswith('_tracks_fixed.h5')
@@ -126,8 +142,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         poses_loader = io.get_loader(kind='poses', basename=os.path.join(root, res_path, datename, datename))
         if poses_loader:
             try:
-                pose_pos, pose_pos_allo, pose_parts, first_pose_frame, last_pose_frame = poses_loader.load(poses_loader.path)
-                # xr_poses, xr_poses_allo = poses_loader.make(poses_loader.path)
+                xr_poses, xr_poses_allo = poses_loader.make(poses_loader.path)
+                xr_poses = add_time(xr_poses, ss, dim='frame_number')
+                xr_poses_allo = add_time(xr_poses_allo, ss, dim='frame_number')
+
                 with_poses = True
                 poses_from = poses_loader.NAME
                 logging.info(f'   {poses_loader.path} loaded.')
@@ -141,16 +159,13 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # LOAD BALLTRACKER
     with_balltracker = False
     if include_balltracker:
-
         logging.info(f'Loading ball tracker:')
         balltracker_loader = io.get_loader(kind='balltracks', basename=os.path.join(root, dat_path, datename, datename))
         if balltracker_loader:
             try:
-                # balltracks, first_balltracked_frame, last_balltracked_frame = balltracker_loader.load(balltracker_loader.path)
                 xr_balltracks = balltracker_loader.make(balltracker_loader.path)
-                xr_balltracks = xr_balltracks.assign_coords(frametimes_ball=('frame_number_ball', ss_ball.frame_time(frame=xr_balltracks.frame_number_ball)))
-                xr_balltracks = xr_balltracks.assign_coords(framesamples_ball=('frame_number_ball', ss_ball.sample(frame=xr_balltracks.frame_number_ball)))
-                # balltracker_from = balltracker_loader.NAME
+                xr_balltracks = add_time(xr_balltracks, ss_ball, dim='frame_number_ball')
+
                 logging.info(f'   {balltracker_loader.path} loaded.')
                 with_balltracker = True
             except Exception as e:
@@ -209,7 +224,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
             basename = os.path.join(root, dat_path, datename, datename)
         else:
             basename = filepath_daq
-        print(basename)
+
         audio_loader = io.get_loader(kind='audio',
                                      basename=basename,
                                      basename_is_full_name=filepath_daq_is_custom)
@@ -233,20 +248,27 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     event_categories = ld.fix_keys(event_categories)
 
     # PREPARE sample/time/framenumber grids
+
+    # TODO:
+    # - make `nearest_frame_ball`
+    # - clean the above up - we may not need any of this
+    # - get timing from `ss_ball` if `ss` does not exist
+    # - cope with recordings w/o daq or video!
+
     last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
     first_sample = 0
     last_sample = int(last_sample_with_frame)
-    ref_time = ss.sample_time(0)  # 0 seconds = first DAQ sample
 
     # time in seconds for each sample in the song recording
-    sampletime = ss.sample_time(np.arange(first_sample, last_sample)) - ref_time
+    sampletime = ss.sample_time(np.arange(first_sample, last_sample))
+    # first sample = 0 seconds
+    ref_time = sampletime[0]
+    sampletime -= ref_time
 
     # build interpolator to get neareast frame for each sample in the new grid
     frame_numbers = np.arange(first_tracked_frame, last_tracked_frame)
     frame_samples = ss.sample(frame_numbers)
     frame_samples = interp_duplicates(frame_samples)
-    interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
-                                              kind='nearest', bounds_error=False, fill_value=np.nan)
 
     # construct desired sample grid for data
     step = sampling_rate / target_sampling_rate
@@ -259,7 +281,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     time = ss.sample_time(target_samples) - ref_time
     # get neareast frame for each sample in the sample grid
+    interpolator = scipy.interpolate.interp1d(frame_samples, frame_numbers,
+                                              kind='nearest', bounds_error=False, fill_value=np.nan)
     nearest_frame = interpolator(target_samples).astype(np.uintp)
+
 
     # PREPARE DataArrays
     dataset_data = dict()
@@ -319,12 +344,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     if with_tracks:
         logging.info('   tracking')
-        fps = 1 / np.nanmean(np.diff(xr_tracks.frametimes))
-        target_frames_float = ss.times2frames(ss.sample_time(target_samples))
-
-        xr_tracks = xr_tracks.interp(frame_number=target_frames_float, assume_sorted=True)
-        xr_tracks = xr_tracks.assign_coords(time=(('frame_number'), xr_tracks.frametimes - ref_time))
-        xr_tracks = xr_tracks.swap_dims({'frame_number': 'time'})
+        xr_tracks = align_time(xr_tracks, ss, target_samples)
         xr_tracks.attrs.update({'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
@@ -332,67 +352,38 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                                         'spatial_units': 'pixels',
                                         'pixel_size_mm': pixel_size_mm,
                                         'tracks_fixed': with_fixed_tracks})
-        print(xr_tracks)
         dataset_data['body_positions'] = xr_tracks
 
 
     # POSES
     if with_poses:
         logging.info('   poses')
-        frame_numbers = np.arange(first_pose_frame, last_pose_frame)
-        frame_samples = ss.sample(frame_numbers)  # get sample numbers for each frame
-        frame_times = ss.frame_time(frame_numbers) - ref_time
-        fps = 1/np.nanmean(np.diff(frame_times))
-
-        interpolator_pose_pos = scipy.interpolate.interp1d(
-            frame_samples, pose_pos, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
-        pose_pos = interpolator_pose_pos(target_samples)
-
-        interpolator_pose_pos_allo = scipy.interpolate.interp1d(
-            frame_samples, pose_pos_allo, axis=0, kind='linear', bounds_error=False, fill_value=np.nan)
-        pose_pos_allo = interpolator_pose_pos_allo(target_samples)
-
-        # poses in EGOCENTRIC coordinates
-        poses = xr.DataArray(data=pose_pos,
-                             dims=['time', 'flies', 'poseparts', 'coords'],
-                             coords={'time': time,
-                                     'poseparts': pose_parts,
-                                     'nearest_frame': (('time'), nearest_frame),
-                                    #  'nearest_movieframe': (('time'), nearest_movieframe),
-                                     'coords': ['y', 'x']},
-                             attrs={'description': 'coords are "egocentric" - rel. to box',
+        xr_poses = align_time(xr_poses, ss, target_samples)
+        xr_poses.attrs.update({'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
                                     'video_fps': fps,
                                     'spatial_units': 'pixels',
                                     'pixel_size_mm': pixel_size_mm,
                                     'poses_from': poses_from})
-        dataset_data['pose_positions'] = poses
+        dataset_data['pose_positions'] = xr_poses
 
         # poses in ALLOcentric (frame-relative) coordinates
-        poses_allo = xr.DataArray(data=pose_pos_allo,
-                                  dims=['time', 'flies', 'poseparts', 'coords'],
-                                  coords={'time': time,
-                                          'poseparts': pose_parts,
-                                          'nearest_frame': (('time'), nearest_frame),
-                                          'coords': ['y', 'x']},
-                                  attrs={'description': 'coords are "allocentric" - rel. to frame',
+        xr_poses_allo = align_time(xr_poses_allo, ss, target_samples)
+        xr_poses_allo.attrs.update({'description': 'coords are "allocentric" - rel. to frame',
                                          'sampling_rate_Hz': sampling_rate / step,
                                          'time_units': 'seconds',
                                          'video_fps': fps,
                                          'spatial_units': 'pixels',
                                          'pixel_size_mm': pixel_size_mm,
                                          'poses_from': poses_from})
-        dataset_data['pose_positions_allo'] = poses_allo
+
+        dataset_data['pose_positions_allo'] = xr_poses_allo
 
     # BALLTRACKS
     if with_balltracker:
         logging.info('   balltracker')
-        fps = 1 / np.nanmean(np.diff(xr_balltracks.frametimes_ball))
-        target_frames_float = ss_ball.times2frames(ss_ball.sample_time(target_samples))
-        xr_balltracks = xr_balltracks.interp(frame_number_ball=target_frames_float, assume_sorted=True)
-        xr_balltracks = xr_balltracks.assign_coords(time=(('frame_number_ball'), xr_balltracks.frametimes_ball - ref_time))
-        xr_balltracks = xr_balltracks.swap_dims({'frame_number_ball': 'time'})
+        xr_balltracks = align_time(xr_balltracks, ss_ball, target_samples, dim='frame_number_ball')
         xr_balltracks.attrs.update({'description': '',
                                           'sampling_rate_Hz': sampling_rate / step,
                                           'time_units': 'seconds',
