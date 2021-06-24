@@ -375,7 +375,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             form_data['model_name'] = 'tcn'
             if form_data['frontend'] == 'Yes':
                 form_data['model_name'] += '_stft'
-                form_data['pre_nb_conv'] = int(form_data['pre_nb_conv'])
+                form_data['nb_pre_conv'] = int(form_data['pre_nb_conv'])
 
             form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
             form_data = {k: v for k, v in form_data.items() if v not in ['Yes', 'No', None]}
