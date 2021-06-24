@@ -372,11 +372,18 @@ class MainWindow(pg.QtGui.QMainWindow):
                 Dict[Any]: [description]
             """
 
-            form_data['model_name'] = 'tcn'
-            if form_data['frontend'] == 'Yes':
-                form_data['model_name'] += '_stft'
+            form_data['model_name'] = 'tcn_stft'
+            form_data['nb_pre_conv'] = int(0)
+            if form_data['frontend'] == 'STFT':
+                # form_data['model_name'] += '_stft'
                 form_data['nb_pre_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
-
+                form_data['pre_nb_dft'] = int(form_data['pre_nb_dft'])
+            # elif form_data['frontend'] == 'TCN':
+            #     form_data['model_name'] += '_tcn'
+            #     form_data['nb_pre_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
+            #     form_data['pre_nb_filters'] = int(np.sqrt(int(form_data['pre_nb_filters'])))
+            #     form_data['pre_nb_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
+            del form_data['frontend']
             form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
             form_data = {k: v for k, v in form_data.items() if v not in ['Yes', 'No', None]}
 

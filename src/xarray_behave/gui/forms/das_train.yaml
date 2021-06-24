@@ -60,22 +60,15 @@ main:
   type: stacked
 
   default: "No"
-  options: "No,Yes"
+  options: "No,STFT"  #,TCN"
 
   "No":
 
-  "Yes":
-
-  - name: pre_nb_filters
-    label: Number of filters
+  "STFT":
+  - name: pre_nb_dft
+    label: Number of frequency bands
     type: int
-    default: 16
-    range: 1,1000
-
-  - name: pre_kernel_size
-    label: Filter duration
-    type: int
-    default: 16
+    default: 64
     range: 1,1000
 
   - name: pre_nb_conv
@@ -83,6 +76,25 @@ main:
     type: list
     default: 16
     options: 1,2,4,8,16,32,64,128
+
+  # "TCN":
+  # - name: pre_nb_filters
+  #   label: Number of filters
+  #   type: int
+  #   default: 16
+  #   range: 1,1000
+
+  # - name: pre_kernel_size
+  #   label: Filter duration
+  #   type: int
+  #   default: 16
+  #   range: 1,1000
+
+  # - name: pre_nb_conv
+  #   label: Downsample factor
+  #   type: list
+  #   default: 16
+  #   options: 1,2,4,8,16,32,64,128
 
 - name: nb_hist
   label: Chunk duration (samples)
