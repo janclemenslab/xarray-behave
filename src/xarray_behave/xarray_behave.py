@@ -23,7 +23,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
              filepath_video: Optional[str] = None,
              filepath_daq: Optional[str] = None,
              target_sampling_rate=1_000, resample_video_data: bool = True,
-             include_song: bool = True, include_tracks: bool = True, include_poses: bool = True, include_balltracker: bool = True,
+             include_song: bool = True, include_tracks: bool = True, include_poses: bool = True, include_balltracker: bool = True, include_movieparams: bool = True,
              fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
              lazy_load_song: bool = False) -> xr.Dataset:
     """[summary]
@@ -44,6 +44,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         include_song (bool, optional): [description]. Defaults to True.
         include_tracks (bool, optional): [description]. Defaults to True.
         include_poses (bool, optional): [description]. Defaults to True.
+        include_balltracker (bool, optional): [description]. Defaults to True.
         include_balltracker (bool, optional): [description]. Defaults to True.
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
@@ -68,8 +69,13 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
     ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
     filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
+    filepath_timestamps_movie = Path(root, dat_path, datename, f'{datename}_movieframes.csv')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
         ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps, filepath_daq)
+
+    filepath_timestamps_movie = Path(root, res_path, datename, f'{datename}_movieframes.csv')
+    if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_movie):
+        ss_movie, last_sample_number_movie, sampling_rate_movie = ld.load_movietimes(filepath_timestamps_movie, filepath_daq)
 
     # elif os.path.exists(filepath_video):
     #     from videoreader import VideoReader
@@ -135,11 +141,11 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     with_balltracker = False
     if include_balltracker:
         logging.info(f'Loading ball tracker:')
-        balltracker_loader = io.get_loader(kind='balltracks', basename=os.path.join(root, dat_path, datename, datename))
+        balltracker_loader = io.get_loader(kind='balltracks', basename=os.path.join(root, res_path, datename, datename))
         if balltracker_loader:
             try:
                 xr_balltracks = balltracker_loader.make(balltracker_loader.path)
-                xr_balltracks = add_time(xr_balltracks, ss_ball, dim='frame_number_ball')
+                xr_balltracks = add_time(xr_balltracks, ss_ball, dim='frame_number_ball', suffix='_ball')
 
                 logging.info(f'   {balltracker_loader.path} loaded.')
                 with_balltracker = True
@@ -149,6 +155,26 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         else:
             logging.info(f'   Found no balltracker data.')
         logging.info('Done.')
+
+    # LOAD MOVIEPARAMS
+    with_movieparams = False
+    if include_movieparams:
+        logging.info(f'Loading movie params:')
+        movieparams_loader = io.get_loader(kind='movieparams', basename=os.path.join(root, dat_path, datename, datename))
+        if movieparams_loader:
+            try:
+                xr_movieparams = movieparams_loader.make(movieparams_loader.path)
+                xr_movieparams = add_time(xr_movieparams, ss_movie, dim='frame_number_movie',  suffix='_movie')
+
+                logging.info(f'   {movieparams_loader.path} loaded.')
+                with_movieparams = True
+            except Exception as e:
+                logging.info(f'   Loading {movieparams_loader.path} failed.')
+                logging.exception(e)
+        else:
+            logging.info(f'   Found no movie params data.')
+        logging.info('Done.')
+
 
     # Init empty audio and event data
     song_raw = None
@@ -353,13 +379,36 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                                           'video_fps': fps,})
         dataset_data['balltracks'] = xr_balltracks
 
+    # MOVIEPARAMS
+    if with_movieparams:
+        logging.info('   movieparams')
+        xr_movieparams = align_time(xr_movieparams, ss_movie, target_samples, dim='frame_number_movie', suffix='_movie', ref_time=ref_time)
+        if with_balltracker:
+            # small errors from the interpolation in sampstamps lead to small discrepancies
+            # in the time vectors between the two data arrays which introduces nans and non int frame numbers in the dataset
+            # re-interpolate to have the "correct" time values
+            max_temporal_error = np.max(np.abs(xr_movieparams['time'].data - xr_balltracks['time'].data))
+            if max_temporal_error > 0 and max_temporal_error < 1.1 / target_sampling_rate:
+                # logging.warning(f'      Correcting small jitter of < {max_temporal_error:1.6} seconds.')
+                xr_movieparams = xr_movieparams.interp({'time': xr_balltracks.time}, assume_sorted=True, kwargs={'fill_value': "extrapolate"})
+                xr_movieparams['nearest_frame_movie'].data = np.round(xr_movieparams['nearest_frame_movie']).astype(np.intp)  #xr_movieparams.interp({'time': xr_balltracks.time}, assume_sorted=True, kwargs={'fill_value': "extrapolate"})
+
+
+        xr_movieparams.attrs.update({'description': '',
+                                     'sampling_rate_Hz': sampling_rate / step,
+                                     'time_units': 'seconds',
+                                     'video_fps': fps,})
+        dataset_data['movieparams'] = xr_movieparams
+
     # MAKE THE DATASET
     logging.info('   assembling')
     dataset = xr.Dataset(dataset_data, attrs={})
     if 'time' not in dataset:
         dataset.coords['time'] = time
     if 'nearest_frame' not in dataset:
-        dataset.coords['nearest_frame'] = (('time'), (time + ref_time).astype(np.intp))
+    #     # dataset.coords['nearest_frame'] = (('time'), (dataset['time'] + ref_time).astype(np.intp))  # ???
+    #     # dataset.coords['nearest_frame'] = (('time'), (np.arange(len(dataset['time']), dtype=np.intp)))
+         dataset.coords['nearest_frame'] = (('time'), (ss.times2frames(dataset['time'] + ref_time).astype(np.intp)))
 
     # convert spatial units to mm using info in attrs
     dataset = convert_spatial_units(dataset, to_units='mm',
@@ -372,10 +421,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
                      'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path,
                      'target_sampling_rate_Hz': target_sampling_rate}
 
-    if fix_fly_indices:
+    filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
+    if fix_fly_indices and os.path.exists(filepath_swap):
         logging.info('   applying fly identity fixes')
         try:
-            filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
             indices, flies1, flies2 = ld.load_swap_indices(filepath_swap)
             dataset = ld.swap_flies(dataset, indices, flies1=0, flies2=1)
             logging.info(f'  Fixed fly identities using info from {filepath_swap}.')
@@ -384,6 +433,33 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
             logging.debug(e)
     logging.info('Done.')
     return dataset
+
+
+def add_time(ds, ss, dim: str = 'frame_number', suffix: str = ''):
+    ds = ds.assign_coords({'frametimes' + suffix: (dim, ss.frame_time(frame=ds[dim]))})
+    ds = ds.assign_coords({'framesamples' + suffix: (dim, ss.sample(frame=ds[dim]))})
+    return ds
+
+
+def align_time(ds, ss, target_samples, ref_time, dim: str = 'frame_number', suffix: str = '', time=None):
+    fps = 1 / np.nanmean(np.diff(ds['frametimes' + suffix]))
+    # try:
+    #     target_frames_float = ss.samples2frames(target_samples)
+    # except:
+    target_frames_float = ss.times2frames(ss.sample_time(target_samples))
+
+    ds = ds.interp({dim: target_frames_float}, assume_sorted=True, kwargs={'fill_value': "extrapolate"})
+    # ds = ds.drop_vars(['frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix], errors='Ignore')
+
+    time_new = ds['frametimes' + suffix] - ref_time
+    ds = ds.assign_coords({'time': ((dim), time_new)})
+
+    ds = ds.swap_dims({dim: 'time'})
+    ds = ds.assign_coords({'nearest_frame' + suffix: (('time'), np.round(target_frames_float).astype(np.intp))})
+    ds = ds.drop_vars(['frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix,
+                       'framenumber' + suffix, 'frametimes' + suffix, 'framesamples' + suffix], errors='Ignore')
+    ds.attrs.update({'video_fps': fps})
+    return ds
 
 
 def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smooth_positions: bool = True):
@@ -415,6 +491,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
 
     time = dataset.time
     nearest_frame = dataset.nearest_frame
+
     sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
     frame_rate = dataset.pose_positions.attrs['video_fps']
 
@@ -521,25 +598,6 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
     # MAKE ONE DATASET
     feature_dataset = xr.Dataset(ds_dict, attrs={})
     return feature_dataset
-
-
-def add_time(ds, ss, dim: str = 'frame_number', suffix: str = ''):
-    ds = ds.assign_coords(frametimes=(dim, ss.frame_time(frame=ds[dim])))
-    ds = ds.assign_coords(framesamples=(dim, ss.sample(frame=ds[dim])))
-    return ds
-
-
-def align_time(ds, ss, target_samples, ref_time, dim: str = 'frame_number', suffix: str = ''):
-    fps = 1 / np.nanmean(np.diff(ds.frametimes))
-    target_frames_float = ss.times2frames(ss.sample_time(target_samples))
-
-    ds = ds.interp({dim: target_frames_float}, assume_sorted=True)
-    ds = ds.assign_coords({'time': ((dim), ds.frametimes - ref_time)})
-    ds = ds.swap_dims({dim: 'time'})
-    # drop: frametimes, framesamples, frame_number*
-    ds = ds.assign_coords({'nearest_frame' + suffix: (('time'), np.round(target_frames_float).astype(np.intp))})
-    ds.attrs.update({'video_fps': fps})
-    return ds
 
 
 def convert_spatial_units(ds: xr.Dataset, to_units: Optional[str] = None, names: Optional[List[str]] = None) -> xr.Dataset:
