@@ -92,4 +92,5 @@ from . import (tracks,
                annotations,
                annotations_manual,
                poses,
-               audio)
+               audio,
+               movieparams)
