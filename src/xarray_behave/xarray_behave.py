@@ -66,8 +66,19 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     if filepath_timestamps is None:
         filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
 
-    # if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
-    ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
+    if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
+        ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
+    elif os.path.exists(filepath_video):
+        from videoreader import VideoReader
+        vr = VideoReader(filepath_video)
+        frame_times = np.arange(0, vr.number_of_frames, 1) / vr.frame_rate
+        frame_times[-1] = frame_times[-2]  # for auto-monotonize to not mess everything up
+        sampling_rate = 2 * target_sampling_rate  #vr.frame_rate
+        sample_times = np.arange(0, vr.number_of_frames, 1 / sampling_rate) / vr.frame_rate
+        last_sample_number = len(sample_times)
+
+        ss = SampStamp(sample_times, frame_times)
+
     filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
     filepath_timestamps_movie = Path(root, dat_path, datename, f'{datename}_movieframes.csv')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
@@ -76,16 +87,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     filepath_timestamps_movie = Path(root, res_path, datename, f'{datename}_movieframes.csv')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_movie):
         ss_movie, last_sample_number_movie, sampling_rate_movie = ld.load_movietimes(filepath_timestamps_movie, filepath_daq)
-
-    # elif os.path.exists(filepath_video):
-    #     from videoreader import VideoReader
-    #     vr = VideoReader(filepath_video)
-    #     frame_times = np.arange(0, vr.number_of_frames) / vr.frame_rate
-    #     frame_times[-1] = frame_times[-2]
-    #     sample_times = frame_times
-    #     ss = SampStamp(sample_times, frame_times)
-    #     last_sample_number = vr.number_of_frames
-    #     sampling_rate = vr.frame_rate
 
     if target_sampling_rate == 0:
         resample_video_data = False
@@ -263,7 +264,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     # construct desired sample grid for data
     step = sampling_rate / target_sampling_rate
-
     if resample_video_data:
         # in case the DAQ stopped before the video
         last_sample_with_frame = np.min((last_sample_number, ss.sample(frame=last_tracked_frame - 1))).astype(np.intp)
@@ -334,7 +334,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     if with_tracks:
         logging.info('   tracking')
-        xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time)
+        xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time, target_time=time, extrapolate=True)
         xr_tracks.attrs.update({'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
@@ -347,7 +347,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # POSES
     if with_poses:
         logging.info('   poses')
-        xr_poses = align_time(xr_poses, ss, target_samples, ref_time=ref_time)
+        xr_poses = align_time(xr_poses, ss, target_samples, ref_time=ref_time, target_time=time)
         xr_poses.attrs.update({'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
@@ -358,7 +358,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         dataset_data['pose_positions'] = xr_poses
 
         # poses in ALLOcentric (frame-relative) coordinates
-        xr_poses_allo = align_time(xr_poses_allo, ss, target_samples, ref_time=ref_time)
+        xr_poses_allo = align_time(xr_poses_allo, ss, target_samples, ref_time=ref_time, target_time=time)
         xr_poses_allo.attrs.update({'description': 'coords are "allocentric" - rel. to frame',
                                          'sampling_rate_Hz': sampling_rate / step,
                                          'time_units': 'seconds',
@@ -372,28 +372,19 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # BALLTRACKS
     if with_balltracker:
         logging.info('   balltracker')
-        xr_balltracks = align_time(xr_balltracks, ss_ball, target_samples, dim='frame_number_ball', suffix='_ball', ref_time=ref_time)
+        xr_balltracks = align_time(xr_balltracks, ss_ball, target_samples, target_time=time,
+                                   dim='frame_number_ball', suffix='_ball', ref_time=ref_time)
         xr_balltracks.attrs.update({'description': '',
-                                          'sampling_rate_Hz': sampling_rate / step,
-                                          'time_units': 'seconds',
-                                          'video_fps': fps,})
+                                    'sampling_rate_Hz': sampling_rate / step,
+                                    'time_units': 'seconds',
+                                    'video_fps': fps,})
         dataset_data['balltracks'] = xr_balltracks
 
     # MOVIEPARAMS
     if with_movieparams:
         logging.info('   movieparams')
-        xr_movieparams = align_time(xr_movieparams, ss_movie, target_samples, dim='frame_number_movie', suffix='_movie', ref_time=ref_time)
-        if with_balltracker:
-            # small errors from the interpolation in sampstamps lead to small discrepancies
-            # in the time vectors between the two data arrays which introduces nans and non int frame numbers in the dataset
-            # re-interpolate to have the "correct" time values
-            max_temporal_error = np.max(np.abs(xr_movieparams['time'].data - xr_balltracks['time'].data))
-            if max_temporal_error > 0 and max_temporal_error < 1.1 / target_sampling_rate:
-                # logging.warning(f'      Correcting small jitter of < {max_temporal_error:1.6} seconds.')
-                xr_movieparams = xr_movieparams.interp({'time': xr_balltracks.time}, assume_sorted=True, kwargs={'fill_value': "extrapolate"})
-                xr_movieparams['nearest_frame_movie'].data = np.round(xr_movieparams['nearest_frame_movie']).astype(np.intp)  #xr_movieparams.interp({'time': xr_balltracks.time}, assume_sorted=True, kwargs={'fill_value': "extrapolate"})
-
-
+        xr_movieparams = align_time(xr_movieparams, ss_movie, target_samples, dim='frame_number_movie', suffix='_movie',
+                                    ref_time=ref_time, target_time=time, extrapolate=True)
         xr_movieparams.attrs.update({'description': '',
                                      'sampling_rate_Hz': sampling_rate / step,
                                      'time_units': 'seconds',
@@ -402,9 +393,12 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     # MAKE THE DATASET
     logging.info('   assembling')
+
     dataset = xr.Dataset(dataset_data, attrs={})
     if 'time' not in dataset:
         dataset.coords['time'] = time
+    if 'sampletime' not in dataset:
+        dataset.coords['sampletime'] = time
     if 'nearest_frame' not in dataset:
     #     # dataset.coords['nearest_frame'] = (('time'), (dataset['time'] + ref_time).astype(np.intp))  # ???
     #     # dataset.coords['nearest_frame'] = (('time'), (np.arange(len(dataset['time']), dtype=np.intp)))
@@ -441,24 +435,27 @@ def add_time(ds, ss, dim: str = 'frame_number', suffix: str = ''):
     return ds
 
 
-def align_time(ds, ss, target_samples, ref_time, dim: str = 'frame_number', suffix: str = '', time=None):
-    fps = 1 / np.nanmean(np.diff(ds['frametimes' + suffix]))
-    # try:
-    #     target_frames_float = ss.samples2frames(target_samples)
-    # except:
+def align_time(ds, ss, target_samples, target_time, ref_time, dim: str = 'frame_number',
+               suffix: str = '', time=None, extrapolate: bool = False):
+
     target_frames_float = ss.times2frames(ss.sample_time(target_samples))
+    interp_kwargs = {}
+    if extrapolate:
+        interp_kwargs['fill_value'] = 'extrapolate'
+    ds = ds.interp({dim: target_frames_float}, assume_sorted=True, kwargs=interp_kwargs)
+    ds = ds.drop_vars(['frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix], errors='Ignore')
 
-    ds = ds.interp({dim: target_frames_float}, assume_sorted=True, kwargs={'fill_value': "extrapolate"})
-    # ds = ds.drop_vars(['frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix], errors='Ignore')
-
-    time_new = ds['frametimes' + suffix] - ref_time
-    ds = ds.assign_coords({'time': ((dim), time_new)})
-
+    # time_new = ds['frametimes' + suffix] - ref_time
+    ds = ds.assign_coords({'time': ((dim), target_time)})
     ds = ds.swap_dims({dim: 'time'})
     ds = ds.assign_coords({'nearest_frame' + suffix: (('time'), np.round(target_frames_float).astype(np.intp))})
+
+    fps = 1 / np.nanmean(np.diff(ds['frametimes' + suffix]))
+    ds.attrs.update({'video_fps': fps})
+
     ds = ds.drop_vars(['frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix,
                        'framenumber' + suffix, 'frametimes' + suffix, 'framesamples' + suffix], errors='Ignore')
-    ds.attrs.update({'video_fps': fps})
+
     return ds
 
 

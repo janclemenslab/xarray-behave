@@ -961,12 +961,13 @@ class PSV(MainWindow):
         self.fmin = fmin
         self.fmax = fmax
 
+        self.tmin = 0
         if 'song' in self.ds:
             self.tmax = self.ds.song.shape[0]
         elif 'song_raw' in self.ds:
             self.tmax = self.ds.song_raw.shape[0]
         elif 'body_positions' in self.ds:
-            self.tmax = len(self.ds.body_positions) * ds.attrs['target_sampling_rate_Hz']
+            self.tmax = len(self.ds.body_positions) #* ds.attrs['target_sampling_rate_Hz']
         else:
             raise ValueError('No time stamp info in dataset.')
 
@@ -1243,7 +1244,6 @@ class PSV(MainWindow):
                 print(e)
 
         self.scrollbar = pg.Qt.QtWidgets.QScrollBar(pg.QtCore.Qt.Horizontal)
-        self.tmin = np.min(self.ds.sampletime.values)
         self.scrollbar.setMinimum(self.tmin)
         self.scrollbar.setMaximum(self.tmax)
         self.scrollbar.setPageStep(max((self.tmax-self.tmin)/100, self._span / self.fs_song))
@@ -1323,9 +1323,12 @@ class PSV(MainWindow):
     @property
     def framenumber(self):
         if 'nearest_frame' in self.ds.coords:
-            return int(self.ds.coords['nearest_frame'][self.index_other].data)
-        else:
-            return None
+            try:  # in case nearest_frame is nan
+                return int(self.ds.coords['nearest_frame'][self.index_other].data)
+            except:
+                pass
+
+        return None
 
     @property
     def span(self):
@@ -1627,6 +1630,8 @@ class PSV(MainWindow):
             if self.select_loudest_channel:
                 self.loudest_channel = np.argmax(np.max(y_all, axis=0))
                 self.cb2.setCurrentIndex(self.loudest_channel)
+        else:
+            return
 
         if self.threshold_mode:
             self.envelope = self.get_envelope()
