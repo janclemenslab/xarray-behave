@@ -40,7 +40,7 @@ class FicTrac_balltracks(io.BaseProvider, BallTracks):
         if filename is None:
             filename = self.path
 
-        balltracks = pd.read_csv(filename)
+        balltracks = pd.read_csv(filename, index_col=0)
         first_balltracked_frame = balltracks['frame counter (starts at 1)'].values[0]
         last_balltracked_frame = balltracks['frame counter (starts at 1)'].values[-1]
         return balltracks, first_balltracked_frame, last_balltracked_frame
