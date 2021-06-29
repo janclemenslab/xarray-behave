@@ -82,7 +82,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
     filepath_timestamps_movie = Path(root, dat_path, datename, f'{datename}_movieframes.csv')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
-        ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps, filepath_daq)
+        ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps_ball, filepath_daq)
 
     filepath_timestamps_movie = Path(root, res_path, datename, f'{datename}_movieframes.csv')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_movie):
@@ -413,7 +413,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     # save command line args
     dataset.attrs = {'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
                      'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path,
-                     'target_sampling_rate_Hz': target_sampling_rate}
+                     'target_sampling_rate_Hz': target_sampling_rate, 'ref_time': ref_time}
 
     filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
     if fix_fly_indices and os.path.exists(filepath_swap):
