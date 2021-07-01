@@ -100,13 +100,18 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         audio_loader = io.get_loader(kind='audio',
                                      basename=basename,
                                      basename_is_full_name=filepath_daq_is_custom)
-        song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
-        if sampling_rate is None:
-            sampling_rate = audio_sampling_rate
-        sample_times = np.arange(len(song_raw)) / sampling_rate
-        frame_times = sample_times[::10]
-        last_sample_number = len(sample_times)
-        ss = SampStamp(sample_times.flatten(), frame_times.flatten())
+        if audio_loader is None and filepath_daq_is_custom:
+            audio_loader = io.audio.AudioFile(basename)
+        try:
+            song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
+            if sampling_rate is None:
+                sampling_rate = audio_sampling_rate
+            sample_times = np.arange(len(song_raw)) / sampling_rate
+            frame_times = sample_times[::10]
+            last_sample_number = len(sample_times)
+            ss = SampStamp(sample_times.flatten(), frame_times.flatten())
+        except:
+            raise ValueError(f'Could not read {audio_loader.path}.')
 
     filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
@@ -263,12 +268,15 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         audio_loader = io.get_loader(kind='audio',
                                      basename=basename,
                                      basename_is_full_name=filepath_daq_is_custom)
+        if not audio_loader and filepath_daq_is_custom:
+            audio_loader = io.audio.AudioFile(basename)
+
         if audio_loader:
             try:
                 song_raw, non_song_raw, samplerate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
-                logging.info(f'   {audio_loader.path} loaded.')
+                logging.info(f'   {audio_loader.path} loaded using {audio_loader.NAME}.')
             except Exception as e:
-                logging.info(f'   Loading {audio_loader.path} failed..')
+                logging.info(f'   Loading {audio_loader.path} using {audio_loader.NAME} failed.')
                 logging.exception(e)
         logging.info('Done.')
 
@@ -433,8 +441,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     if 'sampletime' not in dataset:
         dataset.coords['sampletime'] = time
     if 'nearest_frame' not in dataset:
-    #     # dataset.coords['nearest_frame'] = (('time'), (dataset['time'] + ref_time).astype(np.intp))  # ???
-    #     # dataset.coords['nearest_frame'] = (('time'), (np.arange(len(dataset['time']), dtype=np.intp)))
          dataset.coords['nearest_frame'] = (('time'), (ss.times2frames(dataset['time'] + ref_time).astype(np.intp)))
 
     # convert spatial units to mm using info in attrs
