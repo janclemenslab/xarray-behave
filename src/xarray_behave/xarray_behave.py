@@ -22,7 +22,8 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
              filepath_timestamps: Optional[str] = None,
              filepath_video: Optional[str] = None,
              filepath_daq: Optional[str] = None,
-             target_sampling_rate=1_000, resample_video_data: bool = True,
+             filepath_annotations: Optional[str] = None,
+             target_sampling_rate: float = 1_000, audio_sampling_rate: Optional[float] = None, resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True, include_poses: bool = True, include_balltracker: bool = True, include_movieparams: bool = True,
              fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
              lazy_load_song: bool = False) -> xr.Dataset:
@@ -38,7 +39,11 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         filepath_timestamps (str, optional): Path to the timestamps file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_video (str, optional): Path to the video file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_daq (str, optional): Path to the daq file. Defaults to None (infer path from `datename` and `dat_path`).
+        filepath_annotations (str, optional): Path to annotations file. Defaults to None (infer path from `datename` and `res_path`).
         target_sampling_rate (int, optional): Sampling rate in Hz for pose and annotation data. Defaults to 1000.
+        audio_sampling_rate (int, optional): Audio sampling rate in Hz.
+                                             Used to override sampling rate inferred from file or to provide sampling rate if missing from file.
+                                             Defaults to None (use inferred sampling rate).
         keep_multi_channel (bool, optional): Add multi-channel data (otherwise will only add merged traces). Defaults to False.
         resample_video_data (bool, optional): Or keep video with original frame times. Defaults to True.
         include_song (bool, optional): [description]. Defaults to True.
@@ -62,25 +67,48 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     if filepath_video is None:
         filepath_video = str(Path(root, dat_path, datename, f'{datename}.mp4'))
-    # timestamps should be: filepath_video - ext + `_timestamps.h5`
+
     if filepath_timestamps is None:
         filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
 
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
         ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
-    elif os.path.exists(filepath_video):
+        if sampling_rate is None:
+            sampling_rate = audio_sampling_rate
+
+    elif os.path.exists(filepath_video):  # Video (+tracks) only
+        # if there is only the video, generate fake timestamps for video and samples from fps
         from videoreader import VideoReader
         vr = VideoReader(filepath_video)
         frame_times = np.arange(0, vr.number_of_frames, 1) / vr.frame_rate
+        if target_sampling_rate == 0 or target_sampling_rate is None:
+            resample_video_data = False
+            target_sampling_rate = vr.frame_rate
         frame_times[-1] = frame_times[-2]  # for auto-monotonize to not mess everything up
         sampling_rate = 2 * target_sampling_rate  #vr.frame_rate
         sample_times = np.arange(0, vr.number_of_frames, 1 / sampling_rate) / vr.frame_rate
         last_sample_number = len(sample_times)
-
         ss = SampStamp(sample_times, frame_times)
+    elif os.path.exists(filepath_daq) and not os.path.exists(filepath_timestamps):  # Audio (+ annotations) only
+        # if there is no video and no timestamps - generate fake from samplerate and number of samples
+        logging.info(f'Loading audio data:')
+        if not filepath_daq_is_custom:
+            basename = os.path.join(root, dat_path, datename, datename)
+        else:
+            basename = filepath_daq
+
+        audio_loader = io.get_loader(kind='audio',
+                                     basename=basename,
+                                     basename_is_full_name=filepath_daq_is_custom)
+        song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
+        if sampling_rate is None:
+            sampling_rate = audio_sampling_rate
+        sample_times = np.arange(len(song_raw)) / sampling_rate
+        frame_times = sample_times[::10]
+        last_sample_number = len(sample_times)
+        ss = SampStamp(sample_times.flatten(), frame_times.flatten())
 
     filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
-    filepath_timestamps_movie = Path(root, dat_path, datename, f'{datename}_movieframes.csv')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
         ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps_ball, filepath_daq)
 
@@ -88,11 +116,12 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_movie):
         ss_movie, last_sample_number_movie, sampling_rate_movie = ld.load_movietimes(filepath_timestamps_movie, filepath_daq)
 
-    if target_sampling_rate == 0:
+    if target_sampling_rate == 0 or target_sampling_rate is None:
         resample_video_data = False
     if not resample_video_data:
         logging.info(f'  setting targetsamplingrate to avg. fps.')
-        target_sampling_rate = 1 / np.mean(np.diff(ss.frames2times.y))
+        fps = 1 / np.mean(np.diff(ss.frames2times.y))
+        target_sampling_rate = fps
 
 
     # LOAD TRACKS
@@ -187,7 +216,11 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     if include_song:
         logging.info(f'Loading automatic annotations:')
-        annot_loader = io.get_loader(kind='annotations', basename=os.path.join(root, res_path, datename, datename), stop_after_match=False)
+        custom_filepath_annotations = filepath_annotations is not None
+        if not custom_filepath_annotations:
+            filepath_annotations = os.path.join(root, res_path, datename, datename)
+
+        annot_loader = io.get_loader(kind='annotations', basename=filepath_annotations, stop_after_match=False, basename_is_full_name=custom_filepath_annotations)
         if annot_loader:
             if isinstance(annot_loader, str):
                 annot_loader = list(annot_loader)
@@ -207,7 +240,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
         # load MANUAL SONG ANNOTATIONS
         logging.info(f'Loading manual annotations:')
-        manual_annot_loader = io.get_loader(kind='annotations_manual', basename=os.path.join(root, res_path, datename, datename))
+        manual_annot_loader = io.get_loader(kind='annotations_manual', basename=filepath_annotations, basename_is_full_name=custom_filepath_annotations)
         if manual_annot_loader:
             try:
                 manual_event_seconds, manual_event_categories = manual_annot_loader.load(manual_annot_loader.path)
@@ -408,12 +441,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     dataset = convert_spatial_units(dataset, to_units='mm',
                                     names = ['body_positions', 'pose_positions', 'pose_positions_allo'])
 
-    if target_sampling_rate is None:
-        target_sampling_rate = fps
     # save command line args
     dataset.attrs = {'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
                      'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path,
-                     'target_sampling_rate_Hz': target_sampling_rate, 'ref_time': ref_time}
+                     'sampling_rate_Hz': sampling_rate, 'target_sampling_rate_Hz': target_sampling_rate, 'ref_time': ref_time}
 
     filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
     if fix_fly_indices and os.path.exists(filepath_swap):
