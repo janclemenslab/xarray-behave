@@ -47,7 +47,7 @@ def register_provider(func):
     if func.KIND not in kinds:
         kinds[func.KIND] = []
     kinds[func.KIND].extend(func.SUFFIXES)
-
+    return func
 
 
 def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename_is_full_name: bool = False):
