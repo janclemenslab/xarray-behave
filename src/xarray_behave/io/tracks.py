@@ -1,11 +1,10 @@
 """Tracks loaders
 
 should return:
-    x: np.array[frames, flies, body_parts, x/y]
+    x: np.array[frames, tracks(flies), body_parts, y/x]
+    track_names: List
     body_parts: List[str]
-    first_tracked_frame: int
-    last_tracked_frame: int
-    background: np.array[width, height, pixels?]
+    frame_numbers List[np.intp]
 """
 
 import h5py
@@ -23,17 +22,17 @@ class Tracks():
         if filename is None:
             filename = self.path
 
-        body_pos, body_parts, first_tracked_frame, last_tracked_frame, background = self.load(filename)
+        body_pos, track_names, body_parts, frame_numbers = self.load(filename)
 
         positions = xr.DataArray(data=body_pos,
                                  dims=['frame_number', 'flies', 'bodyparts', 'coords'],
-                                 coords={'frame_number': np.arange(first_tracked_frame, last_tracked_frame),
+                                 coords={'frame_number': frame_numbers,
                                          'bodyparts': body_parts,
+                                         'flies': track_names,
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'type': 'tracks',
                                         'spatial_units': 'pixels',
-                                        'background': background,
                                         'loader': self.NAME,
                                         'kind': self.KIND,
                                         'path': filename,})
@@ -77,10 +76,12 @@ class Ethotracker(Tracks, io.BaseProvider):
         tails = tails + chbb[1][0][:]
         box_centers = box_centers + chbb[1][0][:]
         body_parts = ['head', 'center', 'tail']
-        # first_tracked_frame, last_tracked_frame = data['start_frame'], data['frame_count']
+
         x = np.stack((heads, box_centers, tails), axis=2)
         x = x[first_tracked_frame:last_tracked_frame, ...]
-        return x, body_parts, first_tracked_frame, last_tracked_frame, background
+        frame_numbers = np.arange(first_tracked_frame, last_tracked_frame, dtype=np.intp)
+        track_names = np.arange(x.shape[1])
+        return x, track_names, body_parts, frame_numbers
 
 
 @io.register_provider
@@ -91,13 +92,36 @@ class CSV_tracks(Tracks, io.BaseProvider):
     SUFFIXES = ['_tracks.csv']
 
     def load(self, filename: Optional[str] = None):
-        """Load tracker data"""
+        """Load tracker data from CSV file.
+
+        Head of the CSV file should look like this:
+        track	track1	track1	track1	track1	track1	track1
+        part	a	    a	    b	    b  	    c	    c
+        coord	x	    y	    x	    y	    x	    y
+        0       0.09    0.09    0.09    0.09    0.09    0.09
+        1       0.09    0.09    0.09    0.09    0.09    0.09
+        2       0.09    0.09    0.09    0.09    0.09    0.09
+        ...
+
+        First column contains the framenumber (does not need to start at 0),
+        remaining columns contain coordinate date for different tracks/trackparts.
+
+        Args:
+            filename (Optional[str], optional): Path to the CSV file. Defaults to None.
+
+        Returns:
+            x: np.array([frames, tracks, parts, coords (y/x)]), track_names: List[], track_parts: List[], frame_numbers: np.array[np.intp]
+        """
+
         if filename is None:
             filename = self.path
-        # #df with cols: framenumber, tracknumber, head, center, tail
-        # # in frame coords
-        # df = pd.read_csv(filename)
-
-        # # reshape df to [frames, flies, parts, x/y]
-        # return x, body_parts, first_tracked_frame, last_tracked_frame
-        logging.warning('Loading generic tracks from CSV not implemented yet.')
+        logging.warning('Loading tracks from CSV.')
+        df = pd.read_csv(filename, header=[0, 1, 2], index_col=0)
+        track_names = df.columns.levels[df.columns.names.index('track')].to_list()
+        track_parts = df.columns.levels[df.columns.names.index('part')].to_list()
+        track_coord = df.columns.levels[df.columns.names.index('coord')].to_list()
+        coord_order = [track_coord.index('y'), track_coord.index('x')]
+        x = np.reshape(df.values, (-1, len(track_names), len(track_parts), len(track_coord)))
+        x = x[..., coord_order]
+        frame_numbers = df.index.to_numpy().astype(np.intp)
+        return x, track_names, track_parts, frame_numbers
