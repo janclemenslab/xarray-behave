@@ -22,9 +22,7 @@ should return:
 """
 
 import h5py
-import flammkuchen
 import numpy as np
-import pandas as pd
 from .. import io
 from typing import Optional, Sequence
 
@@ -168,10 +166,10 @@ class Wav(io.BaseProvider):
 
 
 @io.register_provider
-class Soundfile(io.BaseProvider):
+class AudioFile(io.BaseProvider):
 
     KIND = 'audio'
-    NAME = 'wav'
+    NAME = 'generic audio file'
     SUFFIXES = ['.wav', '.aif', '.mp3', '.flac']
 
     def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
