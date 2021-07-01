@@ -203,8 +203,8 @@ class H5file(io.BaseProvider):
 
         import h5py
         sampling_rate = None
-        with h5py.File(filename, mode='r') as f:
-            data = f[audio_dataset][:]
+        with h5py.File(filename, mode='r') as file:
+            data = file[audio_dataset][:]
             try:
                 sampling_rate = file.attrs['samplerate']
             except:
