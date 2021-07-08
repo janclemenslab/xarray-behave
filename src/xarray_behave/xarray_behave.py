@@ -18,21 +18,25 @@ from . import (loaders as ld,
                io)
 
 
-def assemble(datename, root='', dat_path='dat', res_path='res',
+def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat', res_path: str = 'res',
              filepath_timestamps: Optional[str] = None,
              filepath_video: Optional[str] = None,
              filepath_daq: Optional[str] = None,
              filepath_annotations: Optional[str] = None,
-             target_sampling_rate: float = 1_000, audio_sampling_rate: Optional[float] = None, resample_video_data: bool = True,
-             include_song: bool = True, include_tracks: bool = True, include_poses: bool = True, include_balltracker: bool = True, include_movieparams: bool = True,
+             target_sampling_rate: float = 1_000, audio_sampling_rate: Optional[float] = None,
+             audio_channels: Optional[List[int]] = None, audio_dataset: str = None,
+             event_names: Optional[List[str]] = None, event_categories: Optional[List[str]]= None,
+             resample_video_data: bool = True,
+             include_song: bool = True, include_tracks: bool = True,
+             include_poses: bool = True, include_balltracker: bool = True, include_movieparams: bool = True,
              fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
              lazy_load_song: bool = False) -> xr.Dataset:
     """[summary]
 
     Args:
-        datename ([type]): Used to infer file paths.
+        datename (str, optional): Used to infer file paths.
                            Constructed paths follow this schema f"{root}/{dat_path|res_path}/{datename}/{datename}_suffix.extension".
-                           Can be overridden for some paths with arguments below.
+                           Can be overridden for some paths with arguments below. Defaults to None.
         root (str, optional): Used to infer file paths. Defaults to ''.
         dat_path (str, optional): Used to infer paths of video, daq, and timestamps files. Defaults to 'dat'.
         res_path (str, optional): Used to infer paths of annotation, tracking etc files. Defaults to 'res'.
@@ -44,7 +48,10 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         audio_sampling_rate (int, optional): Audio sampling rate in Hz.
                                              Used to override sampling rate inferred from file or to provide sampling rate if missing from file.
                                              Defaults to None (use inferred sampling rate).
-        keep_multi_channel (bool, optional): Add multi-channel data (otherwise will only add merged traces). Defaults to False.
+        audio_channels (List[int], optional): Defaults to None (all channels).
+        audio_dataset (str, optional): Name of the dataset in NPZ and H5 files that contains the audio data. Defaults to 'data'.
+        event_names (List[str], optional): List of event names to initialize dataset with. Defaults to [].
+        event_categories (List[str], optional): 'segment' or 'event' for each item in `event_names`. Defaults to 'segment'.
         resample_video_data (bool, optional): Or keep video with original frame times. Defaults to True.
         include_song (bool, optional): [description]. Defaults to True.
         include_tracks (bool, optional): [description]. Defaults to True.
@@ -91,6 +98,7 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         ss = SampStamp(sample_times, frame_times)
     elif os.path.exists(filepath_daq) and not os.path.exists(filepath_timestamps):  # Audio (+ annotations) only
         # if there is no video and no timestamps - generate fake from samplerate and number of samples
+        # THIS SHOULD BE THE FIRST THING WE DO:
         logging.info(f'Loading audio data:')
         if not filepath_daq_is_custom:
             basename = os.path.join(root, dat_path, datename, datename)
@@ -103,7 +111,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         if audio_loader is None and filepath_daq_is_custom:
             audio_loader = io.audio.AudioFile(basename)
         try:
-            song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
+            song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, song_channels=audio_channels,
+                                                                      return_nonsong_channels=True, lazy=lazy_load_song,
+                                                                      audio_dataset=audio_dataset)
             if sampling_rate is None:
                 sampling_rate = audio_sampling_rate
             sample_times = np.arange(len(song_raw)) / sampling_rate
@@ -127,7 +137,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         logging.info(f'  setting targetsamplingrate to avg. fps.')
         fps = 1 / np.mean(np.diff(ss.frames2times.y))
         target_sampling_rate = fps
-
 
     # LOAD TRACKS
     with_tracks = False
@@ -216,8 +225,22 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
     non_song_raw = None
     auto_event_seconds = {}
     auto_event_categories = {}
-    manual_event_seconds = {}
-    manual_event_categories = {}
+
+
+    if event_names is None:
+        event_names = []
+    if event_categories is None:
+        event_categories = []
+
+    if len(event_names) != len(event_categories):
+        logging.warning(f'event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}.')
+        event_categories = []
+
+    if event_names and not event_categories:
+        logging.info('No event_categories specified - defaulting to segments')
+        event_categories = ['segment'] * len(event_names)
+    manual_event_seconds = {name: [] for name in event_names}
+    manual_event_categories = {cat: [] for cat in event_categories}
 
     if include_song:
         logging.info(f'Loading automatic annotations:')
@@ -248,7 +271,9 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
         manual_annot_loader = io.get_loader(kind='annotations_manual', basename=filepath_annotations, basename_is_full_name=custom_filepath_annotations)
         if manual_annot_loader:
             try:
-                manual_event_seconds, manual_event_categories = manual_annot_loader.load(manual_annot_loader.path)
+                manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(manual_annot_loader.path)
+                manual_event_seconds.update(manual_event_seconds_loaded)
+                manual_event_categories.update(manual_event_categories_loaded)
                 logging.info(f'   {manual_annot_loader.path} loaded.')
             except Exception as e:
                 logging.info(f'   Loading {manual_annot_loader.path} failed.')
@@ -289,10 +314,6 @@ def assemble(datename, root='', dat_path='dat', res_path='res',
 
     event_seconds = ld.fix_keys(event_seconds)
     event_categories = ld.fix_keys(event_categories)
-
-    # TODO:
-    # - get timing from `ss_ball` if `ss` does not exist?
-    # - cope with recordings w/o daq or video!
 
     # PREPARE sample/time/framenumber grids
     if not with_tracks:
@@ -750,128 +771,3 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True,
         dataset = _normalize_strings(dataset)
     logging.info(dataset)
     return dataset
-
-def load_npz(filepath: str, dataset: Optional[str] = 'data'):
-    import numpy as np
-    logging.info(f"Loading data from NPZ file at {filepath}.")
-    with np.load(filepath) as file:
-        try:
-            sampling_rate = file['samplerate']
-        except KeyError:
-            sampling_rate = None
-        data = file[dataset]
-    return data, sampling_rate
-
-def load_npy(filepath: str, dataset: Optional[str] = None):
-    import numpy as np
-    logging.info(f"Loading data from NPY file {filepath}.")
-    data = np.load(filepath)
-    samplingrate = None
-    return data, samplingrate
-
-def load_audio(filepath: str, dataset: Optional[str] = None):
-    import soundfile
-    logging.info(f"Loading data from audio file at {filepath}.")
-    data, sampling_rate = soundfile.read(filepath)
-    return data, sampling_rate
-
-def load_wav(filepath: str, dataset: Optional[str] = None):
-    import scipy.io.wavfile
-    samplerate, data = scipy.io.wavfile.read(filepath)
-    data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
-    return data, samplerate
-
-def load_h5(filepath: str, dataset: Optional[str] = 'samples'):
-    import h5py
-    logging.info(f"Loading dataset {dataset} from HDF5 file {filepath}.")
-    with h5py.File(filepath, 'r') as f:
-        data = f[dataset][:]
-    samplingrate = None
-    return data, samplingrate
-
-# def zarr(filepath):
-#     import zarr
-#     logging.info(f"Loading zarr file {filepath}.")
-#     xb.load()
-#     samplingrate = None
-#     return data, samplingrate
-
-data_loaders = {'audio': load_audio, 'npy': load_npy, 'npz': load_npz, 'h5': load_h5, 'wav': load_wav}
-
-def from_file(filepath: str, loader_name: str = 'audio', target_samplerate: Optional[float] = None,
-              samplerate: Optional[float] = None, dataset: Optional[str] = None,
-              event_names=[], event_categories=[], annotation_path: Optional[str] = None,
-              audio_channels: Optional[List[int]] = None):
-    # TODO merge with from_data
-
-    data, samplerate_from_file = data_loaders[loader_name](filepath, dataset)
-
-    if audio_channels is not None:
-        # audio_channels = np.arange(16)
-        data = data[:, audio_channels]
-
-    if samplerate is None:
-        samplerate = samplerate_from_file
-
-    if data.ndim==1:
-        logging.info("   Data is 1d so prolly single-channel audio - appending singleton dimension.")
-        data = data[:, np.newaxis]
-
-    if event_names is None:
-        event_names = []
-
-    if event_categories is None:
-        event_categories = []
-
-    if event_names and not event_categories:
-        logging.info('No event_categories specified - defaulting to segments')
-        event_categories = ['segment'] * len(event_names)
-
-    if len(event_names) != len(event_categories):
-        raise ValueError(f'event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}.')
-
-    if target_samplerate is None:
-        target_samplerate = samplerate
-
-    dataset_data = dict()
-    sampletime = np.arange(len(data)) / samplerate
-    time = np.arange(sampletime[0], sampletime[-1], 1 / target_samplerate)
-
-    song_raw = xr.DataArray(data=data,  # cut recording to match new grid
-                        dims=['sampletime', 'channels'],
-                        coords={'sampletime': sampletime, },
-                        attrs={'description': 'Song signal merged across all recording channels.',
-                               'sampling_rate_Hz': samplerate,
-                               'time_units': 'seconds',
-                               'amplitude_units': 'volts'})
-    dataset_data['song_raw'] = song_raw
-
-    event_times = annot.Events()
-    if annotation_path is not None and os.path.exists(annotation_path):
-        try:
-            df = pd.read_csv(annotation_path)
-            event_times = annot.Events.from_df(df)
-        except Exception as e:
-            logging.exception(e)
-
-    if event_names is not None and event_categories is not None:
-        for event_name, event_category in zip(event_names, event_categories):
-            if event_name not in event_times:
-                event_times.add_name(event_name, event_category)
-
-    ds_eventtimes = event_times.to_dataset()
-    dataset_data['event_names'] = ds_eventtimes.event_names
-    dataset_data['event_times'] = ds_eventtimes.event_times
-
-    # MAKE THE DATASET
-    ds = xr.Dataset(dataset_data, attrs={})
-    ds.coords['time'] = time
-
-    # save command line args
-    ds.attrs = {'video_filename': '',
-                'datename': filepath,
-                'root': '', 'dat_path': '', 'res_path': '',
-                'sampling_rate_Hz': samplerate,
-                'target_sampling_rate_Hz': target_samplerate}
-    logging.info(ds)
-    return ds

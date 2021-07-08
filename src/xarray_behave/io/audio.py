@@ -45,7 +45,8 @@ class Ethodrome(io.BaseProvider):
     SUFFIXES = ['_daq.h5']
 
     def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
-             return_nonsong_channels: bool = False, lazy: bool = False):
+             return_nonsong_channels: bool = False, lazy: bool = False,
+             **kwargs):
         """[summary]
 
         Args:
@@ -99,10 +100,13 @@ class Npz(io.BaseProvider):
 
     def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
              return_nonsong_channels: bool = False, lazy: bool = False,
-             audio_dataset: str = 'data'):
+             audio_dataset: Optional[str] = None,
+             **kwargs):
 
         if filename is None:
             filename = self.path
+        if audio_dataset is None:
+            audio_dataset = 'data'
 
         with np.load(filename) as file:
             try:
@@ -131,7 +135,7 @@ class Npy(io.BaseProvider):
 
     def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
              return_nonsong_channels: bool = False, lazy: bool = False,
-             audio_dataset: Optional[str] = None):
+             **kwargs):
 
         if filename is None:
             filename = self.path
@@ -174,7 +178,7 @@ class AudioFile(io.BaseProvider):
 
     def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
              return_nonsong_channels: bool = False, lazy: bool = False,
-             audio_dataset: Optional[str] = None):
+             **kwargs):
 
         if filename is None:
             filename = self.path
@@ -196,10 +200,13 @@ class H5file(io.BaseProvider):
 
     def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
              return_nonsong_channels: bool = False, lazy: bool = False,
-             audio_dataset: Optional[str] = None):
+             audio_dataset: Optional[str] = None,
+             **kwargs):
 
         if filename is None:
             filename = self.path
+        if audio_dataset is None:
+            audio_dataset = 'data'
 
         import h5py
         sampling_rate = None

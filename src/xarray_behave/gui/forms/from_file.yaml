@@ -6,11 +6,11 @@ main:
   default: ''
   options: ''
 
-- name: data_loader
-  label: Data format
-  type: list
-  default: ''
-  options: ''
+# - name: data_loader
+#   label: Data format
+#   type: list
+#   default: ''
+#   options: ''
 
 - name: samplerate
   label: Audio sample rate (Hz)

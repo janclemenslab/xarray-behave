@@ -527,8 +527,8 @@ class MainWindow(pg.QtGui.QMainWindow):
             # infer loader from file name and set default in form
             # infer samplerate (catch error) and set default in form
             samplerate = 10_000  # Hz
-            data_loader = None
             datasets = ['']
+
             if filename.endswith('.npz'):
                 try:
                     # TODO list variable for form
@@ -541,10 +541,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                     data_loader = 'npz'
                 except KeyError:
                     logging.info(f'{filename} no sample rate info in NPZ file. Need to save "samplerate" variable with the audio data.')
-            elif filename.endswith('.zarr'):
-                pass  # lazy load and get samplerate attr
-            elif filename.endswith('.npy'):
-                data_loader = 'npy'
             elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5') or filename.endswith('.mat'):
                 # infer data set (for hdf5) and populate form
                 try:
@@ -559,7 +555,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                 try:  # to load as audio file
                     import scipy.io.wavfile
                     samplerate, _ = scipy.io.wavfile.read(filename, mmap=True)
-                    data_loader = 'wav'
                 except:
                     pass
             else:
@@ -568,15 +563,8 @@ class MainWindow(pg.QtGui.QMainWindow):
                     fileinfo = soundfile.info(filename)
                     samplerate = fileinfo.samplerate
                     logging.info(fileinfo)
-                    data_loader = 'audio'
                 except:
                     pass
-
-            if filename.endswith('.npy'):
-                data_loader = 'npy'
-
-            if data_loader is None:
-                data_loader = 'audio'
 
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_file.yaml",
                                 title=f'Load {filename}')
@@ -586,10 +574,6 @@ class MainWindow(pg.QtGui.QMainWindow):
 
             dialog.form.fields['data_set'].set_options(datasets)  # add datasets
             dialog.form.fields['data_set'].setValue(datasets[0])  # select first
-
-            data_loaders = list(xb.data_loaders.keys())
-            dialog.form.fields['data_loader'].set_options(data_loaders)  # add datasets
-            dialog.form.fields['data_loader'].setValue(data_loader)  # select first
 
             # set default based on data file
             annotation_path = os.path.splitext(filename)[0] + '_annotations.csv'
@@ -621,25 +605,24 @@ class MainWindow(pg.QtGui.QMainWindow):
                     form_data['target_samplingrate'] = None
 
                 event_names = []
-                event_classes = []
+                event_categories = []
                 if len(form_data['events_string']):
                     for pair in form_data['events_string'].split(';'):
                         items = pair.strip().split(',')
                         if len(items)>0:
                             event_names.append(items[0].strip())
                         if len(items)>1:
-                            event_classes.append(items[1].strip())
+                            event_categories.append(items[1].strip())
                         else:
-                            event_classes.append('segment')
+                            event_categories.append('segment')
 
-                ds = xb.from_file(filepath=filename,
-                                 loader_name=form_data['data_loader'],
-                                 samplerate=form_data['samplerate'],
-                                 dataset=form_data['data_set'],
-                                 target_samplerate=form_data['target_samplingrate'],
+                ds = xb.assemble(filepath_daq=filename,
+                                 filepath_annotations=form_data['annotation_path'],
+                                 audio_sampling_rate=form_data['samplerate'],
+                                 target_sampling_rate=form_data['target_samplingrate'],
+                                 audio_dataset=form_data['data_set'],
                                  event_names=event_names,
-                                 event_categories=event_classes,
-                                 annotation_path=form_data['annotation_path'])
+                                 event_categories=event_categories)
 
                 if form_data['filter_song'] == 'yes':
                     ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
@@ -651,7 +634,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 return PSV(ds, title=filename, cue_points=cue_points,
                            fmin=dialog.form['spec_freq_min'],
                            fmax=dialog.form['spec_freq_max'],
-                           data_source=DataSource(form_data['data_loader'], filename))
+                           data_source=DataSource('file', filename))
 
     @classmethod
     def from_dir(cls, dirname=None, app=None, qt_keycode=None, events_string='',

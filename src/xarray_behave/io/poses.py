@@ -232,3 +232,49 @@ class Sleap(Poses, io.BaseProvider):
         # poses_allo = tracks.transpose([3, 0, 2, 1])
         # return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
         logging.warning('Loading SLEAP poses not implemented yet.')
+
+
+
+# @io.register_provider
+# class CSV_poses(Poses, io.BaseProvider):
+
+#     KIND = 'tracks'
+#     NAME = 'generic csv'
+#     SUFFIXES = ['_tracks.csv']
+
+#     def load(self, filename: Optional[str] = None):
+#         """Load tracker data from CSV file.
+
+#         Head of the CSV file should look like this:
+#         track	track1	track1	track1	track1	track1	track1
+#         part	a	    a	    b	    b  	    c	    c
+#         coord	x	    y	    x	    y	    x	    y
+#         0       0.09    0.09    0.09    0.09    0.09    0.09
+#         1       0.09    0.09    0.09    0.09    0.09    0.09
+#         2       0.09    0.09    0.09    0.09    0.09    0.09
+#         ...
+
+#         First column contains the framenumber (does not need to start at 0),
+#         remaining columns contain coordinate date for different tracks/trackparts.
+
+#         Args:
+#             filename (Optional[str], optional): Path to the CSV file. Defaults to None.
+
+#         Returns:
+#             x: np.array([frames, tracks, parts, coords (y/x)]), track_names: List[], track_parts: List[], frame_numbers: np.array[np.intp]
+#         """
+
+#         if filename is None:
+#             filename = self.path
+#         logging.warning('Loading tracks from CSV.')
+#         df = pd.read_csv(filename, header=[0, 1, 2], index_col=0)
+#         track_names = df.columns.levels[df.columns.names.index('track')].to_list()
+#         track_parts = df.columns.levels[df.columns.names.index('part')].to_list()
+#         track_coord = df.columns.levels[df.columns.names.index('coord')].to_list()
+#         coord_order = [track_coord.index('y'), track_coord.index('x')]
+#         x = np.reshape(df.values, (-1, len(track_names), len(track_parts), len(track_coord)))
+#         x = x[..., coord_order]
+#         frame_numbers = df.index.to_numpy().astype(np.intp)
+#         # return x, track_names, track_parts, frame_numbers
+#         return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
+
