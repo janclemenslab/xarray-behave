@@ -1949,9 +1949,15 @@ class PSV(MainWindow):
                 detected_event_names = np.unique(events['sequence'])
             else:
                 detected_event_names = []
+
             if len(detected_event_names) > 0 and detected_event_names[0] is not None:
                 logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
                 event_samples = (np.array(events['seconds']) * self.fs_song  + start_index).astype(np.uintp)
+
+                # make sure all detected events are within bounds
+                event_samples = event_samples[event_samples >= 0]
+                event_samples = event_samples[event_samples < self.ds.sampletime.shape[0]]
+
                 event_seconds = self.ds.sampletime[event_samples]
                 for name, seconds in zip(events['sequence'], event_seconds):
                     self.event_times.add_time(str(name) + str(suffix), seconds, seconds, category='event')
@@ -1960,10 +1966,17 @@ class PSV(MainWindow):
                 detected_segment_names = np.unique(segments['sequence'])
             else:
                 detected_segment_names = []
+
             if len(detected_segment_names) > 0 and detected_segment_names[0] is not None:
                 logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
                 onsets_samples = (np.array(segments['onsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
                 offsets_samples = (np.array(segments['offsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
+
+                # make sure all detected segments are within bounds
+                onsets_samples = onsets_samples[onsets_samples >= 0]
+                offsets_samples = offsets_samples[offsets_samples >= 0]
+                onsets_samples = onsets_samples[onsets_samples < self.ds.sampletime.shape[0]]
+                offsets_samples = offsets_samples[offsets_samples < self.ds.sampletime.shape[0]]
 
                 onsets_seconds = self.ds.sampletime[onsets_samples]
                 offsets_seconds = self.ds.sampletime[offsets_samples]
