@@ -356,7 +356,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                         make_single_class_datasets=form_data['make_single_class_datasets'],
                         split_train_in_two=form_data['split_train_in_two'],
                         event_std_seconds=form_data['event_std_seconds'],
-                        gap_seconds=form_data['gap_seconds'])
+                        gap_seconds=form_data['gap_seconds'],
+                        make_onset_offset_events=form_data['make_onset_offset_events'],
+                        seed=form_data['seed_splits'])
             logging.info('Done.')
 
     def das_train(self, qt_keycode):

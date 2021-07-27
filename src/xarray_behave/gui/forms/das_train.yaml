@@ -51,6 +51,12 @@ main:
   range: 1,1000
   help: 'Random seed to reproducibly select data fractions.'
 
+- name: balance
+  label: Balance classes
+  type: bool
+  default: False
+  help: Balance classes. Helps if song is extremely sparse.
+
 
 - type: text
   text: '<b>Network parameters</b><br />'

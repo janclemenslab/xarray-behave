@@ -21,8 +21,26 @@ main:
 - name: make_single_class_datasets
   label: Training targets for individual song types
   type: bool
-  default: True
+  default: False
   help: Make additional training targets for individual song types.
+
+- name: make_onset_offset_events
+  label: Training targets for syllable on- and offsets
+  type: bool
+  default: False
+  help: Can help with smooth detectiong of syllables.
+
+
+- name: seed_splits
+  label: Random number seed
+  type: optional_int
+  none_label: No seed
+  default_disabled: True
+  default: 1
+  decimals: 3
+  range: 0,1000
+  help: For reproducible splits.
+
 
 - name: event_std_seconds
   label: Width of events (seconds)

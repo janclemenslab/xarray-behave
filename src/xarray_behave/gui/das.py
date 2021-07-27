@@ -3,12 +3,14 @@ import logging
 import collections
 from glob import glob
 import os.path
+from typing import Optional
 
 import zarr
 import numpy as np
 
 import das.make_dataset as dsm
 import das.npy_dir
+import das.annot
 
 import scipy.signal
 import pandas as pd
@@ -64,7 +66,9 @@ def make(data_folder, store_folder,
          split_train_in_two: bool = True,
          event_std_seconds: float = 0,
          gap_seconds: float = 0,
-         delete_intermediate_store: bool = True):
+         delete_intermediate_store: bool = True,
+         make_onset_offset_events: float = False,
+         seed: Optional[float] = None):
 
     annotation_loader = pd.read_csv
     files_annotation = glob(data_folder + '/*_annotations.csv')
@@ -89,6 +93,10 @@ def make(data_folder, store_folder,
     class_names.insert(0, 'noise')
     class_types.insert(0, 'segment')
 
+    if make_onset_offset_events:
+        class_names.extend(['syllable_onset', 'syllable_offset'])
+        class_types.extend(['event', 'event'])
+
     file_bases = [f[:-len('_annotations.csv')] for f in files_annotation]
     data_files = []
     for file_base in file_bases:
@@ -100,9 +108,6 @@ def make(data_folder, store_folder,
             data_files.append(None)
 
     # read first data file to infer number of audio channels
-    # file_base = files_annotation[0].rpartition('.csv')[0]
-    # load the recording
-
     # get valid file
     dfs = [data_file for data_file in data_files if data_file is not None]
     if not len(dfs):
@@ -145,7 +150,8 @@ def make(data_folder, store_folder,
 
         file_splits = dsm.generate_file_splits(file_bases,
                                             splits=list(file_splits.values()),
-                                            split_names=list(file_splits.keys()))
+                                            split_names=list(file_splits.keys()),
+                                            seed=seed)
 
         for file_base in file_bases:
             for part in parts:
@@ -188,8 +194,28 @@ def make(data_folder, store_folder,
         df = annotation_loader(file_base + '_annotations.csv')
         df = df.dropna()
 
+        # make new events from syllable on- and offsets
+        if make_onset_offset_events:
+            adf = das.annot.Events.from_df(df)
+            start_seconds = []
+            stop_seconds = []
+            for nam, cat in adf.categories.items():
+                if cat == 'segment':
+                    start_seconds.extend(adf.start_seconds(nam))
+                    stop_seconds.extend(adf.stop_seconds(nam))
+
+            logging.info(f'   Making syllable {len(start_seconds) + len(stop_seconds)} onset/offset events.')
+            adf.add_name(name='syllable_onset', category='event')
+            adf.add_name(name='syllable_offset', category='event')
+            for start, stop in zip(start_seconds, stop_seconds):
+                adf.add_time(name='syllable_onset', start_seconds=start)
+                adf.add_time(name='syllable_offset', start_seconds=stop)
+
+            df = adf.to_df()
+
         # make initial annotation matrix
         y = dsm.make_annotation_matrix(df, nb_samples, fs, class_names)
+
         # blur events
         # OPTIONAL but highly recommended
         if event_std_seconds > 0:
@@ -206,7 +232,9 @@ def make(data_folder, store_folder,
             if len(segment_idx):
                 y[:, segment_idx] = dsm.make_gaps(y[:, segment_idx],
                                                   gap_seconds=gap_seconds,
-                                                  samplerate=fs)
+                                                  samplerate=fs,
+                                                  start_seconds=df['start_seconds'],
+                                                  stop_seconds=df['start_seconds'])
         # all validation files
         if file_split_dict[file_base] is not None:
             name = file_split_dict[file_base]
@@ -219,7 +247,7 @@ def make(data_folder, store_folder,
                     store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(y[:, [0, cnt+1]]))
         else:
             # split data from each remaining file into train and test chunks according to `splits`
-            split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets)
+            split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets, seed=seed)
             logging.info(f'    splitting {data_splits} into {data_split_targets}.')
             for name in set(data_split_targets):
                 store[name]['x'].append(split_arrays['x'][name])
