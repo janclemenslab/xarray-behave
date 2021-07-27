@@ -239,8 +239,8 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     if event_names and not event_categories:
         logging.info('No event_categories specified - defaulting to segments')
         event_categories = ['segment'] * len(event_names)
-    manual_event_seconds = {name: [] for name in event_names}
-    manual_event_categories = {cat: [] for cat in event_categories}
+    manual_event_seconds = {name: np.zeros((0,)) for name in event_names}
+    manual_event_categories = {nam: cat for nam, cat in zip(event_names, event_categories)}
 
     if include_song:
         logging.info(f'Loading automatic annotations:')
