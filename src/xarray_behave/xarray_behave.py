@@ -21,11 +21,12 @@ from . import (loaders as ld,
 def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat', res_path: str = 'res',
              filepath_timestamps: Optional[str] = None,
              filepath_video: Optional[str] = None,
+             filepath_timestamps_ball: Optional[str] = None,
              filepath_daq: Optional[str] = None,
              filepath_annotations: Optional[str] = None,
              target_sampling_rate: float = 1_000, audio_sampling_rate: Optional[float] = None,
              audio_channels: Optional[List[int]] = None, audio_dataset: str = None,
-             event_names: Optional[List[str]] = None, event_categories: Optional[List[str]]= None,
+             event_names: Optional[List[str]] = None, event_categories: Optional[List[str]] = None,
              resample_video_data: bool = True,
              include_song: bool = True, include_tracks: bool = True,
              include_poses: bool = True, include_balltracker: bool = True, include_movieparams: bool = True,
@@ -41,6 +42,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         dat_path (str, optional): Used to infer paths of video, daq, and timestamps files. Defaults to 'dat'.
         res_path (str, optional): Used to infer paths of annotation, tracking etc files. Defaults to 'res'.
         filepath_timestamps (str, optional): Path to the timestamps file. Defaults to None (infer path from `datename` and `dat_path`).
+        filepath_timestamps_ball (str, optional): Path to the timestamps file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_video (str, optional): Path to the video file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_daq (str, optional): Path to the daq file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_annotations (str, optional): Path to annotations file. Defaults to None (infer path from `datename` and `res_path`).
@@ -92,7 +94,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             resample_video_data = False
             target_sampling_rate = vr.frame_rate
         frame_times[-1] = frame_times[-2]  # for auto-monotonize to not mess everything up
-        sampling_rate = 2 * target_sampling_rate  #vr.frame_rate
+        sampling_rate = 2 * target_sampling_rate  # vr.frame_rate
         sample_times = np.arange(0, vr.number_of_frames, 1 / sampling_rate) / vr.frame_rate
         last_sample_number = len(sample_times)
         ss = SampStamp(sample_times, frame_times)
@@ -123,7 +125,9 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         except:
             raise ValueError(f'Could not read {audio_loader.path}.')
 
+    if filepath_timestamps_ball is None:
     filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
+
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
         ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps_ball, filepath_daq)
 
@@ -219,13 +223,11 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             logging.info(f'   Found no movie params data.')
         logging.info('Done.')
 
-
     # Init empty audio and event data
     song_raw = None
     non_song_raw = None
     auto_event_seconds = {}
     auto_event_categories = {}
-
 
     if event_names is None:
         event_names = []
@@ -371,7 +373,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                                 dims=['time', 'event_types'],
                                 coords={'time': time,
                                         'event_types': list(event_seconds.keys()),
-                                        'event_categories': (('event_types'), list(event_categories.values())),},
+                                       'event_categories': (('event_types'), list(event_categories.values())), },
                                 attrs={'description': 'Event times as boolean arrays.',
                                         'sampling_rate_Hz': sampling_rate / step,
                                         'time_units': 'seconds',
@@ -439,7 +441,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         xr_balltracks.attrs.update({'description': '',
                                     'sampling_rate_Hz': sampling_rate / step,
                                     'time_units': 'seconds',
-                                    'video_fps': fps,})
+                                    'video_fps': fps, })
         dataset_data['balltracks'] = xr_balltracks
 
     # MOVIEPARAMS
@@ -450,7 +452,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         xr_movieparams.attrs.update({'description': '',
                                      'sampling_rate_Hz': sampling_rate / step,
                                      'time_units': 'seconds',
-                                     'video_fps': fps,})
+                                     'video_fps': fps, })
         dataset_data['movieparams'] = xr_movieparams
 
     # MAKE THE DATASET
@@ -466,7 +468,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
     # convert spatial units to mm using info in attrs
     dataset = convert_spatial_units(dataset, to_units='mm',
-                                    names = ['body_positions', 'pose_positions', 'pose_positions_allo'])
+                                    names=['body_positions', 'pose_positions', 'pose_positions_allo'])
 
     # save command line args
     dataset.attrs = {'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
@@ -590,8 +592,8 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         # wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
         # wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
         # wing_angle_sum = mt.internal_angle(wing_left,thoraces,wing_right)
-        wing_angle_left = 180-mt.internal_angle(wing_left,thoraces,heads)
-        wing_angle_right = 180-mt.internal_angle(wing_right,thoraces,heads)
+        wing_angle_left = 180-mt.internal_angle(wing_left, thoraces, heads)
+        wing_angle_right = 180-mt.internal_angle(wing_right, thoraces, heads)
         wing_angle_sum = wing_angle_left + wing_angle_right
 
         list_absolute = [
@@ -709,6 +711,7 @@ def interp_duplicates(y: np.array) -> np.array:
     y[~uni_mask] = interp(x[~uni_mask])
 
     return y
+
 
 def save(savepath, dataset):
     """[summary]
