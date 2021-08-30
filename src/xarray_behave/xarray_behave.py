@@ -126,7 +126,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             raise ValueError(f'Could not read {audio_loader.path}.')
 
     if filepath_timestamps_ball is None:
-    filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
+        filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
 
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
         ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps_ball, filepath_daq)
