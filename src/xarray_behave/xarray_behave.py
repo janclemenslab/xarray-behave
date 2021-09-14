@@ -78,13 +78,12 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         filepath_video = str(Path(root, dat_path, datename, f'{datename}.mp4'))
 
     if filepath_timestamps is None:
-        filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
+        filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timestamps.h5')
 
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
         ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
         if sampling_rate is None:
             sampling_rate = audio_sampling_rate
-
     elif os.path.exists(filepath_video):  # Video (+tracks) only
         # if there is only the video, generate fake timestamps for video and samples from fps
         from videoreader import VideoReader
@@ -126,8 +125,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             raise ValueError(f'Could not read {audio_loader.path}.')
 
     if filepath_timestamps_ball is None:
-        filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timeStamps.h5')
-
+        filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timestamps.h5')
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
         ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps_ball, filepath_daq)
 
