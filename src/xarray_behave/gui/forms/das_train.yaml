@@ -142,6 +142,15 @@ main:
          Produces networks with better performance with less training data.
          Only the first few blocks should be made separable if at all.'
 
+- name: nb_lstm_units
+  label: Number of LSTM units
+  type: optional_int
+  none_label: No LSTM
+  default_disabled: True
+  default: 128
+  range: 0,10000
+  help: Reduce learning rate if performance does not improve after patience epochs.
+
 - type: text
   text: '<b>Training parameters</b>'
 
