@@ -235,10 +235,24 @@ def load_times(filepath_timestamps, filepath_daq):
         cam_stamps = f['timeStamps'][:]
 
     # time stamps at idx 0 can be a little wonky - so use the information embedded in the image
-    if cam_stamps.shape[1] == 2:  # time stamps from Spinnaker cam
-        shutter_times = cam_stamps[:, 1]
-    else:  # time stamps from point grey cam
+    if cam_stamps.shape[1] > 2:  # time stamps from flycapture (old point grey API)
         shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2]/1_000_000  # time of "Shutter OFF"
+    elif cam_stamps.shape[1] == 2:  # time stamps from other camera drivers (spinnaker (new point grey/FLIR API) and ximea)
+        # fix jumps from overflow in timestamp counter for ximea cameras
+        frame_intervals = np.diff(cam_stamps[:, 1])
+        frame_interval_median = np.median(frame_intervals)
+        idxs = np.where(frame_intervals<-10 * frame_interval_median)[0]
+        while len(idxs):
+            print(idxs)
+            idx = idxs[0]
+            df_wrong = cam_stamps[idx+1, 1] - cam_stamps[idx, 1]
+            df_inferred = cam_stamps[idx+1, 0] - cam_stamps[idx, 0]
+            cam_stamps[idx+1:, 1] = cam_stamps[idx+1:, 1] - df_wrong + df_inferred
+
+            frame_intervals = np.diff(cam_stamps[:, 1])
+            idxs = np.where(frame_intervals<-10 * frame_interval_median)[0]
+
+        shutter_times = cam_stamps[:, 1]
 
     last_frame_idx = np.argmax(shutter_times==0) - 1
     shutter_times = shutter_times[:last_frame_idx]
