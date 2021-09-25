@@ -539,11 +539,10 @@ class MainWindow(pg.QtGui.QMainWindow):
                         try:
                             samplerate = file['samplerate']
                         except KeyError:
-                            samplerate = None
-                        try:
-                            samplerate = file['samplerate_Hz']
-                        except KeyError:
-                            samplerate = None
+                            try:
+                                samplerate = file['samplerate_Hz']
+                            except KeyError:
+                                samplerate = None
                     data_loader = 'npz'
                 except KeyError:
                     logging.info(f'{filename} no sample rate info in NPZ file. Need to save "samplerate" variable with the audio data.')

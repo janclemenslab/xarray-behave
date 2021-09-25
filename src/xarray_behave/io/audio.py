@@ -112,11 +112,10 @@ class Npz(io.BaseProvider):
             try:
                 sampling_rate = file['samplerate']
             except KeyError:
-                sampling_rate = None
-            try:
-                sampling_rate = file['samplerate_Hz']
-            except KeyError:
-                sampling_rate = None
+                try:
+                    sampling_rate = file['samplerate_Hz']
+                except KeyError:
+                    sampling_rate = None
             data = file[audio_dataset]
 
         data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
