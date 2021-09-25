@@ -1,7 +1,7 @@
 main:
 
 - type: text
-  text: '<b>Make dataset for training</b>:<br />
+  text: '<b>Make dataset for training DAS</b>:<br />
     Export audio as wave or npz files and annotations data as csv
     for multiple recordings into a single directory using "File/Export for DAS".
     Will assemble, split files or fraction etc.'

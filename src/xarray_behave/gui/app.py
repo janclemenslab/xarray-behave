@@ -288,7 +288,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             items_to_create['main'].insert(2, {'name': f'include_{name}', 'label': name, 'type':'bool', 'default':True})
 
         dialog = YamlDialog(yaml_file=items_to_create,
-                            title=f'Export song and annotations for das')
+                            title=f'Export song and annotations for DAS')
 
         dialog.form.fields['start_seconds'].setRange(0, np.max(self.ds.sampletime))
         dialog.form.fields['end_seconds'].setRange(0, np.max(self.ds.sampletime))
@@ -309,7 +309,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             start_seconds = form_data['start_seconds']
             end_seconds = form_data['end_seconds']
 
-            logging.info(f"Exporting for das:")
+            logging.info(f"Exporting for DAS:")
             if form_data['file_type'] == 'WAV':
                 logging.info(f"   song to WAV: {savefilename_trunk + '.wav'}.")
                 self.export_to_wav(savefilename_trunk + '.wav', start_seconds, end_seconds, form_data['scale_audio'])
@@ -328,7 +328,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             return
 
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_make.yaml",
-                            title=f'Assemble dataset for training das')
+                            title=f'Assemble dataset for training DAS')
 
         dialog.form.fields['data_folder'].setText(data_folder)
         dialog.form.fields['store_folder'].setText(data_folder + '.npy')
@@ -1876,7 +1876,7 @@ class PSV(MainWindow):
             self.update_frame()
 
     def das_predict(self, qt_keycode):
-        logging.info('Predicting song using das:')
+        logging.info('Predicting song using DAS:')
 
         if 'song_raw' not in self.ds:
             logging.error('   Missing `song_raw`. skipping.')
@@ -1890,7 +1890,7 @@ class PSV(MainWindow):
             return
 
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_predict.yaml",
-                            title='Predict labels using das')
+                            title='Predict labels using DAS')
 
         dialog.show()
         result = dialog.exec_()

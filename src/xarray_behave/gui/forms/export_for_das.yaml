@@ -1,10 +1,10 @@
 main:
 
 - type: text
-  text: '<b>Export data for DeepSS</b>: <br />
+  text: '<b>Export data for DAS</b>: <br />
     Will export the audio data as a NPZ or WAV file and the
     annotations as CSV. Collect data for multiple recordings
-    in a single directory and make a training dataset using "DeepSS/Make Dataset".'
+    in a single directory and make a training dataset using "DAS/Make Dataset".'
 
 - type: text
   text: 'Include which song types?'
