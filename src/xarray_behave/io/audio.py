@@ -30,7 +30,7 @@ from typing import Optional, Sequence
 def split_song_and_nonsong(data, song_channels = None, return_nonsong_channels = False):
         song = data
         nonsong = None
-        if song_channels:
+        if song_channels is not None:
             song = song[:, song_channels]
             if  return_nonsong_channels:
                 nonsong = np.delete(data, song_channels, axis=-1)
@@ -111,6 +111,10 @@ class Npz(io.BaseProvider):
         with np.load(filename) as file:
             try:
                 sampling_rate = file['samplerate']
+            except KeyError:
+                sampling_rate = None
+            try:
+                sampling_rate = file['samplerate_Hz']
             except KeyError:
                 sampling_rate = None
             data = file[audio_dataset]
