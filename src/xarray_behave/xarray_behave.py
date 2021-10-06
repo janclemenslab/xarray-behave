@@ -135,9 +135,9 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
     if target_sampling_rate == 0 or target_sampling_rate is None:
         resample_video_data = False
+    fps = 1 / np.mean(np.diff(ss.frames2times.y))
     if not resample_video_data:
         logging.info(f'  setting targetsamplingrate to avg. fps.')
-        fps = 1 / np.mean(np.diff(ss.frames2times.y))
         target_sampling_rate = fps
 
     # LOAD TRACKS
@@ -390,7 +390,6 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         logging.exception(e)
 
     # BODY POSITION
-    fps = None
     if pixel_size_mm is None:
         pixel_size_mm = np.nan
 
