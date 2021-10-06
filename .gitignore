@@ -122,5 +122,6 @@ fig*
 !/docs/
 !/*.toml
 !/.github
+!/conda
 /src/*.egg-info/
 /src/*.egg-info
