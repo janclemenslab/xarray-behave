@@ -121,5 +121,6 @@ fig*
 !/env/
 !/docs/
 !/*.toml
+!/.github
 /src/*.egg-info/
 /src/*.egg-info
