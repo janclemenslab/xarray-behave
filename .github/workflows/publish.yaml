@@ -83,7 +83,7 @@ jobs:
   publish_to_anaconda:
     name: Publish to Anaconda.org
 #     needs: [tests, publish_to_pypi]
-    needs: [publish_to_pypi]
+#     needs: [publish_to_pypi]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
