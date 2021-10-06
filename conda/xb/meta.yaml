@@ -31,7 +31,7 @@ requirements:
     - zarr
     - xarray
     - pyside2
-    - pyqtgraph=0.12.1
+    - pyqtgraph<0.12.2
     - colorcet
     - python-sounddevice
     - scikit-image
@@ -55,7 +55,7 @@ requirements:
     - zarr
     - xarray
     - pyside2
-    - pyqtgraph=0.12.1
+    - pyqtgraph<0.12.2
     - colorcet
     - python-sounddevice
     - scikit-image
