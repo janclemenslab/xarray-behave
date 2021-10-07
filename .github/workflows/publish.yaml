@@ -105,7 +105,7 @@ jobs:
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
           
-      - name: Install build dependencies
+      - name: Install build dependencies (win)
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
@@ -113,7 +113,7 @@ jobs:
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
-      - name: Install build dependencies
+      - name: Install build dependencies (*x)
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
@@ -121,7 +121,7 @@ jobs:
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
-      - name: Install build dependencies
+      - name: Build and upload to anaconda (win)
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
@@ -130,7 +130,7 @@ jobs:
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
 
-      - name: Install build dependencies
+      - name: Build and upload to anaconda (*x)
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
