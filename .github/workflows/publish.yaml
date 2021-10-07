@@ -48,36 +48,36 @@ jobs:
 #           pytest
 
 
-  publish_to_pypi:
-    name: Publish to PyPi
-#     needs: [tests]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v2
+#   publish_to_pypi:
+#     name: Publish to PyPi
+# #     needs: [tests]
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout source
+#         uses: actions/checkout@v2
 
-      - name: Setup Mamba
-        uses: conda-incubator/setup-miniconda@v2
-        # https://github.com/conda-incubator/setup-miniconda
-        with:
-          python-version: ${{ matrix.python-version }}
-          mamba-version: "*"
-          channels: conda-forge,ncb
-          use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
-          use-mamba: true
+#       - name: Setup Mamba
+#         uses: conda-incubator/setup-miniconda@v2
+#         # https://github.com/conda-incubator/setup-miniconda
+#         with:
+#           python-version: ${{ matrix.python-version }}
+#           mamba-version: "*"
+#           channels: conda-forge,ncb
+#           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
+#           use-mamba: true
 
-      - name: Install flit
-        shell: bash -l {0}
-        run: |
-          conda install flit~=3.0
+#       - name: Install flit
+#         shell: bash -l {0}
+#         run: |
+#           conda install flit~=3.0
 
-      - name: Build and publish
-        shell: bash -l {0}
-        run: |
-          python -m flit publish
-        env:
-          FLIT_USERNAME: ${{ secrets.FLIT_USERNAME }}
-          FLIT_PASSWORD: ${{ secrets.FLIT_PASSWORD }}
+#       - name: Build and publish
+#         shell: bash -l {0}
+#         run: |
+#           python -m flit publish
+#         env:
+#           FLIT_USERNAME: ${{ secrets.FLIT_USERNAME }}
+#           FLIT_PASSWORD: ${{ secrets.FLIT_PASSWORD }}
 
 
   publish_to_anaconda:
@@ -88,7 +88,8 @@ jobs:
     strategy:
       matrix:
         python-version: [3.6, 3.7, 3.8, 3.9]
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+#         os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout source
@@ -103,15 +104,34 @@ jobs:
           channels: conda-forge,ncb
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
+          
+      - name: Install build dependencies
+        if: runner.os == 'Windows'
+        shell: cmd /C CALL {0}
+        run: |
+          conda install -y -n base -c conda-forge python=3.8 boa anaconda-client conda-build conda-verify
+          conda config --set anaconda_upload yes
+          conda config --set always_yes yes --set changeps1 no
 
       - name: Install build dependencies
+        if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
           conda install -y -n base -c conda-forge python=3.8 boa anaconda-client conda-build conda-verify
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
-      - name: Build conda package and upload to anaconda.org
+      - name: Install build dependencies
+        if: runner.os == 'Windows'
+        shell: cmd /C CALL {0}
+        run: |
+          conda mambabuild conda/xb -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          conda mambabuild conda/xb-nogui -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+        env:
+          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+
+      - name: Install build dependencies
+        if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
           conda mambabuild conda/xb -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
