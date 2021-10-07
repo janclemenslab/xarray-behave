@@ -543,8 +543,8 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
                 (relative velocities) [time,flies,flies,y/x]
     """
 
-    time = dataset.time
-    nearest_frame = dataset.nearest_frame
+    time = dataset.time.data
+    nearest_frame = dataset.nearest_frame.data
 
     sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
     frame_rate = dataset.pose_positions.attrs['video_fps']
@@ -609,7 +609,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
 
         absolute = np.stack(list_absolute, axis=2)
 
-        ds_dict['abs_features'] = xr.DataArray(data=absolute,
+        ds_dict['abs_features'] = xr.DataArray(data=absolute.data,
                                                dims=['time', 'flies', 'absolute_features'],
                                                coords={'time': time,
                                                        'absolute_features': abs_feature_names,
@@ -639,7 +639,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         ]
 
         relative = np.stack(list_relative, axis=3)
-        ds_dict['rel_features'] = xr.DataArray(data=relative,
+        ds_dict['rel_features'] = xr.DataArray(data=relative.data,
                                                dims=['time', 'flies', 'relative_flies', 'relative_features'],
                                                coords={'time': time,
                                                        'relative_features': rel_feature_names,
