@@ -30,6 +30,7 @@ requirements:
     - setuptools
     - pysoundfile
     - libsndfile
+    - samplestamps
 
   run:
     - defopt
@@ -48,6 +49,7 @@ requirements:
     - setuptools
     - pysoundfile
     - libsndfile
+    - samplestamps
 
 test:
   imports:

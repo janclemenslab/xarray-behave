@@ -37,6 +37,7 @@ requirements:
     - scikit-image
     - pyyaml
     - pyvideoreader
+    - samplestamps
 
   run:
     - defopt
@@ -60,6 +61,7 @@ requirements:
     - python-sounddevice
     - scikit-image
     - pyvideoreader
+    - samplestamps
 
 test:
   imports:
