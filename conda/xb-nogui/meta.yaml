@@ -25,7 +25,8 @@ requirements:
     - python
     - zarr
     - xarray
-    - dask
+    - dask<0.19 [win]
+    - dask [not win]
     - pyvideoreader
     - setuptools
     - pysoundfile
@@ -44,7 +45,8 @@ requirements:
     - python
     - zarr
     - xarray
-    - dask
+    - dask<0.19 [win]
+    - dask [not win]
     - pyvideoreader
     - setuptools
     - pysoundfile
