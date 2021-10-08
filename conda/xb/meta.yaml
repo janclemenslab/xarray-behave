@@ -20,13 +20,13 @@ requirements:
     - librosa
     - matplotlib
     - matplotlib-scalebar
-    - numpy
+    #- numpy
     - pandas
     - peakutils
     - pip
     - python
     - pyyaml
-    - scipy
+    #- scipy
     - scikit-learn
     - zarr
     - xarray
@@ -48,12 +48,12 @@ requirements:
     - librosa
     - matplotlib
     - matplotlib-scalebar
-    - numpy
+    #- numpy
     - pandas
     - peakutils
     - python
     - pyyaml
-    - scipy
+    #- scipy
     - scikit-learn
     - zarr
     - xarray
