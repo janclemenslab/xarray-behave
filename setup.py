@@ -40,7 +40,7 @@ setup(name='xarray_behave',
       python_requires='>=3.6',
       install_requires=['numpy', 'scipy', 'pandas', 'xarray', 'h5py>=2.9', 'zarr', 'flammkuchen',
                         'dask', 'toolz', 'samplestamps', 'soundfile', 'opencv-python-headless'],
-      extras_require={'gui': ['pyside2==5.13', 'pyqtgraph>=0.11.0,<0.12.2', 'pyvideoreader', 'colorcet'
+      extras_require={'gui': ['pyside2', 'pyqtgraph>=0.11.0,<0.12.2', 'pyvideoreader', 'colorcet'
                               'sounddevice', 'scikit-image', 'opencv-python-headless', 'pyyaml',
                               'peakutils', 'defopt']},
       include_package_data=True,
