@@ -71,7 +71,7 @@ test:
   imports:
     - xarray_behave
   commands:
-    - xb --help
+    - xb --help [ not win ]
 
 about:
   home: "http://github.com/janclemenslab/xarray-behave"
