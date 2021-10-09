@@ -20,7 +20,7 @@ requirements:
     - librosa
     - matplotlib
     - matplotlib-scalebar
-    #- numpy
+    - numpy>1.19
     - pandas
     - peakutils
     - pip
@@ -48,7 +48,7 @@ requirements:
     - librosa
     - matplotlib
     - matplotlib-scalebar
-    #- numpy
+    - numpy>1.19
     - pandas
     - peakutils
     - python
