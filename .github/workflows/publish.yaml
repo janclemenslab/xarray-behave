@@ -122,20 +122,34 @@ jobs:
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
-      - name: Build and upload to anaconda (win)
+      - name: Build nogui and upload to anaconda (win)
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          conda mambabuild conda/xb -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
-          conda mambabuild conda/xb-nogui -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          conda mambabuild conda/xb-nogui -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
 
-      - name: Build and upload to anaconda (*x)
+      - name: Build gui and upload to anaconda (win)
+        if: runner.os == 'Windows'
+        shell: cmd /C CALL {0}
+        run: |
+          conda mambabuild conda/xb -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+        env:
+          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+
+      - name: Build nogui and upload to anaconda (*x)
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
-          conda mambabuild conda/xb -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
-          conda mambabuild conda/xb-nogui -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          conda mambabuild conda/xb-nogui -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+        env:
+          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+
+      - name: Build gui and upload to anaconda (*x)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
+        run: |
+          conda mambabuild conda/xb -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
