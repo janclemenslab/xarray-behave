@@ -125,3 +125,4 @@ fig*
 !/conda
 /src/*.egg-info/
 /src/*.egg-info
+/tests/data
