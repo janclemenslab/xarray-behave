@@ -33,7 +33,7 @@ requirements:
     - dask #<0.19 [win]
 #     - dask # [not win]
     - pyside2
-    - pyqtgraph
+    - pyqtgraph>0.12.2
     - colorcet
     - python-sounddevice
     - scikit-image
@@ -60,7 +60,7 @@ requirements:
     - dask #<0.19 [win]
 #     - dask [not win]
     - pyside2
-    - pyqtgraph
+    - pyqtgraph>0.12.2
     - colorcet
     - python-sounddevice
     - scikit-image
