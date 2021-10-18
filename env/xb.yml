@@ -1,6 +1,7 @@
 name: xb
 channels:
   - conda-forge
+  - ncb
   - defaults
 dependencies:
   - python=3.8
@@ -8,5 +9,23 @@ dependencies:
   - python-sounddevice
   - pip
   - git
+  - colorcet
+  - pyyaml
+  - peakutils
+  - defopt
+  - numpy
+  - scipy
+  - pandas
+  - xarray
+  - h5py
+  - zarr
+  - dask
+  - flammkuchen
+  - toolz
+  # - opencv-python-headless
+  - scikit-image
+  - pyvideoreader
+  - samplestamps
   - pip:
+    - pysoundfile
     - xarray-behave

@@ -1,9 +1,10 @@
 {% set data = load_setup_py_data(setup_file='../../setup.py', from_recipe_dir=True) %}
 {% set name = "xarray-behave" %}
-{% set version = data.get('version') %}
+# {% set version = data.get('version') %}
+{% set version = "0.27.4" %}
 
 package:
-  name: xarray-behave-nogui
+  name: xarray-behave
   version: "{{ version }}"
 
 source:
@@ -17,53 +18,69 @@ requirements:
     - defopt
     - flammkuchen
     - h5py
-    - numpy
-    - scipy
+    - librosa
+    - matplotlib
+    - matplotlib-scalebar
     - pandas
     - peakutils
     - pip
     - python
+    - pyyaml
+    #- scipy
+    - scikit-learn
     - zarr
     - xarray
-    - dask<0.19 [win]
-    - dask [not win]
+    - dask #<0.19 [win]
+#     - dask # [not win]
+    - pyside2
+    - pyqtgraph>0.12.2
+    - colorcet
+    - python-sounddevice
+    - scikit-image
+    - pyyaml
     - pyvideoreader
-    - setuptools
-    - pysoundfile
-    - libsndfile
     - samplestamps
+    - numpy>1.19
 
   run:
     - defopt
     - flammkuchen
     - h5py
-    - numpy
-    - scipy
+    - librosa
+    - matplotlib
+    - matplotlib-scalebar
     - pandas
     - peakutils
-    - pip
     - python
+    - pyyaml
+    #- scipy
+    - scikit-learn
     - zarr
     - xarray
-    - dask<0.19 [win]
-    - dask [not win]
+    - dask #<0.19 [win]
+#     - dask [not win]
+    - pyside2
+    - pyqtgraph>0.12.2
+    - colorcet
+    - python-sounddevice
+    - scikit-image
     - pyvideoreader
-    - setuptools
-    - pysoundfile
-    - libsndfile
     - samplestamps
+    - numpy>1.19
 
 test:
   imports:
     - xarray_behave
+  commands:
+    - xb --help [ not win ]
 
 about:
   home: "http://github.com/janclemenslab/xarray-behave"
   license: MIT
   license_family: MIT
   license_file:
-  summary: "xarray-behave"
-  doc_url: "https://janclemenslab.org/das"
+  summary: "xarray behave"
+  doc_url: "https://janclemenslab.org/xarray-behave"
   dev_url: "http://github.com/janclemenslab/xarray-behave"
 
 extra:

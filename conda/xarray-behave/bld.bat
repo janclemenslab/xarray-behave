@@ -4,5 +4,6 @@ set PIP_NO_INDEX=False
 set PIP_NO_DEPENDENCIES=False
 set PIP_IGNORE_INSTALLED=False
 
-"%PYTHON%" -m pip install xarray-behave -vv --no-dependencies
+"%PYTHON%" -m pip install pysoundfile -vv
+"%PYTHON%" -m pip install xarray-behave[gui] -vv --no-dependencies
 if errorlevel 1 exit 1
