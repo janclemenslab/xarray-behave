@@ -965,9 +965,13 @@ class PSV(MainWindow):
 
         self.crop = True
         try:
-            self.thorax_index = list(self.ds.bodyparts).index('thorax')
+            self.pose_center_index = list(self.ds.poseparts).index('thorax')
         except:
-            self.thorax_index = 8
+            if len(list(self.ds.poseparts)) > 8:
+                self.pose_center_index = 8
+            else:  # fallback in case poses are a little different
+                self.pose_center_index = 0
+
         self.show_dot = True if 'body_positions' in self.ds else False
         self.old_show_dot_state = self.show_dot
         self.dot_size = 2
@@ -984,6 +988,7 @@ class PSV(MainWindow):
             self.nb_bodyparts = len(self.ds.poseparts)
         elif 'bodyparts' in self.ds:
             self.nb_bodyparts = len(self.ds.bodyparts)
+            self.track_center_index = 1
         else:
             self.nb_bodyparts = 1
 
@@ -1732,7 +1737,7 @@ class PSV(MainWindow):
     def on_position_dragged(self, fly, pos, offset):
         """Called when dragging a fly body position - will change that pos."""
         if hasattr(self.ds, 'pose_positions_allo'):
-            pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, self.thorax_index]
+            pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, self.pose_center_index]
             try:
                 pos1 = [pos.y(), pos.x()]
             except:
@@ -1760,12 +1765,12 @@ class PSV(MainWindow):
             if event.modifiers() == QtCore.Qt.ControlModifier and self.focal_fly is not None:
                 self.on_position_dragged(self.focal_fly, pos=[mouseY, mouseX], offset=None)
             else:
-                fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.thorax_index, :]
+                fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.pose_center_index, :]
                 fly_pos = np.array(fly_pos)  # in case this is a dask.array
                 if self.crop:  # transform fly pos to coordinates of the cropped box
                     box_center = self.ds.pose_positions_allo.data[self.index_other,
                                                                 self.focal_fly,
-                                                                self.thorax_index] + self.box_size / 2
+                                                                self.pose_center_index] + self.box_size / 2
                     box_center = np.array(box_center)  # in case this is a dask.array
                     fly_pos = fly_pos - box_center
                 fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX]))**2, axis=-1)
