@@ -29,7 +29,8 @@ from typing import Callable, Optional, Dict, Any, List
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
-    pass
+    logging.warning(f'Could not import PySide2.')
+
 
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
