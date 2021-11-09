@@ -492,6 +492,13 @@ class MovieView(utils.FastImageWidget):
 
     def update_frame(self, ):
         frame = self.m.vr[self.m.framenumber]
+
+        if self.m.frame_fliplr:
+            frame = np.ascontiguousarray(frame[:, ::-1])
+
+        if self.m.frame_flipud:
+            frame = np.ascontiguousarray(frame[::-1, :])
+
         if frame is not None:  # frame is None when at end of video
             # # FIXME the annotations potentially waste time annotating outside of the cropped frame
             if 'pose_positions_allo' in self.m.ds:

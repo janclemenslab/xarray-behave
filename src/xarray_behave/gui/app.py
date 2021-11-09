@@ -748,6 +748,8 @@ class MainWindow(pg.QtGui.QMainWindow):
                 return PSV(ds, title=dirname, cue_points=cue_points, vr=vr,
                         fmin=dialog.form['spec_freq_min'],
                         fmax=dialog.form['spec_freq_max'],
+                        frame_fliplr=dialog.form['frame_fliplr'],
+                        frame_flipud=dialog.form['frame_flipud'],
                         box_size=dialog.form['box_size_px'],
                         data_source=DataSource('dir', dirname))
 
@@ -920,7 +922,9 @@ class PSV(MainWindow):
     MAX_AUDIO_AMP = 3.0
 
     def __init__(self, ds, vr=None, cue_points=[], title='xb.ui', cmap_name: str = 'turbo', box_size: int = 200,
-                 fmin=None, fmax=None, data_source: DataSource=None):
+                 fmin: Optional[float] = None, fmax: Optional[float] = None,
+                 data_source: Optional[DataSource] = None,
+                 frame_fliplr: bool = False, frame_flipud: bool = False):
         super().__init__(title=title)
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
         # build model:
@@ -1009,6 +1013,9 @@ class PSV(MainWindow):
         self.select_loudest_channel = False
         self.threshold_mode = False
         self.sinet0 = None
+
+        self.frame_fliplr = frame_fliplr
+        self.frame_flipud = frame_flipud
 
         self.thres_min_dist = 0.020  # seconds
         self.thres_env_std = 0.002  # seconds

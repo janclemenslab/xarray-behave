@@ -11,6 +11,16 @@ main:
   type: bool
   default: False
 
+- name: frame_fliplr
+  label: Flip video frames left-right
+  type: bool
+  default: False
+
+- name: frame_flipud
+  label: Flip video frames up-down
+  type: bool
+  default: False
+
 - name: fix_fly_indices
   label: Fix fly indices from swap file
   type: bool
