@@ -8,14 +8,16 @@ should return:
     last_pose_frame: int
 """
 import h5py
-import flammkuchen
 import numpy as np
-import pandas as pd
 import xarray as xr
+import pandas as pd
 import zarr
+import os
 from .. import io
 import math
 from typing import Optional
+import logging
+
 
 def rotate_point(pos, degrees, origin=(0, 0)):
     """Rotate point.
@@ -59,12 +61,34 @@ def rotate_pose(positions, degree, origin=(0, 0)):
     return rot.dot(positions_centered.T).T + origin
 
 
+def load_skeleton(filename, body_parts):
+    skeleton_file = os.path.splitext(filename)[0] + '_skeleton.csv'
+    if os.path.exists(skeleton_file):
+        logging.info(f'Loading skeleton from {skeleton_file}.')
+        df = pd.read_csv(skeleton_file)
+        skeleton = df.values
+    elif len(body_parts) == 11:  # probably a fly - use default skeleton
+        logging.info(f'No skeleton file ({skeleton_file}) found but detected 11 - assume this is a fly.')
+        skeleton = np.array([[0, 1], [1, 8], [8, 11],  # body axis
+                        [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7],  # legs
+                        [8, 9], [8, 10]])  # wings
+    else:
+        logging.info(f'No skeleton file ({skeleton_file}) found and poses do not have 11 body parts - falling back to empty skeleton.')
+        skeleton = np.zeros((0, 2), dtype=np.uint)
+
+    return skeleton
+
+
 class Poses():
     def make(self, filename: Optional[str] = None):
         pixel_size_mm = None
         if filename is None:
             filename = self.path
         poses, poses_allo, body_parts, first_pose_frame, last_pose_frame = self.load(filename)
+
+        # load skeleton from file
+        skeleton = load_skeleton(filename, body_parts)
+
         xr_poses = xr.DataArray(data=poses,
                                  dims=['frame_number', 'flies', 'poseparts', 'coords'],
                                  coords={'frame_number': np.arange(first_pose_frame, last_pose_frame),
@@ -76,7 +100,8 @@ class Poses():
                                         'pixel_size_mm': pixel_size_mm,
                                         'loader': self.NAME,
                                         'kind': self.KIND,
-                                        'path': filename})
+                                        'path': filename,
+                                        'skeleton': skeleton})
 
         xr_poses_allo = xr.DataArray(data=poses_allo,
                                  dims=['frame_number', 'flies', 'poseparts', 'coords'],
@@ -89,7 +114,8 @@ class Poses():
                                         'pixel_size_mm': pixel_size_mm,
                                         'loader': self.NAME,
                                         'kind': self.KIND,
-                                        'path': filename})
+                                        'path': filename,
+                                        'skeleton': skeleton})
         return xr_poses, xr_poses_allo
 
 
