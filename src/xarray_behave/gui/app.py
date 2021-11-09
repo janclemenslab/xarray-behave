@@ -1085,6 +1085,10 @@ class PSV(MainWindow):
         view_video = self.bar.addMenu("Video")
         self._add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), "C",
                                 checkable=True, checked=self.crop)
+        self._add_keyed_menuitem(view_video, "Flip frame left-right", partial(self.toggle, 'frame_fliplr'), None,
+                                checkable=True, checked=self.frame_fliplr)
+        self._add_keyed_menuitem(view_video, "Flip frame up-down", partial(self.toggle, 'frame_flipud'), None,
+                                checkable=True, checked=self.frame_flipud)
         self._add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, "F")
         self._add_keyed_menuitem(view_video, "Swap flies", self.swap_flies, "X")
         view_video.addSeparator()
