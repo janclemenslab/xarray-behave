@@ -249,15 +249,20 @@ class Sleap(Poses, io.BaseProvider):
     def load(self, filename: Optional[str] = None):
         if filename is None:
             filename = self.path
-        # with h5py.File(filepath, 'r') as f:
-        #     pose_parts = f['node_names']
-        #     track_names = f['track_names']
-        #     track_occupancy = f['track_occupancy'][:]
-        #     tracks = f['tracks'][:]
 
-        # poses_allo = tracks.transpose([3, 0, 2, 1])
-        # return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
-        logging.warning('Loading SLEAP poses not implemented yet.')
+        with h5py.File(filename, 'r') as f:
+            pose_parts = f['node_names'][:]
+            # track_names = f['track_names']
+            # track_occupancy = f['track_occupancy'][:]
+            tracks = f['tracks'][:]  # flies, (x/y), bodypart, frame
+
+        poses_allo = tracks.transpose([3, 0, 2, 1])   # -> [frames, flies, bodypart, x/y]
+        poses_ego = poses_allo.copy()
+        pose_parts = [pose_part.decode() for pose_part in pose_parts]  # from byte to str
+
+        first_pose_frame = 0
+        last_pose_frame = poses_allo.shape[0]
+        return poses_ego, poses_allo, pose_parts, first_pose_frame, last_pose_frame
 
 
 
