@@ -478,9 +478,13 @@ class MovieView(utils.FastImageWidget):
                 self.fly_pens.append(pg.mkBrush(*self.m.fly_colors[dot_fly], alpha))
 
         # build skeletons
-        skeleton = np.array([[0, 1], [1, 8], [8, 11],  # body axis
-                             [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7],  # legs
-                             [8, 9], [8, 10]])  # wings
+        if 'pose_positions' in self._m.ds:
+            skeleton = self._m.ds.pose_positions.attrs['skeleton']
+        else:
+            skeleton = np.zeros((0, 2), dtype=np.uint)
+        # skeleton = np.array([[0, 1], [1, 8], [8, 11],  # body axis
+        #                      [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7],  # legs
+        #                      [8, 9], [8, 10]])  # wings
         self.skeletons = np.zeros((0, 2), dtype=np.uint)
         for dot_fly in range(self.m.nb_flies):
             self.skeletons = np.append(self.skeletons, self.m.nb_bodyparts * dot_fly + skeleton, axis=0)
