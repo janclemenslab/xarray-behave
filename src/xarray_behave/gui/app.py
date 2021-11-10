@@ -928,6 +928,11 @@ class PSV(MainWindow):
                  frame_fliplr: bool = False, frame_flipud: bool = False):
         super().__init__(title=title)
         pg.setConfigOptions(useOpenGL=False)   # appears to be faster that way
+        try:
+            import numba
+            pg.setConfigOptions(useNumba=True)   # appears to be faster that way
+        except:
+            pass
         # build model:
         self.ds = ds
         self.data_source = data_source
