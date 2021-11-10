@@ -257,11 +257,13 @@ class Sleap(Poses, io.BaseProvider):
             tracks = f['tracks'][:]  # flies, (x/y), bodypart, frame
 
         poses_allo = tracks.transpose([3, 0, 2, 1])   # -> [frames, flies, bodypart, x/y]
+        poses_allo = poses_allo[..., ::-1]  # swap x/y
         poses_ego = poses_allo.copy()
         pose_parts = [pose_part.decode() for pose_part in pose_parts]  # from byte to str
 
         first_pose_frame = 0
         last_pose_frame = poses_allo.shape[0]
+
         return poses_ego, poses_allo, pose_parts, first_pose_frame, last_pose_frame
 
 
