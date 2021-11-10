@@ -307,6 +307,24 @@ class TraceView(pg.PlotWidget):
         self.callback(mouseT, event.button())
 
 
+class TrackView(TraceView):
+
+    def update_trace(self):
+        self.clear()
+
+        # draw individ channels
+        cols = self.m.bodypart_colors[self.m.track_sel_names]
+        for ii in range(self.m.y_tracks.shape[1]):
+            item = pg.PlotCurveItem(self.m.x_tracks, self.m.y_tracks[:, ii], pen=pg.mkPen(color=cols[ii]))
+            self.addItem(item)
+        self.autoRange(padding=0)
+
+        # time of current frame in trace
+        pos_line = pg.InfiniteLine(self.m.x_tracks[int(self.m.span / self.m.fs_ratio / 2)], movable=False, angle=90,
+                                   pen=pg.mkPen(color='r', width=1))
+        self.addItem(pos_line)
+
+
 class SpecView(pg.ImageView):
 
     def __init__(self, model, callback, colormap=None):
@@ -318,7 +336,8 @@ class SpecView(pg.ImageView):
         self.view.setAspectLocked(False)
         self.view.getViewBox().invertY(False)
         self.view.setMouseEnabled(x=False, y=False)
-        # leave enought space so axes are aligned aligned
+
+        # leave enough space so axes are aligned aligned
         y_axis = self.getView().getAxis('left')
         y_axis.setWidth(50)
         y_axis.setLabel('Frequency', units='Hz')
@@ -358,7 +377,7 @@ class SpecView(pg.ImageView):
 
     def update_spec(self, x, y):
         # hash x to avoid re-calculation? only useful when annotating
-        t0 = time.time()
+        # t0 = time.time()
         # t1 = time.time()
         # logging.debug(f'  update spec - clear annotations: {t1-t0}')
 
@@ -366,18 +385,18 @@ class SpecView(pg.ImageView):
         S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
         self.S = S
         trange = (self.m.x[-1] - self.m.x[0])
-        t2 = time.time()
-        logging.debug(f'  update spec - calc spec: {t2-t0}')
+        # t2 = time.time()
+        # logging.debug(f'  update spec - calc spec: {t2-t0}')
 
         self.setImage(S.T, autoRange=False, scale=[trange / len(t), (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
 
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
-        t3 = time.time()
-        logging.debug(f'  update spec - draw: {t3-t2}')
-        t4 = time.time()
-        logging.debug(f'update spec - TOTAL: {t4-t0}')
+        # t3 = time.time()
+        # logging.debug(f'  update spec - draw: {t3-t2}')
+        # t4 = time.time()
+        # logging.debug(f'update spec - TOTAL: {t4-t0}')
 
     @lru_cache(maxsize=2, typed=False)
     def _calc_spec(self, y, spec_win):

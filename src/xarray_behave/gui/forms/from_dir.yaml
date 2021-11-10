@@ -11,6 +11,17 @@ main:
   type: bool
   default: False
 
+- name: fix_fly_indices
+  label: Fix fly indices from swap file
+  type: bool
+  default: True
+
+- name: video_filename
+  label: Video file
+  type: file_open
+  default: ""
+  help: 'select custom filename'
+
 - name: frame_fliplr
   label: Flip video frames left-right
   type: bool
@@ -20,11 +31,6 @@ main:
   label: Flip video frames up-down
   type: bool
   default: False
-
-- name: fix_fly_indices
-  label: Fix fly indices from swap file
-  type: bool
-  default: True
 
 - name: box_size_px
   label: Crop width and height (pixels)

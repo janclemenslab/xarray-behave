@@ -32,9 +32,11 @@ except ImportError:
     logging.warning(f'Could not import PySide2.')
 
 
+
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 import pyqtgraph.Qt as Qt
+
 
 import xarray_behave
 from .. import (xarray_behave as xb,
@@ -731,12 +733,19 @@ class MainWindow(pg.QtGui.QMainWindow):
                 # add video file
                 vr = None
                 try:
-                    try:
-                        video_filename = os.path.join(dirname, datename + '.mp4')
-                        vr = utils.VideoReaderNP(video_filename)
-                    except:
-                        video_filename = os.path.join(dirname, datename + '.avi')
-                        vr = utils.VideoReaderNP(video_filename)
+                    if dialog.form['video_filename'] != '':
+                        try:
+                            video_filename = dialog.form['video_filename']
+                            vr = utils.VideoReaderNP(video_filename)
+                        except:
+                            pass
+                    else:
+                        try:
+                            video_filename = os.path.join(dirname, datename + '.mp4')
+                            vr = utils.VideoReaderNP(video_filename)
+                        except:
+                            video_filename = os.path.join(dirname, datename + '.avi')
+                            vr = utils.VideoReaderNP(video_filename)
                     logging.info(vr)
                 except FileNotFoundError:
                     logging.info(f'Video "{video_filename}" not found. Continuing without.')
@@ -953,7 +962,7 @@ class PSV(MainWindow):
         self.event_times = annot.Events(self.event_times)
 
         self.nb_eventtypes = len(self.event_times.names)
-        self.eventype_colors = utils.make_colors(self.nb_eventtypes)
+        self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
 
         self.box_size = box_size
         self.fmin = fmin
@@ -973,7 +982,7 @@ class PSV(MainWindow):
         try:
             self.pose_center_index = list(self.ds.poseparts).index('thorax')
         except:
-            if len(list(self.ds.poseparts)) > 8:
+            if 'poseparts' in self.ds and len(list(self.ds.poseparts)) > 8:
                 self.pose_center_index = 8
             else:  # fallback in case poses are a little different
                 self.pose_center_index = 0
@@ -990,13 +999,17 @@ class PSV(MainWindow):
         self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds.dims else 1
         self.focal_fly = 0
         self.other_fly = 1 if self.nb_flies > 1 else 0
+
         if 'poseparts' in self.ds:
+            self.bodyparts = self.ds.poseparts.data
             self.nb_bodyparts = len(self.ds.poseparts)
         elif 'bodyparts' in self.ds:
+            self.bodyparts = self.ds.bodyparts.data
             self.nb_bodyparts = len(self.ds.bodyparts)
             self.track_center_index = 1
         else:
             self.nb_bodyparts = 1
+            self.bodyparts = None
 
         self.fly_colors = utils.make_colors(self.nb_flies)
         self.bodypart_colors = utils.make_colors(self.nb_bodyparts)
@@ -1013,6 +1026,7 @@ class PSV(MainWindow):
         self.swap_events = []
         self.show_spec = True
         self.show_trace = True
+        self.show_tracks = False
         self.show_movie = True
         self.show_options = True
         self.show_segment_text = True
@@ -1151,12 +1165,13 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(self.view_train, "Predict", self.das_predict, None)
 
         view_view = self.bar.addMenu("View")
-        # self._add_keyed_menuitem(view_view, "Show options", self.toggle_show_options, None,
-        #                         checkable=True, checked=self.show_options)
+        # TODO? only show these if tracks and/or video
         self._add_keyed_menuitem(view_view, "Show spectrogram", partial(self.toggle, 'show_spec'), None,
                                 checkable=True, checked=self.show_spec)
         self._add_keyed_menuitem(view_view, "Show waveform", partial(self.toggle, 'show_trace'), None,
                                 checkable=True, checked=self.show_trace)
+        self._add_keyed_menuitem(view_view, "Show tracks", partial(self.toggle, 'show_tracks'), None,
+                                checkable=True, checked=self.show_tracks)
         self._add_keyed_menuitem(view_view, "Show movie", partial(self.toggle, 'show_movie'), None,
                                 checkable=True, checked=self.show_movie)
 
@@ -1201,6 +1216,36 @@ class PSV(MainWindow):
         self.hl.addWidget(channel_sel_label, stretch=1)
         self.hl.addWidget(self.cb2, stretch=4)
 
+        # TRACKS selector
+        if 'pose_positions_allo' in self.ds and self.bodyparts is not None:
+            self.cb3 = utils.CheckableComboBox()
+            items = [f"{b}, {c}" for b in self.bodyparts for c in ['x', 'y']]
+            self.cb3.addItems(items)
+
+            # color events in combobox as in slice_view and spec_view
+            children = self.cb3.children()
+            itemList = children[0]
+            # repeat colors since we have x and y values for each
+            # TODO: discriminate x/y
+            self.tracks_colors = []
+            for col in self.bodypart_colors:
+                self.tracks_colors.append(col)
+                self.tracks_colors.append(col)
+
+            for ii, col in zip(range(0, itemList.rowCount()), self.tracks_colors):
+                itemList.item(ii).setForeground(QtGui.QColor(*col))
+
+            track_sel_label = pg.Qt.QtWidgets.QLabel('Track parts:')
+            track_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
+            self.hl.addWidget(track_sel_label, stretch=1)
+            self.hl.addWidget(self.cb3, stretch=4)
+
+            def on_tracksel_changed(source):
+                if source.STOP:
+                    source.update_xy()
+            self.cb3.currentTextChanged.connect(lambda: on_tracksel_changed(self))
+
+
 
         self.movie_view = None
         if self.vr is not None:
@@ -1215,6 +1260,7 @@ class PSV(MainWindow):
             lut = None
 
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
+        self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=lut)
 
         self.ly = pg.QtGui.QVBoxLayout()
@@ -1225,6 +1271,7 @@ class PSV(MainWindow):
         splitter_horizontal = QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
 
         splitter.addWidget(splitter_horizontal)
+        splitter.addWidget(self.tracks_view)
         splitter.addWidget(self.slice_view)
         splitter.addWidget(self.spec_view)
         if self.vr is not None:
@@ -1295,7 +1342,7 @@ class PSV(MainWindow):
         self.update_frame()
         self.t0 = self.t0 + 0.0000000001
         self.span = self.span + 0.0000000001
-        logging.info("xb gui initialized.")
+        logging.info("DAS gui initialized.")
 
     @property
     def fs_ratio(self):
@@ -1619,6 +1666,8 @@ class PSV(MainWindow):
             self.update_xy()
 
     def update_xy(self):
+        # FIXME: self.time0 and self.time1 are indices into self.ds.sampletime, not time points
+        # rename to sampletime_index0/1?
         self.x = self.ds.sampletime.data[self.time0:self.time1]
         self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
         self.y_other = None
@@ -1653,6 +1702,27 @@ class PSV(MainWindow):
             self.slice_view.clear()
             self.slice_view.hide()
 
+        if 'pose_positions_allo' in self.ds:
+            if self.show_tracks:
+                # make this part of the callback?
+                sel_parts = self.cb3.currentData()
+                self.track_sel_names = []
+                self.track_sel_coords = []
+                for part in sel_parts:
+                    self.track_sel_names.append(self.bodyparts.tolist().index(part[:-3]))
+                    self.track_sel_coords.append(0 if part[-1] == 'x' else 1)
+
+                i0 = int(self.time0 / self.fs_ratio)
+                i1 = int(self.time1 / self.fs_ratio)
+
+                self.x_tracks = self.ds.time.data[i0:i1]
+                self.y_tracks = self.ds.pose_positions_allo.data[i0:i1, self.focal_fly, self.track_sel_names, self.track_sel_coords]
+                self.tracks_view.update_trace()
+                self.tracks_view.show()
+            else:
+                self.tracks_view.clear()
+                self.tracks_view.hide()
+
         self.spec_view.clear_annotations()
         if self.show_spec:
             self.spec_view.update_spec(self.x, self.y)
@@ -1661,7 +1731,7 @@ class PSV(MainWindow):
             self.spec_view.clear()
             self.spec_view.hide()
 
-        if self.show_songevents:
+        if self.show_songevents and (self.show_trace or self.show_tracks or self.show_spec):
             self.plot_song_events(self.x)
 
     def update_frame(self):
@@ -1679,8 +1749,8 @@ class PSV(MainWindow):
             if self.move_only_current_events:
                 movable = movable and self.current_event_index==event_index
 
-            event_pen = pg.mkPen(color=self.eventype_colors[event_index], width=3)
-            event_brush = pg.mkBrush(color=[*self.eventype_colors[event_index], 25])
+            event_pen = pg.mkPen(color=self.eventtype_colors[event_index], width=3)
+            event_brush = pg.mkBrush(color=[*self.eventtype_colors[event_index], 25])
 
             events_in_view = self.event_times.filter_range(event_name, x[0], x[-1], strict=False)
 
@@ -1691,11 +1761,17 @@ class PSV(MainWindow):
 
             if self.event_times.categories[event_name] == 'segment':
                 for onset, offset in zip(events_in_view[:, 0], events_in_view[:, 1]):
-                    self.slice_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text)
+                    if self.show_trace:
+                        self.slice_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text)
+                    if self.show_tracks:
+                        self.tracks_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text)
                     if self.show_spec:
                         self.spec_view.add_segment(onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text)
             elif self.event_times.categories[event_name] == 'event':
-                    self.slice_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
+                    if self.show_trace:
+                        self.slice_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
+                    if self.show_tracks:
+                        self.tracks_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
                     if self.show_spec:
                         self.spec_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
 
@@ -2011,7 +2087,7 @@ class PSV(MainWindow):
                     self.event_times.add_time(str(name) + str(suffix), onset_seconds, offset_seconds, category='segment')
 
             self.nb_eventtypes = len(self.event_times)
-            self.eventype_colors = utils.make_colors(self.nb_eventtypes)
+            self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
             self.update_eventtype_selector()
         logging.info('Done.')
 
@@ -2044,7 +2120,7 @@ class PSV(MainWindow):
                 logging.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
         # update event selector in case the event did not exist yet
         self.nb_eventtypes = len(self.event_times)
-        self.eventype_colors = utils.make_colors(self.nb_eventtypes)
+        self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
         self.update_eventtype_selector()
 
         logging.info("Done.")
@@ -2103,7 +2179,7 @@ class PSV(MainWindow):
                 self.fs_other = self.fs_song
 
             self.nb_eventtypes = len(self.event_times)
-            self.eventype_colors = utils.make_colors(self.nb_eventtypes)
+            self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
 
             self.update_eventtype_selector()
         if dialog is not None:  # update docked table widget
@@ -2179,7 +2255,7 @@ class PSV(MainWindow):
         # color events in combobox as in slice_view and spec_view
         children = self.cb.children()
         itemList = children[0]
-        for ii, col in zip(range(1, itemList.rowCount()), self.eventype_colors):
+        for ii, col in zip(range(1, itemList.rowCount()), self.eventtype_colors):
             itemList.item(ii).setForeground(QtGui.QColor(*col))
 
 
@@ -2213,7 +2289,9 @@ def main(source: str = '', *, events_string: str = '',
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
         is_das (bool): reduced GUI for audio only data
     """
-    QtGui.QApplication([])
+    app = pg.mkQApp()
+
+    # QtGui.QApplication([])
     mainwin = MainWindow()
     mainwin.show()
     if not len(source):
@@ -2242,7 +2320,7 @@ def main(source: str = '', *, events_string: str = '',
                             skip_dialog=skip_dialog,
                             is_das=is_das)
 
-    # Start Qt event loop unless running in interactive mode or using pyside.
+    # # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
 
@@ -2280,7 +2358,6 @@ def main_das(source: str = '', *, song_types_string: str = '',
 def cli():
     import warnings
     warnings.filterwarnings("ignore")
-
     # enforce log level
     try:  # py38+
         logging.basicConfig(level=logging.INFO, force=True)
