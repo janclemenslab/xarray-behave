@@ -1,7 +1,7 @@
 {% set data = load_setup_py_data(setup_file='../../setup.py', from_recipe_dir=True) %}
 {% set name = "xarray-behave" %}
-# {% set version = data.get('version') %}
-{% set version = "0.27.5" %}
+{% set version = data.get('version') %}
+# {% set version = "0.27.5" %}
 
 package:
   name: xarray-behave-nogui
