@@ -127,7 +127,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          conda mambabuild conda/xarray-behave-nogui -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          # conda mambabuild conda/xarray-behave-nogui -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          conda-build conda/xarray-behave-nogui -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
 
@@ -135,7 +136,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          conda mambabuild conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          # conda mambabuild conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          conda-build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
 
