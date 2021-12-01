@@ -243,7 +243,6 @@ def load_times(filepath_timestamps, filepath_daq):
         frame_interval_median = np.median(frame_intervals)
         idxs = np.where(frame_intervals<-10 * frame_interval_median)[0]
         while len(idxs):
-            print(idxs)
             idx = idxs[0]
             df_wrong = cam_stamps[idx+1, 1] - cam_stamps[idx, 1]
             df_inferred = cam_stamps[idx+1, 0] - cam_stamps[idx, 0]
@@ -256,7 +255,6 @@ def load_times(filepath_timestamps, filepath_daq):
 
     last_frame_idx = np.argmax(shutter_times==0) - 1
     shutter_times = shutter_times[:last_frame_idx]
-    last_frame = shutter_times[-1]
 
     # DAQ time stamps
     with h5py.File(filepath_daq, 'r') as f:
