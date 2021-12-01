@@ -238,6 +238,10 @@ def load_times(filepath_timestamps, filepath_daq):
     if cam_stamps.shape[1] > 2:  # time stamps from flycapture (old point grey API)
         shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2]/1_000_000  # time of "Shutter OFF"
     elif cam_stamps.shape[1] == 2:  # time stamps from other camera drivers (spinnaker (new point grey/FLIR API) and ximea)
+        # cut off empty time stamps
+        last_frame_idx = np.argmax(cam_stamps[:, 1]==0) - 1
+        cam_stamps = cam_stamps[:last_frame_idx]
+
         # fix jumps from overflow in timestamp counter for ximea cameras
         frame_intervals = np.diff(cam_stamps[:, 1])
         frame_interval_median = np.median(frame_intervals)
