@@ -1170,10 +1170,12 @@ class PSV(MainWindow):
                                 checkable=True, checked=self.show_spec)
         self._add_keyed_menuitem(view_view, "Show waveform", partial(self.toggle, 'show_trace'), None,
                                 checkable=True, checked=self.show_trace)
-        self._add_keyed_menuitem(view_view, "Show tracks", partial(self.toggle, 'show_tracks'), None,
-                                checkable=True, checked=self.show_tracks)
-        self._add_keyed_menuitem(view_view, "Show movie", partial(self.toggle, 'show_movie'), None,
-                                checkable=True, checked=self.show_movie)
+        if 'pose_positions_allo' in self.ds:
+            self._add_keyed_menuitem(view_view, "Show tracks", partial(self.toggle, 'show_tracks'), None,
+                                    checkable=True, checked=self.show_tracks)
+        if self.vr is not None:
+            self._add_keyed_menuitem(view_view, "Show movie", partial(self.toggle, 'show_movie'), None,
+                                    checkable=True, checked=self.show_movie)
 
         self.hl = pg.QtGui.QHBoxLayout()
 
@@ -1271,16 +1273,17 @@ class PSV(MainWindow):
         splitter_horizontal = QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
 
         splitter.addWidget(splitter_horizontal)
-        splitter.addWidget(self.tracks_view)
+        if 'pose_positions_allo' in self.ds:
+            splitter.addWidget(self.tracks_view)
         splitter.addWidget(self.slice_view)
         splitter.addWidget(self.spec_view)
         if self.vr is not None:
             splitter_horizontal.addWidget(self.movie_view)
             splitter_horizontal.setSizes([1, 4000, 10])
-            splitter.setSizes([400, 10, 100, 100])
+            splitter.setSizes([400, 10, 100, 100, 100])
         else:
             splitter_horizontal.setSizes([500, 50])
-            splitter.setSizes([10, 1000, 1000])
+            splitter.setSizes([10, 1000, 1000, 1000])
 
         self.ly.addWidget(splitter)
 
