@@ -9,7 +9,7 @@ The [DAS docs](https://janclemenslab.org/das) also contain instructions on annot
 ### GUI
 For using with the GUI:
 ```shell
-conda env create -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/master/env/xb_gui.yml -n xb
+conda create -c ncb -c conda-forge -n xb xarray-behave
 ```
 The GUI can be started by activating the new environment `conda activate xb` and then typing `xb` in a terminal. See `xb --help` for usage/arguments/keys.
 GUI usage is documented [here](https://janclemenslab.org/das/tutorials_gui/tutorials_gui.html).
@@ -17,7 +17,7 @@ GUI usage is documented [here](https://janclemenslab.org/das/tutorials_gui/tutor
 ### Non-GUI
 If you do not want to use the GUI, e.g. if just want to create, load, save datasets:
 ```shell
-conda env create -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/master/env/xb.yml -n xb
+conda create -c ncb -c conda-forge -n xb xarray-behave-nogui
 ```
 
 See `demo.ipynb` for usage examples.
