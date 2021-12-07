@@ -30,8 +30,7 @@ requirements:
     - scikit-learn
     - zarr
     - xarray
-    - dask #<0.19 [win]
-#     - dask # [not win]
+    - dask
     - pyside2
     - pyqtgraph>0.12.2
     - colorcet
@@ -57,8 +56,7 @@ requirements:
     - scikit-learn
     - zarr
     - xarray
-    - dask #<0.19 [win]
-#     - dask [not win]
+    - dask
     - pyside2
     - pyqtgraph>0.12.2
     - colorcet
