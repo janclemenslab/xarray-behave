@@ -325,8 +325,7 @@ class MainWindow(pg.QtGui.QMainWindow):
             logging.info(f"Done.")
 
     def das_make(self, qt_keycode=None):
-        data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
-                                                        caption='Select data folder')
+        data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption='Select data folder')
         if not data_folder:
             return
 
@@ -451,8 +450,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 logging.info(f"Done.")
 
         data_dir = QtWidgets.QFileDialog.getExistingDirectory(None, directory=None,
-                                                              caption="Open Data Folder (*.npy)",
-                                                              filter="npy folders (*.npy);;all files (*)")
+                                                              caption="Open Data Folder (*.npy)")
         # TODO: check that this is a valid data_dir!
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_train.yaml",
                             title='Train network',
@@ -651,7 +649,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None,
-                                                                    caption='Select data directory')
+                                                                 caption='Select data directory')
         if dirname:
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
                                 title=f'Dataset from data directory {dirname}')
