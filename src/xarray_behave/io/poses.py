@@ -244,7 +244,7 @@ class Sleap(Poses, io.BaseProvider):
 
     KIND = 'poses'
     NAME = 'sleap'
-    SUFFIXES = ['_poses_sleap.h5']
+    SUFFIXES = ['_poses_sleap.h5', '_sleap.h5.slp']
 
     def load(self, filename: Optional[str] = None):
         if filename is None:
