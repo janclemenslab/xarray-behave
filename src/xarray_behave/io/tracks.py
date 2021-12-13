@@ -22,7 +22,7 @@ class Tracks():
         if filename is None:
             filename = self.path
 
-        body_pos, track_names, body_parts, frame_numbers = self.load(filename)
+        body_pos, track_names, body_parts, frame_numbers, background = self.load(filename)
 
         positions = xr.DataArray(data=body_pos,
                                  dims=['frame_number', 'flies', 'bodyparts', 'coords'],
@@ -36,6 +36,8 @@ class Tracks():
                                         'loader': self.NAME,
                                         'kind': self.KIND,
                                         'path': filename,})
+        if background is not None:
+            positions.attrs['background'] = background
         return positions
 
 
@@ -55,17 +57,17 @@ class Ethotracker(Tracks, io.BaseProvider):
             if 'data' in f.keys():  # in old-style or unfixed tracks, everything is in the 'data' group
                 data = flammkuchen.load(filename)
                 chbb = data['chambers_bounding_box'][:]
-                heads = data['lines'][:, :, :, 0, :]   # nframe, fly id, coordinates
-                tails = data['lines'][:, :, :, 1, :]   # nframe, fly id, coordinates
-                centers = data['centers'][:, :, :, :]   # nframe, fly id, coordinates
+                heads = data['lines'][:, :, :, 0, :]   # nframe, nb_chamber, fly id, coordinates
+                tails = data['lines'][:, :, :, 1, :]   # nframe, nb_chamber, fly id, coordinates
+                centers = data['centers'][:, :, :, :]   # nframe, nb_chamber, fly id, coordinates
                 background = data['background'][:]
                 first_tracked_frame = data['start_frame']
                 last_tracked_frame = data['frame_count']
             else:
                 chbb = f['chambers_bounding_box'][:]
-                heads = f['lines'][:, :, :, 0, :]   # nframe, fly id, coordinates
-                tails = f['lines'][:, :, :, 1, :]   # nframe, fly id, coordinates
-                centers = f['centers'][:, :, :, :]   # nframe, fly id, coordinates
+                heads = f['lines'][:, :, :, 0, :]   # nframe, nb_chamber, fly id, coordinates
+                tails = f['lines'][:, :, :, 1, :]   # nframe, nb_chamber, fly id, coordinates
+                centers = f['centers'][:, :, :, :]   # nframe, nb_chamber, fly id, coordinates
                 background = f['background'][:]
                 first_tracked_frame = f.attrs['start_frame']
                 last_tracked_frame = f.attrs['frame_count']
@@ -73,7 +75,7 @@ class Ethotracker(Tracks, io.BaseProvider):
         heads = heads[..., ::-1]
         tails = tails[..., ::-1]
 
-        # convert from bounding box to frame corrds
+        # convert from bounding box to frame coords
         heads = heads + chbb[1:, 0, np.newaxis, ...]
         tails = tails + chbb[1:, 0, np.newaxis, ...]
         centers = centers + chbb[1:, 0, np.newaxis, ...]
@@ -84,12 +86,11 @@ class Ethotracker(Tracks, io.BaseProvider):
         heads = heads.reshape((heads.shape[0], -1, heads.shape[-1]))
         tails = tails.reshape((tails.shape[0], -1, tails.shape[-1]))
         centers = centers.reshape((centers.shape[0], -1, centers.shape[-1]))
-
         x = np.stack((heads, centers, tails), axis=2)
         x = x[first_tracked_frame:last_tracked_frame, ...]
         frame_numbers = np.arange(first_tracked_frame, last_tracked_frame, dtype=np.intp)
         track_names = np.arange(x.shape[1])
-        return x, track_names, body_parts, frame_numbers
+        return x, track_names, body_parts, frame_numbers, background
 
 
 @io.register_provider
@@ -118,7 +119,7 @@ class CSV_tracks(Tracks, io.BaseProvider):
             filename (Optional[str], optional): Path to the CSV file. Defaults to None.
 
         Returns:
-            x: np.array([frames, tracks, parts, coords (y/x)]), track_names: List[], track_parts: List[], frame_numbers: np.array[np.intp]
+            x: np.array([frames, tracks, parts, coords (y/x)]), track_names: List[], track_parts: List[], frame_numbers, background: np.array[np.intp]
         """
 
         if filename is None:
@@ -132,4 +133,5 @@ class CSV_tracks(Tracks, io.BaseProvider):
         x = np.reshape(df.values, (-1, len(track_names), len(track_parts), len(track_coord)))
         x = x[..., coord_order]
         frame_numbers = df.index.to_numpy().astype(np.intp)
-        return x, track_names, track_parts, frame_numbers
+        background = None
+        return x, track_names, track_parts, frame_numbers, background
