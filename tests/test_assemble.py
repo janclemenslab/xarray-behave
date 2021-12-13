@@ -14,62 +14,62 @@ recs = {'rpi9-20210409_093149': {},
 
 
 # TODO: add asserts to ensure results conform to expected ds structure
-def test_assemble0():
-    datenames = list(recs.keys())
-    ii = 0
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble0():
+#     datenames = list(recs.keys())
+#     ii = 0
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
-def test_assemble1():
-    datenames = list(recs.keys())
-    ii = 1
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble1():
+#     datenames = list(recs.keys())
+#     ii = 1
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
-def test_assemble2():
-    datenames = list(recs.keys())
-    ii = 2
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble2():
+#     datenames = list(recs.keys())
+#     ii = 2
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
-def test_assemble3():
-    datenames = list(recs.keys())
-    ii = 3
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble3():
+#     datenames = list(recs.keys())
+#     ii = 3
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
-def test_assemble4():
-    datenames = list(recs.keys())
-    ii = 4
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble4():
+#     datenames = list(recs.keys())
+#     ii = 4
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
 
-def test_assemble5():
-    datenames = list(recs.keys())
-    ii = 5
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble5():
+#     datenames = list(recs.keys())
+#     ii = 5
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
-def test_assemble6():
-    datenames = list(recs.keys())
-    ii = 6
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble6():
+#     datenames = list(recs.keys())
+#     ii = 6
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
-def test_assemble7():
-    datenames = list(recs.keys())
-    ii = 7
-    datename = datenames[ii]
-    kwargs = recs[datename]
-    ds = xb.assemble(datename, **kwargs)
+# def test_assemble7():
+#     datenames = list(recs.keys())
+#     ii = 7
+#     datename = datenames[ii]
+#     kwargs = recs[datename]
+#     ds = xb.assemble(datename, **kwargs)
 
 
 if __name__ == '__main__':
