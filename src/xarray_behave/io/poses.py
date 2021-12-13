@@ -17,6 +17,7 @@ from .. import io
 import math
 from typing import Optional
 import logging
+import json
 
 
 def rotate_point(pos, degrees, origin=(0, 0)):
@@ -251,7 +252,15 @@ class Sleap(Poses, io.BaseProvider):
             filename = self.path
 
         with h5py.File(filename, 'r') as f:
-            pose_parts = f['node_names'][:]
+
+            if 'node_names' not in f:
+                meta = json.loads(f['metadata'].attrs['json'])
+                pose_parts = []
+                for node in meta['nodes']:
+                    pose_parts.append(node['name'])
+            else:
+                pose_parts = f['node_names'][:]
+
             # track_names = f['track_names']
             # track_occupancy = f['track_occupancy'][:]
             tracks = f['tracks'][:]  # flies, (x/y), bodypart, frame
