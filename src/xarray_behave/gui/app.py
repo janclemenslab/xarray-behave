@@ -1971,8 +1971,8 @@ class PSV(MainWindow):
         if self.vr is not None:
             # use swap_dims to swap flies in all dataarrays in the data set?
             # TODO make sure this does not fail for datasets w/o song
-            logging.info(f'   Swapping flies 1 & 2 at time {self.t0}.')
-            # if already in there remove - swapping a second time would negate first swap
+            logging.info(f'   Swapping flies {self.focal_fly} & {self.other_fly} at time {self.t0}.')
+            # # if already in there remove - swapping a second time would negate first swap
             if [self.index_other, self.focal_fly, self.other_fly] in self.swap_events:
                 self.swap_events.remove([self.index_other, self.focal_fly, self.other_fly])
             else:
@@ -1984,6 +1984,7 @@ class PSV(MainWindow):
                 self.other_fly, self.focal_fly], ...] = self.ds.pose_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
             self.ds.body_positions.values[self.index_other:, [
                 self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+
             self.update_frame()
 
     def das_predict(self, qt_keycode):

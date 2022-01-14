@@ -173,7 +173,6 @@ def swap_flies(dataset, indices, flies1=0, flies2=1):
             fly1, fly2 = flies1[cnt], flies2[cnt]
         else:
             fly1, fly2 = flies1, flies2
-
         if 'pose_positions_allo' in dataset:
             dataset.pose_positions_allo.values[index:, [fly2, fly1], ...] = dataset.pose_positions_allo.values[index:, [fly1, fly2], ...]
         if 'pose_positions' in dataset:
