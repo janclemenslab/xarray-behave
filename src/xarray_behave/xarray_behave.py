@@ -474,7 +474,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
     filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
     if fix_fly_indices and os.path.exists(filepath_swap):
-        logging.info('   applying fly identity fixes')
+        logging.info(f'   Applying fly identity fixes from {filepath_swap}.')
         try:
             indices, flies1, flies2 = ld.load_swap_indices(filepath_swap)
             dataset = ld.swap_flies(dataset, indices, flies1=flies1, flies2=flies2)
