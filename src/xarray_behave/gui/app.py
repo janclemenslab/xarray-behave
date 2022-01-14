@@ -1108,6 +1108,7 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_video, "Flip frame up-down", partial(self.toggle, 'frame_flipud'), None,
                                 checkable=True, checked=self.frame_flipud)
         self._add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, "F")
+        self._add_keyed_menuitem(view_video, "Change other fly", self.change_other_fly, "Z")
         self._add_keyed_menuitem(view_video, "Swap flies", self.swap_flies, "X")
         view_video.addSeparator()
         self._add_keyed_menuitem(view_video, "Move poses", partial(self.toggle, 'move_poses'), "B",
@@ -1576,6 +1577,14 @@ class PSV(MainWindow):
             self.other_fly, self.focal_fly = self.focal_fly, self.other_fly
         else:
             self.focal_fly = tmp
+        if self.STOP:
+            self.update_frame()
+
+    def change_other_fly(self, qt_keycode):
+        tmp = (self.other_fly + 1) % self.nb_flies
+        if tmp == self.focal_fly:  # skip focal fly if same
+            tmp = tmp + 1
+        self.other_fly = tmp
         if self.STOP:
             self.update_frame()
 
