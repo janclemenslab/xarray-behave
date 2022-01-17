@@ -2,20 +2,13 @@
 import numpy as np
 import pandas as pd
 import h5py
-import flammkuchen as dd_io
-from typing import Sequence, Optional, Union, List
-import logging
-
+from typing import Sequence, Optional, Tuple
 import scipy.interpolate
 import scipy.ndimage
-from scipy.io import loadmat
 import scipy.signal
 import scipy.stats
 from scipy.ndimage import maximum_filter1d
-
 from samplestamps import SampStamp
-import xarray as xr
-import zarr
 import math
 
 
