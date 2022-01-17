@@ -17,24 +17,20 @@ from samplestamps import SampStamp
 import xarray as xr
 import zarr
 import math
-from . import xarray_behave as xb
-from . import (event_utils,
-               annot)
 
 
-
-def rotate_point(pos, degrees, origin=(0, 0)):
-    """Rotate point.
+def rotate_point(point: Tuple[float, float], degrees: float, origin: Tuple[float, float] = (0, 0)) -> Tuple[float, float]:
+    """Rotates 2D point around another point.
 
     Args:
-        pos (tuple): (x.y) position
-        degrees ([type]): degree by which to rotate
-        origin (tuple, optional): point (x,y) around which to rotate point. Defaults to (0, 0).
+        point (Tuple[float, float]): (x,y) coordinates of the point
+        degrees (float): angle in degrees by which to rotate
+        origin (Tuple[float, float], optional): point (x,y) around which to rotate point. Defaults to (0, 0).
 
     Returns:
-        tuple: (x, y) rotated
+        Tuple[float, float]: Rotated point
     """
-    x, y = pos
+    x, y = point
     radians = degrees / 180 * np.pi
     offset_x, offset_y = origin
     adjusted_x = (x - offset_x)
@@ -47,7 +43,7 @@ def rotate_point(pos, degrees, origin=(0, 0)):
 
 
 def rotate_pose(positions, degree, origin=(0, 0)):
-    """Rotate point set.
+    """Rotates point set.
 
     Args:
         pos (np.ndarray): [points, x/y]
