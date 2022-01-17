@@ -1969,21 +1969,18 @@ class PSV(MainWindow):
 
     def swap_flies(self, qt_keycode):
         if self.vr is not None:
-            # use swap_dims to swap flies in all dataarrays in the data set?
-            # TODO make sure this does not fail for datasets w/o song
-            logging.info(f'   Swapping flies {self.focal_fly} & {self.other_fly} at time {self.t0}.')
-            # # if already in there remove - swapping a second time would negate first swap
-            if [self.index_other, self.focal_fly, self.other_fly] in self.swap_events:
-                self.swap_events.remove([self.index_other, self.focal_fly, self.other_fly])
-            else:
-                self.swap_events.append([self.index_other, self.focal_fly, self.other_fly])
+            swap_time = float(self.ds.time[self.index_other])
+            logging.info(f'   Swapping flies {self.focal_fly} & {self.other_fly} at {swap_time} seconds.')
 
-            self.ds.pose_positions_allo.values[self.index_other:, [
-                self.other_fly, self.focal_fly], ...] = self.ds.pose_positions_allo.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
-            self.ds.pose_positions.values[self.index_other:, [
-                self.other_fly, self.focal_fly], ...] = self.ds.pose_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
-            self.ds.body_positions.values[self.index_other:, [
-                self.other_fly, self.focal_fly], ...] = self.ds.body_positions.values[self.index_other:, [self.focal_fly, self.other_fly], ...]
+            # save swap info
+            # if already in there remove - swapping a second time would negate first swap
+            if [self.t0, self.focal_fly, self.other_fly] in self.swap_events:
+                self.swap_events.remove([swap_time, self.focal_fly, self.other_fly])
+            else:
+                self.swap_events.append([swap_time, self.focal_fly, self.other_fly])
+
+            # swap flies
+            self.ds = ld.swap_flies(self.ds, [swap_time], self.focal_fly, self.other_fly)
 
             self.update_frame()
 

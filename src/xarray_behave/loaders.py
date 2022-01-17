@@ -153,7 +153,7 @@ def load_swap_indices(filepath):
     return indices, flies1, flies2
 
 
-def swap_flies(dataset, indices, flies1=0, flies2=1):
+def swap_flies(dataset, swap_times, flies1=0, flies2=1):
     """Swap flies in dataset.
 
     Caution: datavariables are currently hard-coded!
@@ -161,18 +161,25 @@ def swap_flies(dataset, indices, flies1=0, flies2=1):
 
     Args:
         dataset ([type]): Dataset for which to swap flies
-        indices ([type]): List of indices at which to swap flies.
+        swap_times ([type]): List of times (in seconds) at which to swap flies.
         flies1 (int or list/tuple, optional): Either a single value for all indices or a list with one value per item in indices. Defaults to 0.
         flies2 (int or list/tuple, optional): Either a single value for all indices or a list with one value per item in indices. Defaults to 1.
 
     Returns:
         dataset with swapped indices ()
     """
-    for cnt, index in enumerate(indices):
+    if 'time' not in dataset:
+        return
+
+    for cnt, swap_time in enumerate(swap_times):
         if isinstance(flies1, (list, tuple)) and isinstance(flies2, (list, tuple)):
             fly1, fly2 = flies1[cnt], flies2[cnt]
         else:
             fly1, fly2 = flies1, flies2
+
+        nearest_time = dataset.time.sel(time=swap_time, method="nearest")
+
+        index = int(np.where(dataset.time == nearest_time)[0])
         if 'pose_positions_allo' in dataset:
             dataset.pose_positions_allo.values[index:, [fly2, fly1], ...] = dataset.pose_positions_allo.values[index:, [fly1, fly2], ...]
         if 'pose_positions' in dataset:
