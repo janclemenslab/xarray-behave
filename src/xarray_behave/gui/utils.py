@@ -157,7 +157,7 @@ def allkeys(obj, keys=[]):
 def is_sorted(array):
     return np.all(np.diff(array) >= 0)
 
-#`values` should be sorted
+
 def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
     """Find nearest index of each value from values in array
 
@@ -165,7 +165,7 @@ def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
 
     Args:
         array (np.array): array to search in
-        values (Union[int, float, np.array]): query
+        values (Union[int, float, np.array]): query, should be sorted.
 
     Returns:
         [type]: indices of entries in array closest to each value in values
@@ -190,19 +190,16 @@ def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
 
 
 class Worker(pg.QtCore.QRunnable):
-# class Worker(pg.QtCore.QThread):
-    '''
-    Worker thread
+    """Worker thread
 
     Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
 
-    :param callback: The function callback to run on this worker thread. Supplied args and
+    Args:
+    fn: The function callback to run on this worker thread. Supplied args and
                      kwargs will be passed through to the runner.
-    :type callback: function
-    :param args: Arguments to pass to the callback function
-    :param kwargs: Keywords to pass to the callback function
-
-    '''
+    args: Arguments to pass to the callback function
+    kwargs: Keywords to pass to the callback function
+    """
 
     def __init__(self, fn, *args, **kwargs):
         super(Worker, self).__init__()

@@ -179,8 +179,6 @@ def swap_flies(dataset, swap_times, flies1=0, flies2=1):
     return dataset
 
 
-
-
 def load_raw_song(filepath_daq: str, song_channels: Optional[Sequence[int]] = None,
                   return_nonsong_channels: bool = False, lazy: bool = False):
     """[summary]

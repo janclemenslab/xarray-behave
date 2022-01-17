@@ -972,9 +972,9 @@ class PSV(MainWindow):
         elif 'song_raw' in self.ds:
             self.tmax = self.ds.song_raw.shape[0]
         elif 'body_positions' in self.ds:
-            self.tmax = len(self.ds.body_positions) #* ds.attrs['target_sampling_rate_Hz']
+            self.tmax = len(self.ds.body_positions)
         else:
-            raise ValueError('No time stamp info in dataset.')
+            self.tmax = len(self.ds.time)
 
         self.crop = True
         try:
