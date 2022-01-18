@@ -478,6 +478,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         try:
             indices, flies1, flies2 = ld.load_swap_indices(filepath_swap)
             dataset = ld.swap_flies(dataset, indices, flies1=flies1, flies2=flies2)
+            dataset.attrs['swap_events'] = [[ii, f1, f2] for ii, f1, f2 in zip(indices, flies1, flies2)]
             logging.info(f'  Fixed fly identities using info from {filepath_swap}.')
         except (FileNotFoundError, OSError) as e:
             logging.debug(f'  Could not load fly identities using info from {filepath_swap}.')

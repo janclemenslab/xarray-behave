@@ -135,11 +135,11 @@ def remove_short(sine_pred, min_len=100):
 
 
 def load_swap_indices(filepath):
-    a = np.loadtxt(filepath, dtype=np.uintp)
+    a = np.loadtxt(filepath)  #, dtype=np.uintp)
     indices, flies1, flies2 = np.split(a, [1, 2], axis=-1)  # split columns in file into variables
     if indices.ndim == 2:  # is sometimes 2d for some reason
         indices = indices[:, 0]
-    return indices, flies1, flies2
+    return indices, flies1.astype(np.uintp), flies2.astype(np.uintp)
 
 
 def swap_flies(dataset, swap_times, flies1=0, flies2=1):

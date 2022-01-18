@@ -147,7 +147,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                                                                 filter="txt files (*.txt);;all files (*)")
         if len(savefilename):
             logging.info(f'   Saving list of swap indices to {savefilename}.')
-            np.savetxt(savefilename, self.swap_events, fmt='%d', header='index fly1 fly2')
+            np.savetxt(savefilename, self.swap_events, fmt='%f %d %d', header='index fly1 fly2')
             logging.info(f'Done.')
 
     def save_annotations(self, qt_keycode=None):
@@ -1020,8 +1020,12 @@ class PSV(MainWindow):
                 self.original_spatial_units = self.ds[name].attrs['spatial_units']
         self.ds = xb.convert_spatial_units(self.ds, to_units='pixels')
 
+        if 'swap_events' in self.ds.attrs:
+            self.swap_events = self.ds.attrs['swap_events']
+        else:
+            self.swap_events = []
+
         self.STOP = True
-        self.swap_events = []
         self.show_spec = True
         self.show_trace = True
         self.show_tracks = False
@@ -1690,6 +1694,8 @@ class PSV(MainWindow):
                 y_all = self.ds.song_raw.data[self.time0:self.time1, :].compute()
             except AttributeError:
                 y_all = self.ds.song_raw.data[self.time0:self.time1, :]
+
+            # y_all = y_all - np.median(y_all[:, [0,1,2,3,4,5,6,7,9,10,11,12,13,14,15]], axis=-1, keepdims=True)
 
             self.y = y_all[:, self.current_channel_index]
             if self.show_all_channels:
