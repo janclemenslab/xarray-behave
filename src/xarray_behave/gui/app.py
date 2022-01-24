@@ -2074,15 +2074,24 @@ class PSV(MainWindow):
                 event_samples = event_samples[event_samples < self.ds.sampletime.shape[0]]
 
                 event_seconds = self.ds.sampletime[event_samples]
-                for name, seconds in zip(events['sequence'], event_seconds):
-                    self.event_times.add_time(str(name) + str(suffix), seconds, seconds, category='event')
+                for name_or_index, seconds in zip(events['sequence'], event_seconds):
+                    if type(name_or_index) is int:
+                        event_name = str(events['names'][name_or_index])
+                    else:
+                        event_name = str(name_or_index)
+                    self.event_times.add_time(event_name + str(suffix), seconds, seconds, category='event')
 
             if 'sequence' in segments:
                 detected_segment_names = np.unique(segments['sequence'])
+                # if these are indices, get corresponding names
+                if len(detected_segment_names) and type(detected_segment_names[0]) is not str:
+                    detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
+
             else:
                 detected_segment_names = []
 
             if len(detected_segment_names) > 0 and detected_segment_names[0] is not None:
+
                 logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
                 onsets_samples = (np.array(segments['onsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
                 offsets_samples = (np.array(segments['offsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
@@ -2097,7 +2106,7 @@ class PSV(MainWindow):
                 offsets_seconds = self.ds.sampletime[offsets_samples]
                 for name_or_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
                     if type(name_or_index) is not str:
-                        segment_name = str(segments['names'][name_or_index])
+                        segment_name = segments['names'][name_or_index]
                     else:
                         segment_name = str(name_or_index)
 
