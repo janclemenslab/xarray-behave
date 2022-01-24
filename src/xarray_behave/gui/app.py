@@ -2077,7 +2077,6 @@ class PSV(MainWindow):
                 for name, seconds in zip(events['sequence'], event_seconds):
                     self.event_times.add_time(str(name) + str(suffix), seconds, seconds, category='event')
 
-            # breakpoint()
             if 'sequence' in segments:
                 detected_segment_names = np.unique(segments['sequence'])
             else:
@@ -2096,8 +2095,12 @@ class PSV(MainWindow):
 
                 onsets_seconds = self.ds.sampletime[onsets_samples]
                 offsets_seconds = self.ds.sampletime[offsets_samples]
-                for name_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
-                    segment_name = str(segments['names'][name_index])
+                for name_or_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
+                    if type(name_or_index) is not str:
+                        segment_name = str(segments['names'][name_or_index])
+                    else:
+                        segment_name = str(name_or_index)
+
                     self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
                     self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
 
