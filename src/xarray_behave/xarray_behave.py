@@ -100,7 +100,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     elif os.path.exists(filepath_daq) and not os.path.exists(filepath_timestamps):  # Audio (+ annotations) only
         # if there is no video and no timestamps - generate fake from samplerate and number of samples
         # THIS SHOULD BE THE FIRST THING WE DO:
-        logging.info(f'Loading audio data:')
+        logging.info('Loading audio data:')
         if not filepath_daq_is_custom:
             basename = os.path.join(root, dat_path, datename, datename)
         else:
@@ -137,7 +137,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         resample_video_data = False
     fps = 1 / np.mean(np.diff(ss.frames2times.y))
     if not resample_video_data:
-        logging.info(f'  setting targetsamplingrate to avg. fps.')
+        logging.info(f'  setting targetsamplingrate to avg. fps ({fps}).')
         target_sampling_rate = fps
 
     # LOAD TRACKS
@@ -165,7 +165,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     with_poses = False
     poses_from = None
     if include_poses:
-        logging.info(f'Loading poses:')
+        logging.info('Loading poses:')
         poses_loader = io.get_loader(kind='poses', basename=os.path.join(root, res_path, datename, datename))
         if poses_loader:
             try:
@@ -180,13 +180,13 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                 logging.info(f'   Loading {poses_loader.path} failed.')
                 logging.exception(e)
         else:
-            logging.info(f'   Found no poses.')
+            logging.info('   Found no poses.')
         logging.info('Done.')
 
     # LOAD BALLTRACKER
     with_balltracker = False
     if include_balltracker:
-        logging.info(f'Loading ball tracker:')
+        logging.info('Loading ball tracker:')
         balltracker_loader = io.get_loader(kind='balltracks', basename=os.path.join(root, res_path, datename, datename))
         if balltracker_loader:
             try:
@@ -199,13 +199,13 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                 logging.info(f'   Loading {balltracker_loader.path} failed.')
                 logging.exception(e)
         else:
-            logging.info(f'   Found no balltracker data.')
+            logging.info('   Found no balltracker data.')
         logging.info('Done.')
 
     # LOAD MOVIEPARAMS
     with_movieparams = False
     if include_movieparams:
-        logging.info(f'Loading movie params:')
+        logging.info('Loading movie params:')
         movieparams_loader = io.get_loader(kind='movieparams', basename=os.path.join(root, dat_path, datename, datename))
         if movieparams_loader:
             try:
@@ -218,7 +218,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                 logging.info(f'   Loading {movieparams_loader.path} failed.')
                 logging.exception(e)
         else:
-            logging.info(f'   Found no movie params data.')
+            logging.info('   Found no movie params data.')
         logging.info('Done.')
 
     # Init empty audio and event data
@@ -243,7 +243,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     manual_event_categories = {nam: cat for nam, cat in zip(event_names, event_categories)}
 
     if include_song:
-        logging.info(f'Loading automatic annotations:')
+        logging.info('Loading automatic annotations:')
         custom_filepath_annotations = filepath_annotations is not None
         if not custom_filepath_annotations:
             filepath_annotations = os.path.join(root, res_path, datename, datename)
@@ -267,7 +267,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         logging.info('Done.')
 
         # load MANUAL SONG ANNOTATIONS
-        logging.info(f'Loading manual annotations:')
+        logging.info('Loading manual annotations:')
         manual_annot_loader = io.get_loader(kind='annotations_manual', basename=filepath_annotations, basename_is_full_name=custom_filepath_annotations)
         if manual_annot_loader:
             try:
@@ -280,11 +280,11 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                 logging.exception(e)
 
         else:
-            logging.info(f'   Found no manual automatic annotations.')
+            logging.info('   Found no manual automatic annotations.')
         logging.info('Done.')
 
         # load RAW song traces
-        logging.info(f'Loading audio data:')
+        logging.info('Loading audio data:')
         if not filepath_daq_is_custom:
             basename = os.path.join(root, dat_path, datename, datename)
         else:
