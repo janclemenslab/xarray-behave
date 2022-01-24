@@ -1695,8 +1695,6 @@ class PSV(MainWindow):
             except AttributeError:
                 y_all = self.ds.song_raw.data[self.time0:self.time1, :]
 
-            # y_all = y_all - np.median(y_all[:, [0,1,2,3,4,5,6,7,9,10,11,12,13,14,15]], axis=-1, keepdims=True)
-
             self.y = y_all[:, self.current_channel_index]
             if self.show_all_channels:
                 channel_list = np.delete(np.arange(self.nb_channels), self.current_channel_index)
@@ -2079,6 +2077,7 @@ class PSV(MainWindow):
                 for name, seconds in zip(events['sequence'], event_seconds):
                     self.event_times.add_time(str(name) + str(suffix), seconds, seconds, category='event')
 
+            # breakpoint()
             if 'sequence' in segments:
                 detected_segment_names = np.unique(segments['sequence'])
             else:
@@ -2097,8 +2096,10 @@ class PSV(MainWindow):
 
                 onsets_seconds = self.ds.sampletime[onsets_samples]
                 offsets_seconds = self.ds.sampletime[offsets_samples]
-                for name, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
-                    self.event_times.add_time(str(name) + str(suffix), onset_seconds, offset_seconds, category='segment')
+                for name_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
+                    segment_name = str(segments['names'][name_index])
+                    self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
+                    self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
 
             self.nb_eventtypes = len(self.event_times)
             self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
