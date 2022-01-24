@@ -98,7 +98,7 @@ main:
   type: optional_double
   default: 0.02
   default_disabled: True
-  none_label: Do remove short segments
+  none_label: Do not remove short segments
   decimals: 4
   range: 0,1000000
 
