@@ -124,7 +124,7 @@ main:
 - name: kernel_size
   label: Filter duration (samples)
   type: int
-  default: 32
+  default: 16
   range: 1,1000
 
 - name: nb_conv
