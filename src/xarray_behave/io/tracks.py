@@ -22,13 +22,14 @@ class Tracks():
         if filename is None:
             filename = self.path
 
-        body_pos, track_names, body_parts, frame_numbers, background = self.load(filename)
+        body_pos, track_names, chamber_names, body_parts, frame_numbers, background = self.load(filename)
 
         positions = xr.DataArray(data=body_pos,
                                  dims=['frame_number', 'flies', 'bodyparts', 'coords'],
                                  coords={'frame_number': frame_numbers,
                                          'bodyparts': body_parts,
                                          'flies': track_names,
+                                         'chambers': (('flies'), chamber_names),
                                          'coords': ['y', 'x']},
                                  attrs={'description': 'coords are "allocentric" - rel. to the full frame',
                                         'type': 'tracks',
@@ -82,15 +83,20 @@ class Ethotracker(Tracks, io.BaseProvider):
 
         body_parts = ['head', 'center', 'tail']
 
+        nb_chambers = heads.shape[1]
+        nb_flies = heads.shape[2]
+
         # flatten [nbframes, nbchambers, nbflies, ...] to [nbframes, nbchambers x nbflies, ...] to
         heads = heads.reshape((heads.shape[0], -1, heads.shape[-1]))
         tails = tails.reshape((tails.shape[0], -1, tails.shape[-1]))
         centers = centers.reshape((centers.shape[0], -1, centers.shape[-1]))
+
         x = np.stack((heads, centers, tails), axis=2)
         x = x[first_tracked_frame:last_tracked_frame, ...]
         frame_numbers = np.arange(first_tracked_frame, last_tracked_frame, dtype=np.intp)
         track_names = np.arange(x.shape[1])
-        return x, track_names, body_parts, frame_numbers, background
+        chamber_names = np.repeat(np.arange(nb_chambers), nb_flies)
+        return x, track_names, chamber_names, body_parts, frame_numbers, background
 
 
 @io.register_provider
@@ -134,4 +140,6 @@ class CSV_tracks(Tracks, io.BaseProvider):
         x = x[..., coord_order]
         frame_numbers = df.index.to_numpy().astype(np.intp)
         background = None
-        return x, track_names, track_parts, frame_numbers, background
+        # TODO: Accept optional header "chamber" for multi-chamber tracks
+        chamber_names = np.repeat(1, len(track_names))
+        return x, track_names, chamber_names, track_parts, frame_numbers, background
