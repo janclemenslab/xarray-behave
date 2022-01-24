@@ -146,7 +146,7 @@ class Leap(Poses, io.BaseProvider):
             poses = f['positions'][:]
             nb_flies = int(np.max(f['fly_id']) + 1)
         body_parts = ['head', 'neck', 'front_left_leg', 'middle_left_leg', 'back_left_leg', 'front_right_leg',
-                    'middle_right_leg', 'back_right_leg', 'thorax', 'left_wing', 'right_wing', 'tail']
+                      'middle_right_leg', 'back_right_leg', 'thorax', 'left_wing', 'right_wing', 'tail']
         # need to offset and rotate
         last_pose_index = np.argmin(poses[:, 0, 0] > 0)
         first_pose_index = np.argmin(poses[:, 0, 0] == 0)
@@ -234,7 +234,6 @@ class DeepPoseKit(Poses, io.BaseProvider):
                                             poses_ego.sel(poseparts='head', coords='x')) * 180 / np.pi
         for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle.data, poses_ego.data)):
             for fly in range(nb_flies):
-                # poses_ego.data[cnt, fly, ...] = [rotate_point(pt, -a[fly]) for pt in p_ego[fly]]
                 poses_ego.data[cnt, fly, ...] = rotate_pose(p_ego[fly], -a[fly])
 
         return poses_ego, poses_allo, ds.poseparts, first_pose_frame, last_pose_frame
