@@ -600,7 +600,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             def select_file(*args, x=field):
                 filter = item.get("filter", "Any File (*.*)")
                 filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-                    None, directory=None, caption="Open File", filter=filter
+                    None, caption="Open File", filter=filter
                 )
                 if len(filename):
                     x.setText(filename)
@@ -609,7 +609,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         elif item["type"].split("_")[-1] == "dir":
             # Define function for button to trigger
             def select_file(*args, x=field):
-                filename = QtWidgets.QFileDialog.getExistingDirectory(None, directory=None, caption="Open File")
+                filename = QtWidgets.QFileDialog.getExistingDirectory(None, caption="Open File")
                 if len(filename):
                     x.setText(filename)
                 self.valueChanged.emit()
