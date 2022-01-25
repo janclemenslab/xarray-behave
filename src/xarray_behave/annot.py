@@ -359,7 +359,7 @@ class Events(UserDict):
         Returns:
             int: number of deleted events
         """
-        indices = self.select_range(name, t0, t1)
+        indices = self.select_range(name, t0, t1, strict)
         self[name] = np.delete(self[name], indices, axis=0)
         return len(indices)
 

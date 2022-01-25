@@ -2146,15 +2146,16 @@ class PSV(MainWindow):
 
             if name.endswith(proposal_suffix):
                 # get event times within range
-                within_range_times = self.event_times.filter_range(name, t0, t1)
+                within_range_times = self.event_times.filter_range(name, t0, t1, strict=False)
                 # delete from `songtype_proposals`, add to `songtype`
                 self.event_times.add_name(name=name[:-len(proposal_suffix)],
                               category=self.event_times.categories[name],
                               times=within_range_times,
                               append=True,
                               overwrite=False)
-                self.event_times.delete_range(name, t0, t1)
-                logging.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
+                self.event_times.delete_range(name, t0, t1, strict=False)
+                if len(within_range_times):
+                    logging.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
         # update event selector in case the event did not exist yet
         self.nb_eventtypes = len(self.event_times)
         self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
