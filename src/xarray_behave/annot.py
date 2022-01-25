@@ -235,10 +235,48 @@ class Events(UserDict):
         """
         self[name][self[name]==old_time] = new_time
 
-    def delete_time(self, name, time, tol=0):
-        nearest_start = self._find_nearest(self.start_seconds(name), time)
+    def delete_time(self, time: float, name: Optional[str] = None, tol: float = 0, min_time: Optional[float] = None, max_time=None):
+        """[summary]
+
+        Args:
+            name ([type], optional): [description]. Defaults to None.
+            time ([type], optional): [description]. Defaults to None.
+            tol (int, optional): [description]. Defaults to 0.
+            min_time ([type], optional): [description]. Defaults to None.
+            max_time ([type], optional): [description]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """
+        # TODO:
+        # [ ] if hover - delete that event (detect hover by checking self.mouseHovering for all LinearRegionItems in view)
+        # [x] otherwise - provide min/max time and delete neareast event in view
+        # [ ] delete by matching both start and stop?
+        # [ ] refactor - have basic `delete_time(name, time)`, and then `delete_nearest(name, time, min_time, max_time)``
+
+        if name is None:
+            nearest_starts = dict()
+            for name in self.keys():
+                within_range_indices = self.select_range(name, min_time, max_time, strict=False)
+                if len(within_range_indices):
+                    nearest_starts[name] = self._find_nearest(self.start_seconds(name)[within_range_indices], time)
+
+            if len(nearest_starts):
+                nearest_starts_times = list(nearest_starts.values())
+                nearest_starts_names = list(nearest_starts.keys())
+                distance = np.abs(time - np.array(nearest_starts_times))
+                name = nearest_starts_names[np.nanargmin(distance)]
+            else:
+                return None, []
+
+        within_range_indices = self.select_range(name, min_time, max_time, strict=False)
+        if len(within_range_indices):
+            nearest_start = self._find_nearest(self.start_seconds(name)[within_range_indices], time)
+        else:
+            nearest_start = None
+
         if nearest_start is None:
-            return []
+            return None, []
 
         index = np.where(self.start_seconds(name) == nearest_start)[0][0]
 
@@ -252,10 +290,13 @@ class Events(UserDict):
 
         if event_at_time:
             deleted_time = self[name][index, :]
+            deleted_name = name
             self[name] = np.delete(self[name], index, axis=0)
         else:
             deleted_time = []
-        return deleted_time
+            deleted_name = None
+
+        return deleted_name, deleted_time
 
     def select_range(self, name: str, t0: Optional[float] = None, t1: Optional[float] = None, strict: bool = True):
         """Get indices of events within the range.
@@ -267,7 +308,7 @@ class Events(UserDict):
             t0 (float, optional): [description]
             t1 (float, optional): [description]
             strict (bool, optional): if true, only matches events that start AND stop within the range,
-                           if false, matches events that start OR stop within the range
+                                     if false, matches events that start OR stop within the range
 
         Returns:
             List[uint]: List of indices of events within the range
@@ -367,7 +408,7 @@ class Events(UserDict):
             if np.any(cmp):
                 nxt.append(self[name][np.argmin(cmp)-1, 0])
         if len(nxt):
-            return np.max(nxt) #* self.fs_song
+            return np.max(nxt)  #* self.fs_song
 
     def _find_nearest(self, array, value):
         if not len(array):

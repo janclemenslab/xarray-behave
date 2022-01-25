@@ -441,7 +441,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         def load(arg):
             yaml_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None,
-                                                                    caption='Select yaml file')
+                                                                     caption='Select yaml file')
             if len(yaml_filename):
                 logging.info(f"   Updating form fields with information from {yaml_filename}.")
                 with open(yaml_filename, 'r') as stream:
@@ -449,7 +449,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 dialog.form.set_form_data(data)  # update form
                 logging.info(f"Done.")
 
-        data_dir = QtWidgets.QFileDialog.getExistingDirectory(None, directory=None,
+        data_dir = QtWidgets.QFileDialog.getExistingDirectory(None,
                                                               caption="Open Data Folder (*.npy)")
         # TODO: check that this is a valid data_dir!
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_train.yaml",
@@ -1035,7 +1035,7 @@ class PSV(MainWindow):
         self.spec_win = 200
         self.show_songevents = True
         self.movable_events = True
-        self.move_only_current_events = True
+        self.edit_only_current_events = True
         self.show_all_channels = True
         self.select_loudest_channel = False
         self.threshold_mode = False
@@ -1147,8 +1147,8 @@ class PSV(MainWindow):
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Allow moving annotations", partial(self.toggle, 'movable_events'), "M",
                                 checkable=True, checked=self.movable_events)
-        self._add_keyed_menuitem(view_annotations, "Only move active song type", partial(self.toggle, 'move_only_current_events'), None,
-                                checkable=True, checked=self.move_only_current_events)
+        self._add_keyed_menuitem(view_annotations, "Only edit active song type", partial(self.toggle, 'edit_only_current_events'), None,
+                                checkable=True, checked=self.edit_only_current_events)
         self._add_keyed_menuitem(view_annotations, "Show segment labels", partial(self.toggle, 'show_segment_text'), None,
                                 checkable=True, checked=self.show_segment_text)
         view_annotations.addSeparator()
@@ -1470,6 +1470,8 @@ class PSV(MainWindow):
                                                             self.time0 / self.fs_song,
                                                             self.time1 / self.fs_song)
             logging.info(f'   Deleted all  {deleted_events} of {self.current_event_name} in view.')
+            if self.STOP:
+                self.update_xy()
         else:
             logging.info(f'   No event type selected. Not deleting anything.')
 
@@ -1598,7 +1600,7 @@ class PSV(MainWindow):
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index] * self.fs_song # jump to PREV cue point
         else:  # no cue points - jump to prev song event
-            if self.move_only_current_events:  # of the currently active type
+            if self.edit_only_current_events:  # of the currently active type
                 names = [self.current_event_name]
             else:  # of any type
                 names = self.event_times.names
@@ -1614,7 +1616,7 @@ class PSV(MainWindow):
             logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
             self.t0 = self.cue_points[self.cue_index] * self.fs_song # jump to PREV cue point
         else:  # no cue points - jump to next song event
-            if self.move_only_current_events:  # of the currently active type
+            if self.edit_only_current_events:  # of the currently active type
                 names = [self.current_event_name]
             else:  # of any type
                 names = self.event_times.names
@@ -1760,7 +1762,7 @@ class PSV(MainWindow):
         for event_index in range(self.nb_eventtypes):
             movable = self.STOP and self.movable_events
             event_name = self.event_times.names[event_index]
-            if self.move_only_current_events:
+            if self.edit_only_current_events:
                 movable = movable and self.current_event_index==event_index
 
             event_pen = pg.mkPen(color=self.eventtype_colors[event_index], width=3)
@@ -1808,7 +1810,7 @@ class PSV(MainWindow):
 
     def on_region_change_finished(self, region):
         """Called when dragging a segment-like song_event - will change its bounds."""
-        if self.move_only_current_events and self.current_event_index != region.event_index:
+        if self.edit_only_current_events and self.current_event_index != region.event_index:
             return
 
         event_name_to_move = self.current_event_name
@@ -1823,7 +1825,7 @@ class PSV(MainWindow):
 
     def on_position_change_finished(self, position):
         """Called when dragging an event-like song_event - will change time."""
-        if self.move_only_current_events and self.current_event_index != position.event_index:
+        if self.edit_only_current_events and self.current_event_index != position.event_index:
             return
         event_name_to_move = self.current_event_name
         if self.current_event_index != position.event_index:
@@ -1905,13 +1907,22 @@ class PSV(MainWindow):
                 self.update_xy()
             else:
                 self.sinet0 = None
-        elif mouseButton == 2:  #delete nearest event
+        elif mouseButton == 2:  # delete nearest event
             self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.sinet0 = None
-            deleted_time = self.event_times.delete_time(self.current_event_name, mouseT, tol=0.05)
+
+            if not self.edit_only_current_events:
+                current_event_name = None
+            else:
+                current_event_name = self.current_event_name
+
+            deleted_name, deleted_time = self.event_times.delete_time(time=mouseT, name=current_event_name,
+                                                                      tol=0.05,
+                                                                      min_time=float(self.ds.time[self.time0]),
+                                                                      max_time=float(self.ds.time[self.time1]))
             if len(deleted_time):
-                logging.info(f'  Deleted {self.current_event_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.')
+                logging.info(f'  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.')
             self.update_xy()
 
     def play_audio(self, qt_keycode):
@@ -2110,7 +2121,6 @@ class PSV(MainWindow):
                     else:
                         segment_name = str(name_or_index)
 
-                    self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
                     self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
 
             self.nb_eventtypes = len(self.event_times)
