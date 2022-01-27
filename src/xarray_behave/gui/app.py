@@ -2095,9 +2095,8 @@ class PSV(MainWindow):
             if 'sequence' in segments:
                 detected_segment_names = np.unique(segments['sequence'])
                 # if these are indices, get corresponding names
-                if len(detected_segment_names) and type(detected_segment_names[0]) is not str:
+                if len(detected_segment_names) and type(detected_segment_names[0]) is not str and type(detected_segment_names[0]) is not np.str_:
                     detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
-
             else:
                 detected_segment_names = []
 
@@ -2116,7 +2115,7 @@ class PSV(MainWindow):
                 onsets_seconds = self.ds.sampletime[onsets_samples]
                 offsets_seconds = self.ds.sampletime[offsets_samples]
                 for name_or_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
-                    if type(name_or_index) is not str:
+                    if type(name_or_index) is not str and type(detected_segment_names[0]) is not np.str_:
                         segment_name = segments['names'][name_or_index]
                     else:
                         segment_name = str(name_or_index)
