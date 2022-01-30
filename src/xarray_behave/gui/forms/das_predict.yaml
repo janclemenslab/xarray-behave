@@ -7,30 +7,59 @@ main:
   filter: "*_model.h5"
 
 
-- type: text
-  text: 'Only predict song for audio between "start seconds" and "stop seconds".'
+- name: file
+  label: File(s) to predict
+  type: stacked
+  options: "Current file,Folder"
+  default: "Current file"
 
-- name: start_seconds
-  label: Start seconds
-  type: double
-  default: 0.0
-  decimals: 4
-  range: 0.0,10000000.0
+  "Current file":
+  - type: text
+    text: 'Predict song for the current loaded file.'
 
-- name: end_seconds
-  label: End seconds
-  type: optional_double
-  default: 0.0
-  default_disabled: True
-  none_label: Recording end
-  decimals: 4
-  range: 0.0,1000000.0
+  - name: start_seconds
+    label: Start seconds
+    type: double
+    default: 0.0
+    decimals: 4
+    range: 0.0,10000000.0
+
+  - name: end_seconds
+    label: End seconds
+    type: optional_double
+    default: 0.0
+    default_disabled: True
+    none_label: Recording end
+    decimals: 4
+    range: 0.0,1000000.0
+
+
+  "Folder":
+  - type: text
+    text: 'Predict song for all files in a folder.'
+
+  - name: folder
+    label: 'folder'
+    type: file_dir
+    default: " "
+
+  - name: save_format
+    label: Annotation file format
+    type: list
+    default: csv
+    options: csv,h5
+
+  - type: text
+    text: 'csv: tabular text file with label, start and end seconds for each predicted song.<br>
+           h5: more stuff.'
+
 
 - name: proof_reading_mode
   label: Proof reading mode
   type: bool
   default: True
   help: If True, will append '_proposals' to song name. Individual proposals can be corrected approved.
+
 
 - type: text
   text: '<b>Event detection</b>'
