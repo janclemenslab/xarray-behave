@@ -64,6 +64,8 @@ def make(data_folder, store_folder,
          file_splits, data_splits,
          make_single_class_datasets: bool = False,
          split_train_in_two: bool = True,
+         split_val_in_two: bool = False,
+         split_test_in_two: bool = False,
          event_std_seconds: float = 0,
          gap_seconds: float = 0,
          delete_intermediate_store: bool = True,
@@ -171,6 +173,18 @@ def make(data_folder, store_folder,
             data_splits[train_idx] /= 2
             data_splits.append(data_splits[train_idx])
             data_split_targets.append('train')
+
+        if split_val_in_two and 'val' in data_split_targets:
+            val_idx = data_split_targets.index('val')
+            data_splits[val_idx] /= 2
+            data_splits.append(data_splits[val_idx])
+            data_split_targets.append('val')
+
+        if split_test_in_two and 'test' in data_split_targets:
+            test_idx = data_split_targets.index('test')
+            data_splits[test_idx] /= 2
+            data_splits.append(data_splits[test_idx])
+            data_split_targets.append('test')
 
     for file_base, data_file in zip(file_bases, data_files):
         if data_file is None:

@@ -91,6 +91,11 @@ main:
   default: "samples"
   options: "files,samples"
 
+- name: split_val_in_two
+  label: Split val in two
+  type: bool
+  default: False
+
 - name: val_split_fraction
   label: Fraction
   type: double
@@ -98,12 +103,16 @@ main:
   decimals: 2
   range: 0,1
 
-
 - name: test_split
   label: Test split by
   type: list
   default: "samples"
   options: "files,samples"
+
+- name: split_test_in_two
+  label: Split test in two
+  type: bool
+  default: False
 
 - name: test_split_fraction
   label: Fraction
