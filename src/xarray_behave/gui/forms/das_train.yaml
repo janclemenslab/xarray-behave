@@ -151,6 +151,63 @@ main:
   range: 0,10000
   help: Reduce learning rate if performance does not improve after patience epochs.
 
+
+- name: postopt
+  label: Optimize postprocessing
+  type: stacked
+
+  default: "Yes"
+  options: "No,Yes"
+
+  "No":
+
+  "Yes":
+  - type: text
+    text: 'Will bruteforce grid search using training data. Can take a while and be memory intensive.'
+
+  - type: text
+    text: '<i>Fill gaps shorter than a threshold</i>'
+
+  - name: fill_gaps_min
+    label:  Minimal gap size to try (seconds)
+    type: float
+    default: 0.1
+    range: 0.001,1000
+
+  - name: fill_gaps_max
+    label: Maximal gap size to try (seconds)
+    type: float
+    default: 1
+    range: 0.002,1000
+
+  - name: fill_gaps_steps
+    label: Number gap sizes to try (min->max, log2-spaced)
+    type: int
+    default: 10
+    range: 1,100
+
+  - type: text
+    text: '<i>Remove syllables shorter than a threshold</i>'
+
+  - name: min_len_min
+    label:  Minimal duration to try (seconds)
+    type: float
+    default: 0.1
+    range: 0.001,1000
+
+  - name: min_len_max
+    label: Maximal duration to try (seconds)
+    type: float
+    default: 1
+
+    range: 0.002,1000
+  - name: min_len_steps
+    label: Number of durations to try (min->max, log2-spaced)
+    type: int
+    default: 10
+    range: 1,100
+
+
 - type: text
   text: '<b>Training parameters</b>'
 
