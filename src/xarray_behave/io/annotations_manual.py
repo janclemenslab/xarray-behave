@@ -30,6 +30,28 @@ class Manual_xb_csv(io.BaseProvider):
 
 
 @io.register_provider
+class Definitions(io.BaseProvider):
+
+    KIND = 'definitions_manual'
+    NAME = 'XB def csv'
+    SUFFIXES = ['_definitions.csv']
+
+    def load(self, filename: Optional[str] = None):
+        """Load output produced by xb."""
+        # load definitions and add to annot instance
+        if filename is None:
+            filename = self.path
+
+        definitions = np.loadtxt(filename, dtype=str, delimiter=",")
+
+        event_seconds = annot.Events()  # make empty
+        for definition in definitions:  # each definition is a list [NAME, CATEGORY]
+            event_seconds.add_name(name=definition[0], category=definition[1])
+
+        return event_seconds, event_seconds.categories
+
+
+@io.register_provider
 class Manual_xb_zarr(io.BaseProvider):
 
     KIND = 'annotations_manual'

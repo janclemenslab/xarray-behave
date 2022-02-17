@@ -731,9 +731,11 @@ class MainWindow(pg.QtGui.QMainWindow):
             dialog.form.fields['data_set'].set_options(datasets)  # add datasets
             dialog.form.fields['data_set'].setValue(datasets[0])  # select first
 
-            # set default based on data file
+            # set default filenames based on data file
             annotation_path = os.path.splitext(filename)[0] + '_annotations.csv'
             dialog.form.fields['annotation_path'].setText(annotation_path)  # select first
+            definition_path = os.path.splitext(filename)[0] + '_definitions.csv'
+            dialog.form.fields['definition_path'].setText(definition_path)  # select first
 
             # initialize form data with cli args
             if spec_freq_min is not None:
@@ -774,6 +776,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
                 ds = xb.assemble(filepath_daq=filename,
                                  filepath_annotations=form_data['annotation_path'],
+                                 filepath_definitions=form_data['definition_path'],
                                  audio_sampling_rate=form_data['samplerate'],
                                  target_sampling_rate=form_data['target_samplingrate'],
                                  audio_dataset=form_data['data_set'],

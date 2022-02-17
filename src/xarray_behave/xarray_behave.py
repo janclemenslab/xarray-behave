@@ -24,6 +24,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
              filepath_timestamps_ball: Optional[str] = None,
              filepath_daq: Optional[str] = None,
              filepath_annotations: Optional[str] = None,
+             filepath_definitions: Optional[str] = None,
              target_sampling_rate: float = 1_000, audio_sampling_rate: Optional[float] = None,
              audio_channels: Optional[List[int]] = None, audio_dataset: str = None,
              event_names: Optional[List[str]] = None, event_categories: Optional[List[str]] = None,
@@ -46,6 +47,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         filepath_video (str, optional): Path to the video file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_daq (str, optional): Path to the daq file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_annotations (str, optional): Path to annotations file. Defaults to None (infer path from `datename` and `res_path`).
+        filepath_definitions (str, optional): Path to song definitions file. Defaults to None (infer path from `datename` and `res_path`).
         target_sampling_rate (int, optional): Sampling rate in Hz for pose and annotation data. Defaults to 1000.
         audio_sampling_rate (int, optional): Audio sampling rate in Hz.
                                              Used to override sampling rate inferred from file or to provide sampling rate if missing from file.
@@ -282,6 +284,28 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         else:
             logging.info('   Found no manual automatic annotations.')
         logging.info('Done.')
+
+        # load SONG DEFINITIONS
+        logging.info('Loading song definitions:')
+        custom_filepath_definitions = filepath_definitions is not None
+        if not custom_filepath_definitions:
+            filepath_definitions = os.path.join(root, res_path, datename, datename)  # or construct form audio file name - .ext + _definitions.csv
+
+        definitions_loader = io.get_loader(kind='definitions_manual', basename=filepath_definitions, basename_is_full_name=custom_filepath_definitions)
+        if definitions_loader:
+            try:
+                manual_event_seconds_loaded, manual_event_categories_loaded = definitions_loader.load(definitions_loader.path)
+                manual_event_seconds.update(manual_event_seconds_loaded)
+                manual_event_categories.update(manual_event_categories_loaded)
+                logging.info(f'   {definitions_loader.path} loaded.')
+            except Exception as e:
+                logging.info(f'   Loading {definitions_loader.path} failed.')
+                logging.exception(e)
+
+        else:
+            logging.info('   Found no song definitions.')
+        logging.info('Done.')
+
 
         # load RAW song traces
         logging.info('Loading audio data:')
