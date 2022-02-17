@@ -62,6 +62,33 @@ sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when ke
 package_dir = xarray_behave.__path__[0]
 
 
+class ChkBxFileDialog(QtWidgets.QFileDialog):
+    def __init__(self, caption: str = '', checkbox_titles: List[str] = [""], filter: str = "*", directory: str = ""):
+        super().__init__(caption=caption, filter=filter, directory=directory)
+        self.setSupportedSchemes(["file"])
+        self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog)
+        self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+        # self.setDirectory(directory)
+        self.selectNameFilter(filter)
+        self.selectFile(directory)
+        self.checkboxes = []
+        self.checkbox_titles = checkbox_titles
+
+        for title in self.checkbox_titles:
+            self.checkboxes.append(QtWidgets.QCheckBox(title))
+            self.layout().addWidget(self.checkboxes[-1])
+
+    def checked(self, name) -> bool:
+        cnt = self.checkbox_titles.index(name)
+        return self.checkboxes[cnt].checkState() == PySide2.QtCore.Qt.CheckState.Checked
+
+    def get_checked_state(self) -> Dict[str, bool]:
+        states = {}
+        for cnt, title in enumerate(self.checkbox_titles):
+            states[title] = self.checkboxes[cnt].checkState() == PySide2.QtCore.Qt.CheckState.Checked
+        return states
+
+
 class DataSource:
     def __init__(self, type: str, name: str):
         self.type = type
@@ -141,50 +168,80 @@ class MainWindow(pg.QtGui.QMainWindow):
         menuitem.triggered.connect(lambda: callback(qt_keycode))
         return menuitem
 
+    def _get_filename_from_ds(self, suffix: str):
+        try:
+            if 'filebase' in self.ds.attrs:
+                savefilename = Path(f"{self.ds.attrs['filebase']}{suffix}")
+            else:
+                savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'],
+                                    self.ds.attrs['datename'], f"{self.ds.attrs['datename']}{suffix}")
+        except KeyError:
+            savefilename = ''
+        return str(savefilename)
+
     def save_swaps(self, qt_keycode=None):
-        savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'],
-                            self.ds.attrs['datename'], f"{self.ds.attrs['datename']}_idswaps.txt")
+        savefilename = self._get_filename_from_ds(suffix="_idswaps.txt")
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save swaps to', str(savefilename),
                                                                 filter="txt files (*.txt);;all files (*)")
         if len(savefilename):
             logging.info(f'   Saving list of swap indices to {savefilename}.')
             np.savetxt(savefilename, self.swap_events, fmt='%f %d %d', header='index fly1 fly2')
-            logging.info(f'Done.')
+            logging.info('Done.')
+
+    def save_definitions(self, qt_keycode=None):
+        savefilename = self._get_filename_from_ds(suffix="_definitions.csv")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self,
+                                                                caption='Save definitions to',
+                                                                dir=str(savefilename),
+                                                                filter="CSV files (*_definitions.csv);;all files (*)")
+        if len(savefilename):
+            # get defs from annot and save them to csv
+            logging.info(f'   Saving definitions to {savefilename}.')
+            defs = [[key, val] for key, val in annot.Events(self.event_times).categories.items()]
+            np.savetxt(savefilename, defs, delimiter=",", fmt="%s")
+            logging.info('Done.')
 
     def save_annotations(self, qt_keycode=None):
         """Save annotations to csv.
         Each annotation is a row with name, start_seconds, stop_seconds.
         start_seconds = stop_seconds for events like pulses."""
-        try:
-            csv_filename = os.path.splitext(self.ds.attrs['datename'])[0] + '_annotations.csv'
-            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
-                                csv_filename)
-        except KeyError:
+        savefilename = self._get_filename_from_ds(suffix="_annotations.csv")
+
+        # TODO: Add explanatory text to ChkBxFileDialog
+        dialog = ChkBxFileDialog(caption="Save annotations to",
+                                 checkbox_titles=['Save definitions to separate file', 'Preserve empty'],
+                                 directory=savefilename)
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            savefilename = dialog.selectedUrls()[0].toLocalFile()
+        else:
             savefilename = ''
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save annotations to', str(savefilename),
-                                                                filter="CSV files (*.csv);;all files (*)")
+
         if len(savefilename):
             logging.info(f'   Saving annotations to {savefilename}.')
-            self.export_to_csv(savefilename)
-            logging.info(f'Done.')
+            self.export_to_csv(savefilename, preserve_empty=dialog.checked('Preserve empty'))
+            logging.info('Done.')
 
+        if dialog.checked('Save definitions to separate file'):
+            self.save_definitions()
 
     def export_to_csv(self, savefilename: str = None,
                       start_seconds: float = 0, end_seconds: float = np.inf,
                       which_events: Optional[List[str]] = None,
                       match_to_samples: bool = False,
+                      preserve_empty: bool = True,
                       qt_keycode=None):
         """[summary]
 
         Args:
             savefilename (str, optional): [description]. Defaults to None.
             start_seconds (int, optional): [description]. Defaults to 0.
-            end_seconds ([type], optional): [description]. Defaults to None.
-            which_events ([type], optional): [description]. Defaults to None.
+            end_seconds (float, optional): [description]. Defaults to None.
+            which_events (float, optional): [description]. Defaults to None.
             match_to_samples (bool, optiona): Will adjust seconds so that seconds * samplerate yields the correct index.
                                               Otherwise, seconds will correspond to the correct time stamp of the event sample.
                                               Only relevant for xb.datasets with timestamp info.
                                               Defaults to False.
+            preserve_empty (bool, optional): Preserve song types without annotations. Defaults to True.
             qt_keycode ([type], optional): [description]. Defaults to None.
         """
         if which_events is None:
@@ -204,7 +261,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                     event_times[name] = times_correct
                 event_times[name] = event_times.filter_range(name, start_seconds, end_seconds) - start_seconds
 
-        df = event_times.to_df(preserve_empty=True)
+        df = event_times.to_df(preserve_empty=preserve_empty)
         df = df.sort_values(by='start_seconds', ascending=True, ignore_index=True)
         df.to_csv(savefilename, index=False)
 
@@ -353,13 +410,16 @@ class MainWindow(pg.QtGui.QMainWindow):
                     data_splits[part] = form_data[part +
                     '_split_fraction']
 
+            if 'block_size' not in form_data:
+                form_data['block_size'] = None
+
             das.make(data_folder=form_data['data_folder'],
                         store_folder=form_data['store_folder'],
                         file_splits=file_splits, data_splits=data_splits,
                         make_single_class_datasets=form_data['make_single_class_datasets'],
-                        split_train_in_two=form_data['split_train_in_two'],
-                        split_val_in_two=form_data['split_val_in_two'],
-                        split_test_in_two=form_data['split_test_in_two'],
+                        split_in_two=form_data['stratify'] == 'Two-split',
+                        block_stratify=form_data['stratify'] == 'Block stratify',
+                        block_size=form_data['block_size'],
                         event_std_seconds=form_data['event_std_seconds'],
                         gap_seconds=form_data['gap_seconds'],
                         make_onset_offset_events=form_data['make_onset_offset_events'],
@@ -517,7 +577,6 @@ class MainWindow(pg.QtGui.QMainWindow):
                 pool.start(worker_progress)
                 pool.start(worker_training)
                 pg.QtGui.QApplication.processEvents()
-
 
     def das_predict(self, qt_keycode):
         logging.info('Predicting song using DAS:')
@@ -790,6 +849,11 @@ class MainWindow(pg.QtGui.QMainWindow):
                 if form_data['load_cues']=='yes':
                     cue_points = cls.load_cuepoints(form_data['cues_file'])
 
+                ds.attrs['filename'] = filename
+                ds.attrs['filebase'] = os.path.splitext(filename)[0]
+                ds.attrs['datename'] = ''
+                ds.attrs['res_path'] = ''
+                ds.attrs['dat_path'] = ''
                 return PSV(ds, title=filename, cue_points=cue_points,
                            fmin=dialog.form['spec_freq_min'],
                            fmax=dialog.form['spec_freq_max'],
@@ -2195,7 +2259,7 @@ class PSV(MainWindow):
             else:
                 table_data = []
 
-            dialog = table.Table(table_data, as_dialog=True)
+            dialog = table.Table(table_data, self, as_dialog=True)
             dialog.show()
             result = dialog.exec_()
         else:

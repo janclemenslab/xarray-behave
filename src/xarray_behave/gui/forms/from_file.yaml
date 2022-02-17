@@ -34,7 +34,13 @@ main:
   label: File with annotations
   type: file_open
   default: " "
-  help: 'will try default STEM + .csv'
+  help: 'will try default STEM + _annotations.csv'
+
+- name: definition_path
+  label: File with song definitions
+  type: file_open
+  default: " "
+  help: 'will try default STEM + _definitions.csv'
 
 - type: text
   text: 'Enter each song type as a comma separate name,category pair. Name can be any string w/o a space, comma or semicolon.

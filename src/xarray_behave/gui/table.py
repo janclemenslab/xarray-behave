@@ -3,6 +3,7 @@ try:
 except ImportError:
     pass
 from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
+import numpy as np
 
 if not hasattr(QtCore, 'Slot'):
     QtCore.Slot = QtCore.pyqtSlot
@@ -10,13 +11,15 @@ if not hasattr(QtCore, 'Slot'):
 
 class Table(QtGui.QDialog):
 
-    def __init__(self, data=[], as_dialog=True, **kwargs):
+    def __init__(self, data=[], model=None, as_dialog=True, **kwargs):
         super().__init__(**kwargs)
-        self.title = 'Edit events'
+        self.title = 'Edit song definitions'
 
         self.data = data
+        self.model = model
+        self.as_dialog = as_dialog
         self.cancelled = False
-        self.initUI(as_dialog)
+        self.initUI(self.as_dialog)
 
     def initUI(self, as_dialog=True):
         self.setWindowTitle(self.title)
@@ -32,6 +35,8 @@ class Table(QtGui.QDialog):
         self.button_layout = QtWidgets.QHBoxLayout()
         self.button_layout.addWidget(self.add_button)
         self.button_layout.addWidget(self.delete_button)
+        self.button_layout.addWidget(self.load_button)
+        self.button_layout.addWidget(self.save_button)
         self.layout.addLayout(self.button_layout)
 
         if as_dialog:
@@ -45,7 +50,7 @@ class Table(QtGui.QDialog):
         self.setLayout(self.layout)
 
     def createTable(self):
-       # Create table
+        # Create table
         self.table = QtWidgets.QTableWidget()
         self.table.setRowCount(len(self.data))
         if len(self.data) > 0:
@@ -56,7 +61,7 @@ class Table(QtGui.QDialog):
 
         for row_index, row_data in enumerate(self.data):
             self._make_row(row_index, row_data, editable_categories=False)
-        self.table.move(0,0)
+        self.table.move(0, 0)
 
     def _make_row(self, row_index=None,
                   row_data=['', 'segment'],
@@ -120,6 +125,12 @@ class Table(QtGui.QDialog):
         self.delete_button = QtWidgets.QPushButton('Delete', self)
         self.delete_button.clicked.connect(self.delete_event)
 
+        self.load_button = QtWidgets.QPushButton(self.tr("&Load"), self)
+        self.load_button.clicked.connect(self.load)
+
+        self.save_button = QtWidgets.QPushButton(self.tr("&Save"), self)
+        self.save_button.clicked.connect(self.save)
+
     @QtCore.Slot()
     def cancel(self):
         self.cancelled = True
@@ -133,3 +144,35 @@ class Table(QtGui.QDialog):
     def delete_event(self):
         del self.data[self.table.currentRow()]
         self.table.removeRow(self.table.currentRow())
+
+    @QtCore.Slot()
+    def load(self):
+        filename = self.model._get_filename_from_ds(suffix="_definitions.csv")
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, caption="Select definitions file", dir=filename, filter=self.tr("Any File (*_definitions.csv)")
+        )
+        data = np.loadtxt(filename, dtype=str, delimiter=",")
+        # delete existing data
+        self.data = []
+        while self.table.rowCount() > 0:
+            self.table.removeRow(self.table.currentRow())
+
+        # replace with loaded data
+        for d in data:
+            self.data.append(d)
+            self._make_row(row_data=d)
+
+    @QtCore.Slot()
+    def save(self):
+        savefilename = self.model._get_filename_from_ds(suffix="_definitions.csv")
+
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, caption="Select file for saving", dir=savefilename, filter=self.tr("Any File (*_definitions.csv)")
+        )
+
+        # sanitize data
+        data = self.get_table_data()
+        data = [[d[0][0], d[1][0]] for d in data]
+
+        # save to csv
+        np.savetxt(savefilename, data, delimiter=",", fmt="%s")
