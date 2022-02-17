@@ -3,7 +3,7 @@ import logging
 import collections
 from glob import glob
 import os.path
-from typing import Optional
+from typing import Optional, Dict
 
 import zarr
 import numpy as np
@@ -60,12 +60,12 @@ def load_data(filename):
         return None
 
 
-def make(data_folder, store_folder,
-         file_splits, data_splits,
+def make(data_folder: str, store_folder: str,
+         file_splits: Dict[str, float], data_splits: Dict[str, float],
          make_single_class_datasets: bool = False,
-         split_train_in_two: bool = True,
-         split_val_in_two: bool = False,
-         split_test_in_two: bool = False,
+         split_in_two: bool = False,
+         block_stratify: bool = False,
+         block_size: int = 5,
          event_std_seconds: float = 0,
          gap_seconds: float = 0,
          delete_intermediate_store: bool = True,
@@ -136,7 +136,7 @@ def make(data_folder, store_folder,
     store.attrs['file_splits'] = file_splits
     store.attrs['data_splits'] = data_splits
     store.attrs['make_single_class_datasets'] = make_single_class_datasets
-    store.attrs['split_train_in_two'] = split_train_in_two
+    store.attrs['split_in_two'] = split_in_two
     store.attrs['delete_intermediate_store'] = delete_intermediate_store
 
     # first split files into a train-test and val
@@ -168,23 +168,24 @@ def make(data_folder, store_folder,
         data_splits = {key: val for key, val in zip(data_splits.keys(), probs)}
         data_split_targets = list(data_splits.keys())
         data_splits = list(data_splits.values())
-        if split_train_in_two and 'train' in data_split_targets:
-            train_idx = data_split_targets.index('train')
-            data_splits[train_idx] /= 2
-            data_splits.append(data_splits[train_idx])
-            data_split_targets.append('train')
+        if split_in_two:
+            if 'train' in data_split_targets:
+                train_idx = data_split_targets.index('train')
+                data_splits[train_idx] /= 2
+                data_splits.append(data_splits[train_idx])
+                data_split_targets.append('train')
 
-        if split_val_in_two and 'val' in data_split_targets:
-            val_idx = data_split_targets.index('val')
-            data_splits[val_idx] /= 2
-            data_splits.append(data_splits[val_idx])
-            data_split_targets.append('val')
+            if 'val' in data_split_targets:
+                val_idx = data_split_targets.index('val')
+                data_splits[val_idx] /= 2
+                data_splits.append(data_splits[val_idx])
+                data_split_targets.append('val')
 
-        if split_test_in_two and 'test' in data_split_targets:
-            test_idx = data_split_targets.index('test')
-            data_splits[test_idx] /= 2
-            data_splits.append(data_splits[test_idx])
-            data_split_targets.append('test')
+            if 'test' in data_split_targets:
+                test_idx = data_split_targets.index('test')
+                data_splits[test_idx] /= 2
+                data_splits.append(data_splits[test_idx])
+                data_split_targets.append('test')
 
     for file_base, data_file in zip(file_bases, data_files):
         if data_file is None:
@@ -261,7 +262,18 @@ def make(data_folder, store_folder,
                     store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(y[:, [0, cnt+1]]))
         else:
             # split data from each remaining file into train and test chunks according to `splits`
-            split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets, seed=seed)
+            if block_stratify:
+                stratify = y
+            else:
+                stratify = None
+
+            # convert block_size from seconds to samples
+            if block_size is not None:
+                block_size = int(block_size * fs)
+
+            # FIXME: lenght of split does not match with fractions
+            split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets, seed=seed,
+                                                     block_stratify=stratify, block_size=block_size)
             logging.info(f'    splitting {data_splits} into {data_split_targets}.')
             for name in set(data_split_targets):
                 store[name]['x'].append(split_arrays['x'][name])
@@ -272,7 +284,7 @@ def make(data_folder, store_folder,
                         store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(split_arrays['y'][name][:, [0, cnt+1]]))
 
     # report
-    logging.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/test/val samples.")
+    logging.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
     # save as npy_dir
     logging.info(f'  Saving to {store_folder}.')
     das.npy_dir.save(store_folder, store)

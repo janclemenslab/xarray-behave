@@ -1,10 +1,10 @@
 main:
 
 - type: text
-  text: '<b>Make dataset for training DAS</b>:<br />
+  text: '<b>Make dataset for training DAS:</b><br />
     Export audio as wave or npz files and annotations data as csv
     for multiple recordings into a single directory using "File/Export for DAS".
-    Will assemble, split files or fraction etc.'
+    Will collect data from different files and split them into training, validation and test sets.'
 
 - name: data_folder
   label: Data folder
@@ -30,18 +30,6 @@ main:
   default: False
   help: Can help with smooth detectiong of syllables.
 
-
-- name: seed_splits
-  label: Random number seed
-  type: optional_int
-  none_label: No seed
-  default_disabled: True
-  default: 1
-  decimals: 3
-  range: 0,1000
-  help: For reproducible splits.
-
-
 - name: event_std_seconds
   label: Width of events (seconds)
   type: double
@@ -60,9 +48,20 @@ main:
 
 
 - type: text
-  text: '
+  text: '<b>Split data into training, validation, and test sets:</b><br />
     Split <i>files</i>: select a fraction of files for the specific split. The full file will be used.<br />
     Split <i>samples</i>: select a fraction of data from each file.<br />'
+
+- name: seed_splits
+  label: Random number seed
+  type: optional_int
+  none_label: No seed
+  default_disabled: True
+  default: 1
+  decimals: 3
+  range: 0,1000
+  help: For reproducible splits.
+
 
 - name: train_split
   label: Train split by
@@ -77,24 +76,11 @@ main:
   decimals: 2
   range: 0,1
 
-- name: split_train_in_two
-  label: Split train in two
-  type: bool
-  default: True
-  help: 'When splitting train:test 80:20, train will be either at the first
-  or the last 20% of a recording. Split train in two (train:train:test) to 40:40:20. Now test
-  can also occupy the central 20% of the recording.'
-
 - name: val_split
   label: Validation split by
   type: list
   default: "samples"
   options: "files,samples"
-
-- name: split_val_in_two
-  label: Split val in two
-  type: bool
-  default: False
 
 - name: val_split_fraction
   label: Fraction
@@ -109,11 +95,6 @@ main:
   default: "samples"
   options: "files,samples"
 
-- name: split_test_in_two
-  label: Split test in two
-  type: bool
-  default: False
-
 - name: test_split_fraction
   label: Fraction
   type: double
@@ -121,6 +102,36 @@ main:
   decimals: 2
   range: 0,1
 
+- name: stratify
+  label: Stratify
+  type: stacked
+  options: "No,Block stratify,Two-split"
+  default: "No"
+
+  "No":
+
+  "Block stratify":
+  - type: text
+    text: 'Stratification splits the data into blocks and distributes the blocks across the train/val/test sets such that
+           the class distribution is the same the train/val/test sets.<br />
+           Particularly important if the different song types are unevenly distributed in your data,
+           for instance syllable "YIP" only occurs in the first minute and syllable "YAP" in the second minute of audio.
+           <br />
+           NOTE: This currently only works if you split by samples, not by files.
+           '
+  - name: block_size
+    label: Block size (seconds)
+    type: double
+    default: 5
+    decimals: 2
+    range: 0,1000000
+
+  "Two-split":
+  - type: text
+    text: '
+    When splitting train:val:test 80:20, train will be either at the first
+    or the last 20% of a recording. Split train in two (train:train:test) to 40:40:20. Now test
+    can also occupy the central 20% of the recording.'
 
 - name: okay_button
   label: Assemble dataset
