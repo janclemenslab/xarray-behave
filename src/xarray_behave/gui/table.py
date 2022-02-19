@@ -144,16 +144,19 @@ class Table(QtWidgets.QDialog):
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, caption="Select definitions file", dir=filename, filter=self.tr("Any File (*_definitions.csv)")
         )
-        data = np.loadtxt(filename, dtype=str, delimiter=",")
-        # delete existing data
-        self.data = []
-        while self.table.rowCount() > 0:
-            self.table.removeRow(self.table.currentRow())
 
-        # replace with loaded data
-        for d in data:
-            self.data.append(d)
-            self._make_row(row_data=d)
+        if len(filename):
+            # load data
+            data = np.loadtxt(filename, dtype=str, delimiter=",")
+            # delete existing data
+            self.data = []
+            # clear table
+            while self.table.rowCount() > 0:
+                self.table.removeRow(self.table.currentRow())
+            # replace with loaded data
+            for d in data:
+                self.data.append(d)
+                self._make_row(row_data=d)
 
     @QtCore.Slot()
     def save(self):
@@ -163,9 +166,9 @@ class Table(QtWidgets.QDialog):
             self, caption="Select file for saving", dir=savefilename, filter=self.tr("Any File (*_definitions.csv)")
         )
 
-        # sanitize data
-        data = self.get_table_data()
-        data = [[d[0][0], d[1][0]] for d in data]
-
-        # save to csv
-        np.savetxt(savefilename, data, delimiter=",", fmt="%s")
+        if len(savefilename):
+            # sanitize data
+            data = self.get_table_data()
+            data = [[d[0][0], d[1][0]] for d in data]
+            # save to csv
+            np.savetxt(savefilename, data, delimiter=",", fmt="%s")
