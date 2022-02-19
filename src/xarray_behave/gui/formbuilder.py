@@ -37,10 +37,11 @@ try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
     pass
-from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
+# from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
+from qtpy import QtWidgets, QtCore, QtGui
 
 
-class YamlDialog(QtGui.QDialog):
+class YamlDialog(QtWidgets.QDialog):
     def __init__(self, yaml_file, parent=None, title=None,
                  main_callback=None, callbacks={}):
         super().__init__(parent=parent)
@@ -53,14 +54,14 @@ class YamlDialog(QtGui.QDialog):
                 self.close()
         self.form.mainAction.connect(main_callback)
 
-        self.scroll_area = QtGui.QScrollArea()
+        self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         # self.scroll_area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
         # self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.scroll_area.setWidget(self.form)
 
 
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.scroll_area)
         for button, callback in callbacks.items():
             self.form.buttons[button].clicked.connect(callback)

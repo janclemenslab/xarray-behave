@@ -6,7 +6,7 @@ import colorcet
 from typing import Iterable
 
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 import logging
 from videoreader import VideoReader
 from typing import Union
@@ -37,7 +37,7 @@ def fast_plot(plot_widget, x, y, pen=None):
     conn = np.ones_like(x, dtype=np.bool)
     conn[:, -1] = False  # make sure plots are disconnected
     path = pg.arrayToQPath(x.flatten(), y.flatten(), conn.flatten())
-    item = QtGui.QGraphicsPathItem(path)
+    item = QtWidgets.QGraphicsPathItem(path)
     if pen is None:
         pen = pg.mkPen(color=(196, 128, 128))
     item.setPen(pen)
@@ -189,7 +189,7 @@ def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
     return idxs
 
 
-class Worker(pg.QtCore.QRunnable):
+class Worker(QtCore.QRunnable):
     """Worker thread
 
     Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
@@ -208,7 +208,7 @@ class Worker(pg.QtCore.QRunnable):
         self.args = args
         self.kwargs = kwargs
 
-    @pg.QtCore.Slot()  # QtCore.Slot
+    @QtCore.Slot()
     def run(self):
         '''
         Initialise the runner function with passed args, kwargs.
@@ -236,8 +236,7 @@ _invoker = Invoker()
 
 
 def invoke_in_main_thread(fn, *args, **kwargs):
-    QtCore.QCoreApplication.postEvent(_invoker,
-        InvokeEvent(fn, *args, **kwargs))
+    QtCore.QCoreApplication.postEvent(_invoker, InvokeEvent(fn, *args, **kwargs))
 
 
 class CheckableComboBox(QtWidgets.QComboBox):

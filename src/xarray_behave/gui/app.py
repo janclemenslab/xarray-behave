@@ -26,17 +26,8 @@ import pathlib
 import peakutils
 from typing import Callable, Optional, Dict, Any, List
 
-try:
-    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
-except ImportError:
-    logging.warning(f'Could not import PySide2.')
-
-
-
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+from qtpy import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
-import pyqtgraph.Qt as Qt
-
 
 import xarray_behave
 from .. import (xarray_behave as xb,
@@ -95,7 +86,7 @@ class DataSource:
         self.name = name
 
 
-class MainWindow(pg.QtGui.QMainWindow):
+class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, parent=None, title="Deep Audio Segmenter"):
         super().__init__(parent)
@@ -129,7 +120,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         self._add_keyed_menuitem(self.view_train, "Predict", self.das_predict, None)
 
         # add initial buttons
-        self.hb = pg.QtGui.QVBoxLayout()
+        self.hb = QtWidgets.QVBoxLayout()
         self.hb.addWidget(self.add_button("Load audio from file", self.from_file))
         self.hb.addWidget(self.add_button("Create dataset from ethodrome folder", self.from_dir))
         self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
@@ -359,7 +350,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         dialog.show()
         result = dialog.exec_()
 
-        if result == QtGui.QDialog.Accepted:
+        if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
 
             which_events = []
@@ -396,7 +387,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         dialog.show()
         result = dialog.exec_()
 
-        if result == QtGui.QDialog.Accepted:
+        if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
 
             # post process splits
@@ -526,7 +517,7 @@ class MainWindow(pg.QtGui.QMainWindow):
 
         dialog.show()
         result = dialog.exec_()
-        if result == QtGui.QDialog.Accepted:
+        if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
             form_data = _filter_form_data(form_data)
 
@@ -544,7 +535,7 @@ class MainWindow(pg.QtGui.QMainWindow):
                 queue = multiprocessing.Queue()  # for progress updates from the callback for display in the GUI
                 stop_event = threading.Event()  # checked in the keras callback for stopping training from the GUI
 
-                progress = QtGui.QProgressDialog("Initializing training", "Stop training", 0, form_data['nb_epoch'], None)
+                progress = QtWidgets.QProgressDialog("Initializing training", "Stop training", 0, form_data['nb_epoch'], None)
                 progress.setWindowTitle('DAS training')
                 progress.setWindowModality(QtCore.Qt.NonModal)
 
@@ -571,12 +562,12 @@ class MainWindow(pg.QtGui.QMainWindow):
                         else:
                             utils.invoke_in_main_thread(progress.setValue, value[0])
                             utils.invoke_in_main_thread(progress.setLabelText, str(value[1]))
-                        pg.QtGui.QApplication.processEvents()
+                        QtWidgets.QApplication.processEvents()
 
                 worker_progress = utils.Worker(update_progress, queue)
                 pool.start(worker_progress)
                 pool.start(worker_training)
-                pg.QtGui.QApplication.processEvents()
+                QtWidgets.QApplication.processEvents()
 
     def das_predict(self, qt_keycode):
         logging.info('Predicting song using DAS:')
@@ -604,7 +595,7 @@ class MainWindow(pg.QtGui.QMainWindow):
         dialog.show()
         result = dialog.exec_()
 
-        if result == QtGui.QDialog.Accepted:
+        if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
             model_path = form_data['model_path']
             if model_path == " ":
@@ -811,9 +802,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 dialog.show()
                 result = dialog.exec_()
             else:
-                result = QtGui.QDialog.Accepted
+                result = QtWidgets.QDialog.Accepted
 
-            if result == QtGui.QDialog.Accepted:
+            if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()  # why call this twice
 
                 form_data = dialog.form.get_form_data()
@@ -887,9 +878,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 dialog.show()
                 result = dialog.exec_()
             else:
-                result = QtGui.QDialog.Accepted
+                result = QtWidgets.QDialog.Accepted
 
-            if result == QtGui.QDialog.Accepted:
+            if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
                 logging.info(f"Making new dataset from directory {dirname}.")
 
@@ -1001,9 +992,9 @@ class MainWindow(pg.QtGui.QMainWindow):
                 dialog.show()
                 result = dialog.exec_()
             else:
-                result = QtGui.QDialog.Accepted
+                result = QtWidgets.QDialog.Accepted
 
-            if result == QtGui.QDialog.Accepted:
+            if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
                 logging.info(f'Loading {filename}.')
                 ds = xb.load(filename, lazy=True, use_temp=True)
@@ -1395,10 +1386,10 @@ class PSV(MainWindow):
             self._add_keyed_menuitem(view_view, "Show movie", partial(self.toggle, 'show_movie'), None,
                                     checkable=True, checked=self.show_movie)
 
-        self.hl = pg.QtGui.QHBoxLayout()
+        self.hl = QtWidgets.QHBoxLayout()
 
         # EVENT TYPE selector
-        self.cb = pg.QtGui.QComboBox()
+        self.cb = QtWidgets.QComboBox()
         self.cb.setCurrentIndex(0)
         self.cb.currentIndexChanged.connect(self.update_xy)
 
@@ -1407,13 +1398,13 @@ class PSV(MainWindow):
                 self.edit_annotation_types()
         self.cb.activated.connect(ta)
 
-        event_sel_label = pg.Qt.QtWidgets.QLabel('Song types:')
+        event_sel_label = QtWidgets.QLabel('Song types:')
         event_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
         event_sel_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.hl.addWidget(event_sel_label, stretch=1)
         self.hl.addWidget(self.cb, stretch=4)
 
-        event_edit_button = pg.Qt.QtWidgets.QPushButton('Add/Edit')
+        event_edit_button = QtWidgets.QPushButton('Add/Edit')
         event_edit_button.clicked.connect(functools.partial(self.edit_annotation_types, dialog=None))
         self.hl.addWidget(event_edit_button, stretch=1)
 
@@ -1421,7 +1412,7 @@ class PSV(MainWindow):
         self.view_audio = view_audio
 
         # CHANNEL selector
-        self.cb2 = pg.QtGui.QComboBox()
+        self.cb2 = QtWidgets.QComboBox()
         if 'song' in self.ds:
             self.cb2.addItem("Merged channels")
 
@@ -1431,7 +1422,7 @@ class PSV(MainWindow):
 
         self.cb2.currentIndexChanged.connect(self.update_xy)
         self.cb2.setCurrentIndex(0)
-        channel_sel_label = pg.Qt.QtWidgets.QLabel('Audio channels:')
+        channel_sel_label = QtWidgets.QLabel('Audio channels:')
         channel_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
         self.hl.addWidget(channel_sel_label, stretch=1)
         self.hl.addWidget(self.cb2, stretch=4)
@@ -1455,7 +1446,7 @@ class PSV(MainWindow):
             for ii, col in zip(range(0, itemList.rowCount()), self.tracks_colors):
                 itemList.item(ii).setForeground(QtGui.QColor(*col))
 
-            track_sel_label = pg.Qt.QtWidgets.QLabel('Track parts:')
+            track_sel_label = QtWidgets.QLabel('Track parts:')
             track_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
             self.hl.addWidget(track_sel_label, stretch=1)
             self.hl.addWidget(self.cb3, stretch=4)
@@ -1483,12 +1474,12 @@ class PSV(MainWindow):
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=lut)
 
-        self.ly = pg.QtGui.QVBoxLayout()
+        self.ly = QtWidgets.QVBoxLayout()
         self.ly.addLayout(self.hl)
 
-        splitter = QtWidgets.QSplitter(pg.QtCore.Qt.Vertical)
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
 
-        splitter_horizontal = QtWidgets.QSplitter(pg.QtCore.Qt.Horizontal)
+        splitter_horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
         splitter.addWidget(splitter_horizontal)
         if 'pose_positions_allo' in self.ds:
@@ -1521,32 +1512,32 @@ class PSV(MainWindow):
             except Exception as e:
                 print(e)
 
-        self.scrollbar = pg.Qt.QtWidgets.QScrollBar(pg.QtCore.Qt.Horizontal)
+        self.scrollbar = QtWidgets.QScrollBar(QtCore.Qt.Horizontal)
         self.scrollbar.setMinimum(self.tmin)
         self.scrollbar.setMaximum(self.tmax)
         self.scrollbar.setPageStep(max((self.tmax-self.tmin)/100, self._span / self.fs_song))
         self.scrollbar.valueChanged.connect(lambda value: setattr(self, 't0', value))
-        scrollbar_layout = pg.QtGui.QHBoxLayout()
+        scrollbar_layout = QtWidgets.QHBoxLayout()
 
-        self.playButton = pg.Qt.QtWidgets.QPushButton()
-        self.playButton.setIcon(self.style().standardIcon(pg.Qt.QtWidgets.QStyle.SP_MediaPlay))
+        self.playButton = QtWidgets.QPushButton()
+        self.playButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
         self.playButton.clicked.connect(self.toggle_playvideo)
 
         scrollbar_layout.addWidget(self.playButton, stretch= 0.5)
         scrollbar_layout.addWidget(self.scrollbar, stretch=10)
 
-        self.edit_time = pg.Qt.QtWidgets.QLineEdit()
+        self.edit_time = QtWidgets.QLineEdit()
         self.edit_time.editingFinished.connect(functools.partial(edit_time_finished, source=self.edit_time))
         scrollbar_layout.addWidget(self.edit_time, stretch=1)
-        edit_time_label = pg.Qt.QtWidgets.QLabel('seconds')
+        edit_time_label = QtWidgets.QLabel('seconds')
         edit_time_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
         scrollbar_layout.addWidget(edit_time_label, stretch=1)
 
         if self.vr is not None:
-            self.edit_frame = pg.Qt.QtWidgets.QLineEdit()
+            self.edit_frame = QtWidgets.QLineEdit()
             self.edit_frame.editingFinished.connect(functools.partial(edit_frame_finished, source=self.edit_frame))
             scrollbar_layout.addWidget(self.edit_frame, stretch=1)
-            edit_frame_label = pg.Qt.QtWidgets.QLabel('frame')
+            edit_frame_label = QtWidgets.QLabel('frame')
             edit_frame_label.setStyleSheet("QLabel { background-color : black; color : gray; }");
             scrollbar_layout.addWidget(edit_frame_label, stretch=1)
 
@@ -1777,10 +1768,10 @@ class PSV(MainWindow):
     def toggle_playvideo(self, qt_keycode=None):
         self.STOP = not self.STOP
         if not self.STOP:
-            self.playButton.setIcon(self.style().standardIcon(pg.Qt.QtWidgets.QStyle.SP_MediaPause))
+            self.playButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPause))
             self.play_video()
         else:
-            self.playButton.setIcon(self.style().standardIcon(pg.Qt.QtWidgets.QStyle.SP_MediaPlay))
+            self.playButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
 
     def toggle_show_poses(self, qt_keycode):
         self.show_poses = not self.show_poses
@@ -1873,7 +1864,7 @@ class PSV(MainWindow):
 
         result = dialog.exec_()
 
-        if result == QtGui.QDialog.Accepted:
+        if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()  # why call this twice
             self.fmin = form_data['spec_freq_min']
             self.fmax = form_data['spec_freq_max']
@@ -1890,7 +1881,7 @@ class PSV(MainWindow):
         dialog.show()
         result = dialog.exec_()
 
-        if result == QtGui.QDialog.Accepted:
+        if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()  # why call this twice
             self.thres_min_dist = form_data['thres_min_dist']
             self.thres_env_std = form_data['thres_env_std']
@@ -2263,9 +2254,9 @@ class PSV(MainWindow):
             dialog.show()
             result = dialog.exec_()
         else:
-           result = QtGui.QDialog.Accepted
+           result = QtWidgets.QDialog.Accepted
 
-        if result == QtGui.QDialog.Accepted:
+        if result == QtWidgets.QDialog.Accepted:
             data = dialog.get_table_data()
 
             # now edit self.event_times
@@ -2415,7 +2406,6 @@ def main(source: str = '', *, events_string: str = '',
     """
     app = pg.mkQApp()
 
-    # QtGui.QApplication([])
     mainwin = MainWindow()
     mainwin.show()
     if not len(source):
@@ -2446,7 +2436,7 @@ def main(source: str = '', *, events_string: str = '',
 
     # # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-        QtGui.QApplication.instance().exec_()
+        QtWidgets.QApplication.instance().exec_()
 
 
 def main_das(source: str = '', *, song_types_string: str = '',

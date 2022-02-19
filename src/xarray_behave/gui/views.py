@@ -4,8 +4,7 @@ except ImportError:
     pass
 
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
-# from PySide2.QtGui import QImage, QPixmap
+from qtpy import QtGui, QtCore, QtWidgets
 import numpy as np
 import skimage.draw
 import scipy.signal

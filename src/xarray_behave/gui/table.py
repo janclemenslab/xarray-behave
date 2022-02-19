@@ -1,15 +1,8 @@
-try:
-    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
-except ImportError:
-    pass
-from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
+from qtpy import QtWidgets, QtCore
 import numpy as np
 
-if not hasattr(QtCore, 'Slot'):
-    QtCore.Slot = QtCore.pyqtSlot
 
-
-class Table(QtGui.QDialog):
+class Table(QtWidgets.QDialog):
 
     def __init__(self, data=[], model=None, as_dialog=True, **kwargs):
         super().__init__(**kwargs)
@@ -40,8 +33,8 @@ class Table(QtGui.QDialog):
         self.layout.addLayout(self.button_layout)
 
         if as_dialog:
-            buttons = QtGui.QDialogButtonBox(
-                QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel,
+            buttons = QtWidgets.QDialogButtonBox(
+                QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
                 QtCore.Qt.Horizontal, self)
             buttons.accepted.connect(self.accept)
             buttons.rejected.connect(self.reject)
