@@ -8,9 +8,9 @@ main:
 
 
 - name: file
-  label: File(s) to predict
+  label: Predict song for
   type: stacked
-  options: "Current file,Folder"
+  options: "Current file,Select file or folder"
   default: "Current file"
 
   "Current file":
@@ -34,13 +34,18 @@ main:
     range: 0.0,1000000.0
 
 
-  "Folder":
+  "Select file or folder":
   - type: text
-    text: 'Predict song for all files in a folder.'
+    text: 'Predict song for a selected file or all files in a folder.'
 
   - name: folder
     label: 'folder'
     type: file_dir
+    default: " "
+
+  - name: file
+    label: 'file'
+    type: file_open
     default: " "
 
   - name: save_format

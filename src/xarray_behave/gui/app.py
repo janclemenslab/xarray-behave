@@ -59,7 +59,6 @@ class ChkBxFileDialog(QtWidgets.QFileDialog):
         self.setSupportedSchemes(["file"])
         self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog)
         self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
-        # self.setDirectory(directory)
         self.selectNameFilter(filter)
         self.selectFile(directory)
         self.checkboxes = []
@@ -443,7 +442,9 @@ class MainWindow(QtWidgets.QMainWindow):
             #     form_data['pre_nb_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
             del form_data['frontend']
             form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
+            post_opt = form_data['postopt']=='Yes'
             form_data = {k: v for k, v in form_data.items() if v not in ['Yes', 'No', None]}
+            form_data['post_opt'] = post_opt
 
             if not len(form_data['y_suffix']):
                 del form_data['y_suffix']
@@ -545,11 +546,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     stop_event.set()  # stop training
 
                 progress.canceled.connect(custom_cancel)
+                # from . import qt_logger
+                # progress = qt_logger.MyDialog(stop_event=stop_event)
+                # progress.show()
+                # progress.raise_()
+
 
                 form_data['_qt_progress'] = (queue, stop_event)
                 worker_training = utils.Worker(das.train.train, **form_data)
 
-                pool = pg.QtCore.QThreadPool.globalInstance()
+                pool = QtCore.QThreadPool.globalInstance()
 
                 def update_progress(queue):
                     while True:
@@ -583,14 +589,28 @@ class MainWindow(QtWidgets.QMainWindow):
             logging.info('   Failed to import das. Install via `pip install das`.')
             return
 
-        # TODO: load yaml file and manipulate depending on existence of self.ds
-        if hasattr(self, 'ds'):
-            pass  # populate form with name of currently loaded file
-        else:
-            pass  # set "folder or file as default"
-
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_predict.yaml",
                             title='Predict labels using DAS')
+
+        # get model path and populate form
+        model_path, _ = QtWidgets.QFileDialog.getOpenFileName(None,
+                                                              caption="Open model file (*_model.h5)")
+        if len(model_path):
+            dialog.form['model_path'] = model_path
+        else:
+            logging.warning('No model selected.')
+            return
+
+        # populate values for postprocessing from params if they exist
+        model_path = model_path.rsplit('_',1)[0]  # split off suffix (_model.h5 or params.yaml)
+        params = das.utils.load_params(model_path)
+        if 'post_opt' in params:
+            dialog.form['segment_fillgap'] = params['post_opt']['gap_dur']
+            dialog.form['segment_minlen'] = params['post_opt']['min_len']
+
+        # if no file loaded, ask to select file or folder
+        if not hasattr(self, 'ds'):
+            dialog.form['file'] = "Select file or folder"
 
         dialog.show()
         result = dialog.exec_()
@@ -604,7 +624,23 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 model_path = model_path.rsplit('_',1)[0]  # split off suffix
 
-            if hasattr(self, 'ds') and form_data['file'] == "Current file":
+            if form_data['file'] != "Current file":
+                if form_data['folder'] != " ":
+                    file_path = form_data['folder']
+                elif form_data['file'] != " ":
+                    file_path = form_data['file']
+                else:
+                    logging.warning('No audio data. Either open a file or select a folder or file in the predict dialog.')
+                    return
+
+                das.predict.cli_predict(file_path, model_path, verbose=1, batch_size=32,
+                                        event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
+                                        event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
+                                        segment_thres=form_data['event_thres'], segment_fillgap=form_data['segment_fillgap'],
+                                        segment_minlen=form_data['segment_minlen'],
+                                        )
+                return
+            elif hasattr(self, 'ds') and form_data['file'] == "Current file":
                 start_seconds = form_data['start_seconds']
                 start_index = utils.find_nearest_idx(self.ds.sampletime.values, start_seconds)
 
@@ -614,106 +650,92 @@ class MainWindow(QtWidgets.QMainWindow):
                     end_index = utils.find_nearest_idx(self.ds.sampletime.values, end_seconds)
 
                 audio = self.ds.song_raw.data[start_index:end_index]
-            elif form_data['file'] != "Current file":
-                if form_data['folder'] == " ":
-                    logging.warning('No audio data selected.')
+
+                params = das.utils.load_params(model_path)
+                if audio.shape[0] < params['nb_hist']:
+                    logging.warning(f"   Aborting. Audio has fewer samples ({audio.shape[0]}) shorter than network chunk size ({params['nb_hist']}). Fix by select longer audio.")
                     return
 
-                events, segments, _, _ = das.predict.cli_predict(form_data['folder'], model_path, verbose=1, batch_size=32,
-                                        event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
-                                        event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
-                                        segment_thres=form_data['event_thres'], segment_fillgap=form_data['segment_fillgap'],
-                                        segment_minlen=form_data['segment_minlen'],
-                                        )
-                return
-            else:
-                logging.warning('No audio data. Either open a file or select a folder or file in the predict dialog.')
-                return
+                # batch size so that at least 10 batches are run - minimizes loss of annotations from batch size "quantiziation" errors
+                batch_size = 96
+                nb_batches = lambda batch_size: int(np.floor((audio.shape[0] - (((batch_size-1)) + params['nb_hist'])) / (params['stride'] * (batch_size))))
+                while nb_batches(batch_size) < 10 and batch_size > 1:
+                    batch_size -= 1
 
-            params = das.utils.load_params(model_path)
-            if audio.shape[0] < params['nb_hist']:
-                logging.warning(f"   Aborting. Audio has fewer samples ({audio.shape[0]}) shorter than network chunk size ({params['nb_hist']}). Fix by select longer audio.")
-                return
+                logging.info(f'   Running inference on audio.')
+                logging.info(f'   Model from {model_path}.')
 
-            # batch size so that at least 10 batches are run - minimizes loss of annotations from batch size "quantiziation" errors
-            batch_size = 96
-            nb_batches = lambda batch_size: int(np.floor((audio.shape[0] - (((batch_size-1)) + params['nb_hist'])) / (params['stride'] * (batch_size))))
-            while nb_batches(batch_size) < 10 and batch_size > 1:
-                batch_size -= 1
+                events, segments, _, _ = das.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
+                                                        event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
+                                                        event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
+                                                        segment_thres=form_data['event_thres'], segment_fillgap=form_data['segment_fillgap'],
+                                                        segment_minlen=form_data['segment_minlen'],
+                                                        )
 
-            logging.info(f'   Running inference on audio.')
-            logging.info(f'   Model from {model_path}.')
+                # Process detected song
+                if not events and not segments:
+                    logging.warning("Found no song.")
+                    return
 
-            events, segments, _, _ = das.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
-                                                    event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],
-                                                    event_dist_min=form_data['event_dist_min'], event_dist_max=form_data['event_dist_max'],
-                                                    segment_thres=form_data['event_thres'], segment_fillgap=form_data['segment_fillgap'],
-                                                    segment_minlen=form_data['segment_minlen'],
-                                                    )
+                suffix = ''
+                if form_data['proof_reading_mode']:
+                    suffix = '_proposals'
 
-            if not events and not segments:
-                logging.warning("Found no song.")
-                return
+                # events['seconds'] is in samples/fs - translate to time stamps via sample time
+                if 'sequence' in events:
+                    detected_event_names = np.unique(events['sequence'])
+                else:
+                    detected_event_names = []
 
-            suffix = ''
-            if form_data['proof_reading_mode']:
-                suffix = '_proposals'
+                if len(detected_event_names) > 0 and detected_event_names[0] is not None:
+                    logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
+                    event_samples = (np.array(events['seconds']) * self.fs_song  + start_index).astype(np.uintp)
 
-            # events['seconds'] is in samples/fs - translate to time stamps via sample time
-            if 'sequence' in events:
-                detected_event_names = np.unique(events['sequence'])
-            else:
-                detected_event_names = []
+                    # make sure all detected events are within bounds
+                    event_samples = event_samples[event_samples >= 0]
+                    event_samples = event_samples[event_samples < self.ds.sampletime.shape[0]]
 
-            if len(detected_event_names) > 0 and detected_event_names[0] is not None:
-                logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
-                event_samples = (np.array(events['seconds']) * self.fs_song  + start_index).astype(np.uintp)
+                    event_seconds = self.ds.sampletime[event_samples]
+                    for name_or_index, seconds in zip(events['sequence'], event_seconds):
+                        if type(name_or_index) is int:
+                            event_name = str(events['names'][name_or_index])
+                        else:
+                            event_name = str(name_or_index)
+                        self.event_times.add_time(event_name + str(suffix), seconds, seconds, category='event')
 
-                # make sure all detected events are within bounds
-                event_samples = event_samples[event_samples >= 0]
-                event_samples = event_samples[event_samples < self.ds.sampletime.shape[0]]
+                if 'sequence' in segments:
+                    detected_segment_names = np.unique(segments['sequence'])
+                    # if these are indices, get corresponding names
+                    if len(detected_segment_names) and type(detected_segment_names[0]) is not str and type(detected_segment_names[0]) is not np.str_:
+                        detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
+                else:
+                    detected_segment_names = []
 
-                event_seconds = self.ds.sampletime[event_samples]
-                for name_or_index, seconds in zip(events['sequence'], event_seconds):
-                    if type(name_or_index) is int:
-                        event_name = str(events['names'][name_or_index])
-                    else:
-                        event_name = str(name_or_index)
-                    self.event_times.add_time(event_name + str(suffix), seconds, seconds, category='event')
+                if len(detected_segment_names) > 0 and detected_segment_names[0] is not None:
 
-            if 'sequence' in segments:
-                detected_segment_names = np.unique(segments['sequence'])
-                # if these are indices, get corresponding names
-                if len(detected_segment_names) and type(detected_segment_names[0]) is not str and type(detected_segment_names[0]) is not np.str_:
-                    detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
-            else:
-                detected_segment_names = []
+                    logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
+                    onsets_samples = (np.array(segments['onsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
+                    offsets_samples = (np.array(segments['offsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
 
-            if len(detected_segment_names) > 0 and detected_segment_names[0] is not None:
+                    # make sure all detected segments are within bounds
+                    onsets_samples = onsets_samples[onsets_samples >= 0]
+                    offsets_samples = offsets_samples[offsets_samples >= 0]
+                    onsets_samples = onsets_samples[onsets_samples < self.ds.sampletime.shape[0]]
+                    offsets_samples = offsets_samples[offsets_samples < self.ds.sampletime.shape[0]]
 
-                logging.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
-                onsets_samples = (np.array(segments['onsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
-                offsets_samples = (np.array(segments['offsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
+                    onsets_seconds = self.ds.sampletime[onsets_samples]
+                    offsets_seconds = self.ds.sampletime[offsets_samples]
+                    for name_or_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
+                        if type(name_or_index) is not str and type(detected_segment_names[0]) is not np.str_:
+                            segment_name = segments['names'][name_or_index]
+                        else:
+                            segment_name = str(name_or_index)
 
-                # make sure all detected segments are within bounds
-                onsets_samples = onsets_samples[onsets_samples >= 0]
-                offsets_samples = offsets_samples[offsets_samples >= 0]
-                onsets_samples = onsets_samples[onsets_samples < self.ds.sampletime.shape[0]]
-                offsets_samples = offsets_samples[offsets_samples < self.ds.sampletime.shape[0]]
+                        self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
 
-                onsets_seconds = self.ds.sampletime[onsets_samples]
-                offsets_seconds = self.ds.sampletime[offsets_samples]
-                for name_or_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds, offsets_seconds):
-                    if type(name_or_index) is not str and type(detected_segment_names[0]) is not np.str_:
-                        segment_name = segments['names'][name_or_index]
-                    else:
-                        segment_name = str(name_or_index)
-
-                    self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
-
-            self.nb_eventtypes = len(self.event_times)
-            self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
-            self.update_eventtype_selector()
+                self.nb_eventtypes = len(self.event_times)
+                self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
+                self.update_eventtype_selector()
         logging.info('Done.')
 
     @classmethod
