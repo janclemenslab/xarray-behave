@@ -71,12 +71,12 @@ class ChkBxFileDialog(QtWidgets.QFileDialog):
 
     def checked(self, name) -> bool:
         cnt = self.checkbox_titles.index(name)
-        return self.checkboxes[cnt].checkState() == PySide2.QtCore.Qt.CheckState.Checked
+        return self.checkboxes[cnt].checkState() == QtCore.Qt.CheckState.Checked
 
     def get_checked_state(self) -> Dict[str, bool]:
         states = {}
         for cnt, title in enumerate(self.checkbox_titles):
-            states[title] = self.checkboxes[cnt].checkState() == PySide2.QtCore.Qt.CheckState.Checked
+            states[title] = self.checkboxes[cnt].checkState() == QtCore.Qt.CheckState.Checked
         return states
 
 
