@@ -23,11 +23,13 @@ import das.make_dataset
 import das.npy_dir
 import das.train
 import das.predict
+import das.block_stratify
 
 import xarray_behave
 
 
 package_dir = xarray_behave.__path__[0]
+logger = logging.getLogger(__name__)
 
 
 # these should be xb.loaders!!
@@ -36,6 +38,7 @@ def data_loader_wav(filename):
     fs, x = scipy.io.wavfile.read(filename)
     x = x[:, np.newaxis] if x.ndim==1 else x  # adds singleton dim for single-channel wavs
     return fs, x
+
 
 def data_loader_npz(filename):
     # load the recording
@@ -46,7 +49,7 @@ def data_loader_npz(filename):
     return fs, x
 
 
-# auto register with decorator
+# TODO: auto register with decorator or, even better, use io.audio
 data_loaders = {'npz': data_loader_npz, 'wav': data_loader_wav, None: None}
 
 
@@ -65,7 +68,7 @@ def make(data_folder: str, store_folder: str,
          make_single_class_datasets: bool = False,
          split_in_two: bool = False,
          block_stratify: bool = False,
-         block_size: int = 5,
+         block_size: int = 10,
          event_std_seconds: float = 0,
          gap_seconds: float = 0,
          delete_intermediate_store: bool = True,
@@ -78,19 +81,24 @@ def make(data_folder: str, store_folder: str,
     # go through all annotation files and collect info on classes
     class_names = []
     class_types = []
+    logger.info('Listing annotation files:')
     for file_annotation in files_annotation:
-        print(file_annotation)
+        # TODO load definition files
+        logger.info(f"   {file_annotation}")
         df = annotation_loader(file_annotation)
         event_times = annot.Events.from_df(df)
         class_names.extend(event_times.names)
         class_types.extend(event_times.categories.values())
+    logger.info('Done.')
 
     class_names, first_indices = np.unique(class_names, return_index=True)
     class_types = list(np.array(class_types)[first_indices])
     class_names = list(class_names)
 
+    logger.info('Identifying song types:')
     for class_name, class_type in zip(class_names, class_types):
-        print(f'found {class_name} of type {class_type}')
+        logger.info(f'   Found {class_name} of type {class_type}')
+    logger.info('Done.')
 
     class_names.insert(0, 'noise')
     class_types.insert(0, 'segment')
@@ -113,7 +121,7 @@ def make(data_folder: str, store_folder: str,
     # get valid file
     dfs = [data_file for data_file in data_files if data_file is not None]
     if not len(dfs):
-        logging.exception('No valid data files found.')
+        logger.exception('No valid data files found.')
         raise ValueError('No valid data files found.')
 
     fs, x = load_data(dfs[0])
@@ -141,57 +149,58 @@ def make(data_folder: str, store_folder: str,
 
     # first split files into a train-test and val
     file_split_dict = collections.defaultdict(lambda: None)
-    parts = ['train', 'val', 'test']
+    # parts = ['train', 'val', 'test']
+
 
     if len(file_splits):
-        if sum(file_splits.values())>1.0:
-            raise ValueError(f'Sum of file splits > 1.0!')
+        logger.info("Splitting data by files: {file_splits}.")
+        if sum(file_splits.values()) > 1.0:
+            raise ValueError('Sum of file splits > 1.0!')
 
-        if len(file_splits)<3:
+        if len(file_splits) < 3:
             file_splits['remainder'] = max(0, 1 - sum(file_splits.values()))
 
-        file_splits = dsm.generate_file_splits(file_bases,
-                                            splits=list(file_splits.values()),
-                                            split_names=list(file_splits.keys()),
-                                            seed=seed)
+        if block_stratify:
+            logger.info("   Block stratifiction.")
+            annotation_files = [file_base + '_annotations.csv' for file_base in file_bases]
+            block_stats_map = das.block_stratify.blockstats_from_files(annotation_files)
+            block_stats = block_stats_map.values()
+        else:
+            block_stats = None
 
-        for file_base in file_bases:
-            for part in parts:
-                if part in file_splits and file_base in file_splits[part]:
-                    file_split_dict[file_base] = part
+        file_split_dict = das.block_stratify.block(block_names=file_bases,
+                                                   group_sizes=list(file_splits.values()),
+                                                   group_names=list(file_splits.keys()),
+                                                   seed=seed,
+                                                   block_stats=block_stats)
+        logger.info("Done.")
     store.attrs['file_split_dict'] = dict(file_split_dict)
 
-    data_split_targets = []
+    data_split_names = []
     if len(data_splits):
+        logger.info(f"Splitting individual data files: {data_splits}.")
+        # TODO: Keep this as a dict!! SIMPLIFY THIS!!
         fractions = np.array(list(data_splits.values()))
         probs = fractions / np.sum(fractions)
         data_splits = {key: val for key, val in zip(data_splits.keys(), probs)}
-        data_split_targets = list(data_splits.keys())
-        data_splits = list(data_splits.values())
+        data_split_names = list(data_splits.keys())
+        data_split_sizes = list(data_splits.values())
         if split_in_two:
-            if 'train' in data_split_targets:
-                train_idx = data_split_targets.index('train')
-                data_splits[train_idx] /= 2
-                data_splits.append(data_splits[train_idx])
-                data_split_targets.append('train')
+            logger.info(f"   Splitting in two.")
+            data_split_names_old = data_split_names.copy()
+            for target in data_split_names_old:
+                idx = data_split_names_old.index(target)
+                data_split_sizes[idx] /= 2
+                data_split_sizes.append(data_split_sizes[idx])
+                data_split_names.append(target)
+        logger.info("Done.")
 
-            if 'val' in data_split_targets:
-                val_idx = data_split_targets.index('val')
-                data_splits[val_idx] /= 2
-                data_splits.append(data_splits[val_idx])
-                data_split_targets.append('val')
-
-            if 'test' in data_split_targets:
-                test_idx = data_split_targets.index('test')
-                data_splits[test_idx] /= 2
-                data_splits.append(data_splits[test_idx])
-                data_split_targets.append('test')
-
+    logger.info(f"Creating dataset:")
     for file_base, data_file in zip(file_bases, data_files):
         if data_file is None:
-            logging.warning(f'Unknown data file for {file_base} - skipping.')
+            logger.warning(f'Unknown data file for {file_base} - skipping.')
             continue
-        logging.info(f'  {file_base}')
+        logger.info(f'   {file_base}')
 
         # load the recording
         if data_file.endswith('.npz'):
@@ -199,7 +208,7 @@ def make(data_folder: str, store_folder: str,
         elif data_file.endswith('.wav'):
             data_loader = data_loader_wav
         else:
-            logging.warning(f'Unknown data file {file_base} - skipping.')
+            logger.warning(f'Unknown data file {file_base} - skipping.')
             continue
 
         fs, x = data_loader(data_file)
@@ -211,24 +220,7 @@ def make(data_folder: str, store_folder: str,
 
         # make new events from syllable on- and offsets
         if make_onset_offset_events:
-            adf = das.annot.Events.from_df(df)
-            start_seconds = []
-            stop_seconds = []
-            for nam, cat in adf.categories.items():
-                if cat == 'segment':
-                    start_seconds.extend(adf.start_seconds(nam))
-                    stop_seconds.extend(adf.stop_seconds(nam))
-
-            logging.info(f'   Making syllable {len(start_seconds) + len(stop_seconds)} onset/offset events.')
-            adf.add_name(name='syllable_onset', category='event')
-            adf.add_name(name='syllable_offset', category='event')
-            for start, stop in zip(start_seconds, stop_seconds):
-                adf.add_time(name='syllable_onset', start_seconds=start)
-                adf.add_time(name='syllable_offset', start_seconds=stop)
-
-            df = adf.to_df()
-
-        # make initial annotation matrix
+            df = onset_offset_events(df)
         y = dsm.make_annotation_matrix(df, nb_samples, fs, class_names)
 
         # blur events
@@ -250,43 +242,78 @@ def make(data_folder: str, store_folder: str,
                                                   samplerate=fs,
                                                   start_seconds=df['start_seconds'],
                                                   stop_seconds=df['start_seconds'])
-        # all validation files
-        if file_split_dict[file_base] is not None:
-            name = file_split_dict[file_base]
-            logging.info(f'    {name} data.')
-            store[name]['x'].append(x)
-            store[name]['y'].append(dsm.normalize_probabilities(y))
-            # make prediction targets for individual song types [OPTIONAL]
+
+        if file_split_dict[file_base] != 'remainder' and file_split_dict[file_base] is not None:
+            blocks_x = [x]
+            blocks_y = [y]
+            block_names = [file_split_dict[file_base]]
+            logger.info(f'      File added to {file_split_dict[file_base]} data.')
+        elif block_stratify:  # split data from each remaining file into train and test chunks according to `splits`
+            block_size = int(block_size * fs)
+            block_stats_map = das.block_stratify.blockstats_from_data(data=y, block_size=block_size)
+            block_stats = list(block_stats_map.values())
+            split_points = list(block_stats_map.keys())
+            blocks_x = das.block_stratify.blocks_from_split_points(x, split_points)
+            blocks_y = das.block_stratify.blocks_from_split_points(y, split_points)
+            # get stats from blocks here
+            block_dict = das.block_stratify.block(block_names=split_points,
+                                                  group_sizes=data_split_sizes,
+                                                  group_names=data_split_names,
+                                                  seed=seed,
+                                                  block_stats=block_stats)
+            block_names = list(block_dict.values())
+            logger.info(f'      Stratified {data_split_sizes} split into {data_split_names} data.')
+        elif not block_stratify:
+            # shuffle
+            order = np.random.permutation(len(data_split_sizes))
+            data_split_sizes = np.array(data_split_sizes)[order]
+            data_split_names = np.array(data_split_names)[order]
+
+            logger.info(f'      Random {data_split_sizes} split into {data_split_names} data.')
+            blocks_x = das.block_stratify.group_splits(x, group_sizes=data_split_sizes)
+            blocks_y = das.block_stratify.group_splits(y, group_sizes=data_split_sizes)
+            block_names = data_split_names
+        else:
+            logger.info('      Skipping.')
+            continue
+        # breakpoint()
+        blocks_dict_x = das.block_stratify.format_by_block(blocks_x, block_names)
+        blocks_dict_y = das.block_stratify.format_by_block(blocks_y, block_names)
+
+        for (block_x_key, block_x_val), (block_y_key, block_y_val) in zip(blocks_dict_x.items(), blocks_dict_y.items()):
+            store[block_x_key]['x'].append(block_x_val)
+            block_y_val_norm = dsm.normalize_probabilities(block_y_val)
+            store[block_y_key]['y'].append(block_y_val_norm)
             if make_single_class_datasets:
                 for cnt, class_name in enumerate(class_names[1:]):
-                    store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(y[:, [0, cnt+1]]))
-        else:
-            # split data from each remaining file into train and test chunks according to `splits`
-            if block_stratify:
-                stratify = y
-            else:
-                stratify = None
-
-            # convert block_size from seconds to samples
-            if block_size is not None:
-                block_size = int(block_size * fs)
-
-            # FIXME: lenght of split does not match with fractions
-            split_arrays = dsm.generate_data_splits({'x': x, 'y': y}, data_splits, data_split_targets, seed=seed,
-                                                     block_stratify=stratify, block_size=block_size)
-            logging.info(f'    splitting {data_splits} into {data_split_targets}.')
-            for name in set(data_split_targets):
-                store[name]['x'].append(split_arrays['x'][name])
-                store[name]['y'].append(dsm.normalize_probabilities(split_arrays['y'][name]))
-                # make prediction targets for individual song types [OPTIONAL]
-                if make_single_class_datasets:
-                    for cnt, class_name in enumerate(class_names[1:]):
-                        store[name][f'y_{class_name}'].append(dsm.normalize_probabilities(split_arrays['y'][name][:, [0, cnt+1]]))
-
+                    store[block_y_key][f'y_{class_name}'].append(dsm.normalize_probabilities(block_y_val[:, [0, cnt+1]]))
+    logger.info('Done.')
     # report
-    logging.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
+    logger.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
     # save as npy_dir
-    logging.info(f'  Saving to {store_folder}.')
+    logger.info(f'  Saving to {store_folder}.')
     das.npy_dir.save(store_folder, store)
     if delete_intermediate_store:
-        pass  # TODO delete intermediate store
+        pass
+    logger.info('The dataset has been made.')
+
+
+
+def onset_offset_events(df, ):
+    adf = das.annot.Events.from_df(df)
+    start_seconds = []
+    stop_seconds = []
+    for nam, cat in adf.categories.items():
+        if cat == 'segment':
+            start_seconds.extend(adf.start_seconds(nam))
+            stop_seconds.extend(adf.stop_seconds(nam))
+
+    logger.info(f'      Making onset and offset events for {len(start_seconds)} syllables.')
+    adf.add_name(name='syllable_onset', category='event')
+    adf.add_name(name='syllable_offset', category='event')
+    for start, stop in zip(start_seconds, stop_seconds):
+        adf.add_time(name='syllable_onset', start_seconds=start)
+        adf.add_time(name='syllable_offset', start_seconds=stop)
+
+    df = adf.to_df()
+    return df
