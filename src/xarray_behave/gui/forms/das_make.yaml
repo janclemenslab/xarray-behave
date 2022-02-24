@@ -122,7 +122,7 @@ main:
   - name: block_size
     label: Block size (seconds)
     type: double
-    default: 5
+    default: 10
     decimals: 2
     range: 0,1000000
 
