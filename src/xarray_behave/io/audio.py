@@ -8,18 +8,9 @@ should return:
 # [x] daq.h5
 # [x] wav, ....
 # [x] npz, npy
+# [x] generic audio (pysoundfile)
 # [ ] npy_dir
 
-
-"""Tracks loaders
-
-should return:
-    x: np.array[frames, flies, body_parts, x/y]
-    body_parts: List[str]
-    first_tracked_frame: int
-    last_tracked_frame: int
-    background: np.array[width, height, pixels?]
-"""
 
 import h5py
 import numpy as np
