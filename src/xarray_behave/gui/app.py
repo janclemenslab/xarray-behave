@@ -175,6 +175,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                                                 filter="txt files (*.txt);;all files (*)")
         if len(savefilename):
             logging.info(f'   Saving list of swap indices to {savefilename}.')
+            os.makedirs(os.path.dirname(savefilename), exist_ok=True)
             np.savetxt(savefilename, self.swap_events, fmt='%f %d %d', header='index fly1 fly2')
             logging.info('Done.')
 
@@ -188,6 +189,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # get defs from annot and save them to csv
             logging.info(f'   Saving definitions to {savefilename}.')
             defs = [[key, val] for key, val in annot.Events(self.event_times).categories.items()]
+            os.makedirs(os.path.dirname(savefilename), exist_ok=True)
             np.savetxt(savefilename, defs, delimiter=",", fmt="%s")
             logging.info('Done.')
 
@@ -253,8 +255,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         df = event_times.to_df(preserve_empty=preserve_empty)
         df = df.sort_values(by='start_seconds', ascending=True, ignore_index=True)
+        os.makedirs(os.path.dirname(savefilename), exist_ok=True)
         df.to_csv(savefilename, index=False)
-
 
     def export_to_wav(self, savefilename: Optional[str] = None,
                       start_seconds: float = 0, end_seconds: Optional[float] = None,
@@ -286,8 +288,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if song.dtype == 'int64':
             song = song.astype(np.int32)
 
+        os.makedirs(os.path.dirname(savefilename), exist_ok=True)
         scipy.io.wavfile.write(savefilename, int(self.fs_song), song)
-
 
     def export_to_npz(self, savefilename: Optional[str] = None,
                       start_seconds: float = 0, end_seconds: Optional[float] = None,
@@ -313,6 +315,7 @@ class MainWindow(QtWidgets.QMainWindow):
             song = song.compute()
         except AttributeError:
             pass
+        os.makedirs(os.path.dirname(savefilename), exist_ok=True)
         np.savez(savefilename, data=song, samplerate=self.fs_song)
 
     def export_for_das(self, qt_keycode=None):
