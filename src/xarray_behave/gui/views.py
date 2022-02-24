@@ -19,7 +19,9 @@ from . import formbuilder
 from . import app
 
 
-# add io etc.
+logger = logging.getLogger(__name__)
+
+
 class Model():
 
     def __init__(self, ds):
@@ -156,11 +158,11 @@ class Draggable(pg.GraphItem):
             if ev.modifiers() == QtCore.Qt.ControlModifier and self.focalFly is not None:
                 inds = [pt.data()[0] for pt in pts]
                 if self.focalFly not in inds:
-                    logging.info(f'   Did not drag focal fly {self.focalFly} - dragged {inds}. Ignoring.')
+                    logger.info(f'   Did not drag focal fly {self.focalFly} - dragged {inds}. Ignoring.')
                     ev.ignore()
                     return
                 else:
-                    logging.info(f'   Dragged focal fly {self.focalFly} - dragged {inds}. Moving.')
+                    logger.info(f'   Dragged focal fly {self.focalFly} - dragged {inds}. Moving.')
                     self.dragPoint = pts[inds.index(self.focalFly)]
                     ind = self.dragPoint.data()[0]
             else:
@@ -378,14 +380,14 @@ class SpecView(pg.ImageView):
         # hash x to avoid re-calculation? only useful when annotating
         # t0 = time.time()
         # t1 = time.time()
-        # logging.debug(f'  update spec - clear annotations: {t1-t0}')
+        # logger.debug(f'  update spec - clear annotations: {t1-t0}')
 
         # S, f, t = self._calc_spec(y)
         S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
         self.S = S
         trange = (self.m.x[-1] - self.m.x[0])
         # t2 = time.time()
-        # logging.debug(f'  update spec - calc spec: {t2-t0}')
+        # logger.debug(f'  update spec - calc spec: {t2-t0}')
 
         self.setImage(S.T, autoRange=False, scale=[trange / len(t), (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
@@ -393,9 +395,9 @@ class SpecView(pg.ImageView):
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
         # t3 = time.time()
-        # logging.debug(f'  update spec - draw: {t3-t2}')
+        # logger.debug(f'  update spec - draw: {t3-t2}')
         # t4 = time.time()
-        # logging.debug(f'update spec - TOTAL: {t4-t0}')
+        # logger.debug(f'update spec - TOTAL: {t4-t0}')
 
     @lru_cache(maxsize=2, typed=False)
     def _calc_spec(self, y, spec_win):
