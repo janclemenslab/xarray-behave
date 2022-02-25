@@ -15,7 +15,7 @@ requires = ['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
 description-file = "README.md"
 
 [tool.flit.metadata.requires-extra]
-gui = ['pyside2', 'pyqtgraph>0.12.2', 'pyvideoreader',
+gui = ['pyside2', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy',
        'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet',
        'peakutils']
 

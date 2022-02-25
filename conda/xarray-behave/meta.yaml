@@ -33,6 +33,7 @@ requirements:
     - dask
     - pyside2
     - pyqtgraph>0.12.2
+    - qtpy
     - colorcet
     - python-sounddevice
     - scikit-image
@@ -59,6 +60,7 @@ requirements:
     - dask
     - pyside2
     - pyqtgraph>0.12.2
+    - qtpy
     - colorcet
     - python-sounddevice
     - scikit-image

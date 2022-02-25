@@ -42,7 +42,7 @@ setup(name='xarray_behave',
                         'dask', 'toolz', 'samplestamps', 'pysoundfile', 'opencv-python-headless'],
       extras_require={'gui': ['pyside2', 'pyqtgraph>0.12.2', 'pyvideoreader', 'colorcet',
                               'sounddevice', 'scikit-image', 'opencv-python-headless', 'pyyaml',
-                              'peakutils', 'defopt']},
+                              'peakutils', 'defopt', 'qtpy']},
       include_package_data=True,
       zip_safe=False,
       entry_points={'console_scripts': ['xb=xarray_behave.gui.app:cli']}
