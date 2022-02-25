@@ -81,7 +81,7 @@ def make(data_folder: str, store_folder: str,
     # go through all annotation files and collect info on classes
     class_names = []
     class_types = []
-    logger.info('Listing annotation files:')
+    logger.info('Collecting song types from annotation and definition files:')
     for file_annotation in files_annotation:
         # TODO load definition files
         logger.info(f"   {file_annotation}")
@@ -89,6 +89,13 @@ def make(data_folder: str, store_folder: str,
         event_times = annot.Events.from_df(df)
         class_names.extend(event_times.names)
         class_types.extend(event_times.categories.values())
+
+        file_definition = file_annotation.removesuffix('_annotations.csv') + '_definitions.csv'
+        if os.path.exists(file_definition):
+            data = np.loadtxt(file_definition, dtype=str, delimiter=",")
+            class_names.extend(list(data[:, 0]))
+            class_types.extend(list(data[:, 1]))
+
     logger.info('Done.')
 
     class_names, first_indices = np.unique(class_names, return_index=True)
