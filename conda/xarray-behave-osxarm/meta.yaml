@@ -1,0 +1,75 @@
+{% set data = load_setup_py_data(setup_file='../../setup.py', from_recipe_dir=True) %}
+{% set name = "xarray-behave" %}
+{% set version = data.get('version') %}
+
+package:
+  name: xarray-behave
+  version: "{{ version }}"
+
+source:
+  url: "https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz"
+
+build:
+  number: 0
+
+requirements:
+  host:
+    - python>=3.9
+    - zarr
+    - python-sounddevice
+    - pip
+    - git
+    - colorcet
+    - pyyaml
+    - peakutils
+    - defopt
+    - pandas
+    - xarray
+    - h5py
+    - zarr
+    - dask
+    - flammkuchen
+    - toolz
+    - scikit-image
+    - samplestamps
+    - librosa
+
+  run:
+    - python>=3.9
+    - zarr
+    - python-sounddevice
+    - pip
+    - git
+    - colorcet
+    - pyyaml
+    - peakutils
+    - defopt
+    - pandas
+    - xarray
+    - h5py
+    - zarr
+    - dask
+    - flammkuchen
+    - toolz
+    - scikit-image
+    - samplestamps
+    - librosa
+
+test:
+  imports:
+    - xarray_behave
+  commands:
+    - xb --help [ not win ]
+
+about:
+  home: "http://github.com/janclemenslab/xarray-behave"
+  license: MIT
+  license_family: MIT
+  license_file:
+  summary: "xarray behave"
+  doc_url: "https://janclemenslab.org/xarray-behave"
+  dev_url: "http://github.com/janclemenslab/xarray-behave"
+
+extra:
+  recipe-maintainers:
+    - postpop

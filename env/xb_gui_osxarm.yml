@@ -1,0 +1,39 @@
+name: xb
+channels:
+  - conda-forge
+  - defaults
+  - ncb
+  - anaconda
+dependencies:
+  - python
+  - zarr
+  - python-sounddevice
+  - pip
+  - git
+  - pyqtgraph>0.12.2
+  - qtpy
+  - colorcet
+  - pyyaml
+  - peakutils
+  - defopt
+  - numpy
+  - scipy
+  - pandas
+  - xarray
+  - h5py
+  - zarr
+  - dask
+  - flammkuchen
+  - toolz
+  # - pysoundfile
+  # - opencv-python
+  - scikit-image
+  # - shiboken2
+  # - pyvideoreader
+  - samplestamps
+  - librosa
+  - pip:
+    - pyside6
+    - pysoundfile
+    - opencv-python-headless
+    # - xarray-behave[gui]
