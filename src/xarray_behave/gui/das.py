@@ -283,17 +283,18 @@ def make(data_folder: str, store_folder: str,
         else:
             logger.info('      Skipping.')
             continue
-        # breakpoint()
-        blocks_dict_x = das.block_stratify.format_by_block(blocks_x, block_names)
-        blocks_dict_y = das.block_stratify.format_by_block(blocks_y, block_names)
 
-        for (block_x_key, block_x_val), (block_y_key, block_y_val) in zip(blocks_dict_x.items(), blocks_dict_y.items()):
-            store[block_x_key]['x'].append(block_x_val)
-            block_y_val_norm = dsm.normalize_probabilities(block_y_val)
-            store[block_y_key]['y'].append(block_y_val_norm)
+        for x, y, block_name in zip(blocks_x, blocks_y, block_names):
+            store[block_name]['x'].append(x)
+
+            y_norm = dsm.normalize_probabilities(y)
+            store[block_name]['y'].append(y_norm)
+
             if make_single_class_datasets:
                 for cnt, class_name in enumerate(class_names[1:]):
-                    store[block_y_key][f'y_{class_name}'].append(dsm.normalize_probabilities(block_y_val[:, [0, cnt+1]]))
+                    y_norm = dsm.normalize_probabilities(y[:, [0, cnt+1]])
+                    store[block_name][f'y_{class_name}'].append(y_norm)
+
     logger.info('Done.')
     # report
     logger.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
