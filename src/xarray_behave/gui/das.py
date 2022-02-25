@@ -136,12 +136,12 @@ def make(data_folder: str, store_folder: str,
     nb_channels = x.shape[1]
 
     store = dsm.init_store(nb_channels=nb_channels,
-                        nb_classes=len(class_names),
-                        samplerate=fs,
-                        class_names=class_names,
-                        class_types=class_types,
-                        make_single_class_datasets=make_single_class_datasets,
-                        store_type=zarr.TempStore, store_name='store.zarr', chunk_len=1_000_000)
+                           nb_classes=len(class_names),
+                           samplerate=fs,
+                           class_names=class_names,
+                           class_types=class_types,
+                           make_single_class_datasets=make_single_class_datasets,
+                           store_type=zarr.TempStore, store_name='store.zarr', chunk_len=1_000_000)
 
     # save args for reproducibility
     store.attrs['event_std_seconds'] = event_std_seconds
