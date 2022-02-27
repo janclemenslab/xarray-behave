@@ -176,7 +176,7 @@ main:
   - name: fill_gaps_max
     label: Maximal gap size to try (seconds)
     type: float
-    default: 1
+    default: 0.1
     range: 0.002,1000
   - name: fill_gaps_steps
     label: Number gap sizes to try (min->max, log2-spaced)
@@ -195,7 +195,7 @@ main:
   - name: min_len_max
     label: Maximal duration to try (seconds)
     type: float
-    default: 1
+    default: 0.1
     range: 0.002,1000
   - name: min_len_steps
     label: Number of durations to try (min->max, log2-spaced)
