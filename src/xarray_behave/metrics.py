@@ -13,7 +13,7 @@ def smooth(x, winlen: int = 201):
     Returns:
         [type]: [description]
     """
-    win = scipy.signal.windows.gaussian(winlen, winlen/8)
+    win = scipy.signal.windows.gaussian(winlen, winlen / 8)
     win /= sum(win)
     x = scipy.ndimage.convolve1d(x, win, axis=0, mode='nearest')
     return x
@@ -30,17 +30,25 @@ def remove_multi_nan(x):
     """Replace any nan value with nearest valid value."""
     if x.ndim < 2:
         mask = np.isnan(x)
-        x[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x[~mask])
+        x[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask),
+                            x[~mask])
     elif x.ndim == 2:
         for x_feature in x.T:
             mask = np.isnan(x_feature)
-            x_feature[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), x_feature[~mask])
+            x_feature[mask] = np.interp(np.flatnonzero(mask),
+                                        np.flatnonzero(~mask),
+                                        x_feature[~mask])
     else:
-        raise ValueError(f'Invalid arguments: x can only be one or two dimensional. Has {x.ndim} dimensions.')
+        raise ValueError(
+            f'Invalid arguments: x can only be one or two dimensional. Has {x.ndim} dimensions.'
+        )
     return x
 
 
-def distance(pos1, pos2=None, set_self_to_nan: bool = False, exclude_cross_terms: bool = False):
+def distance(pos1,
+             pos2=None,
+             set_self_to_nan: bool = False,
+             exclude_cross_terms: bool = False):
     """Compute pairwise euclidean distances.
 
     Args:
@@ -61,11 +69,14 @@ def distance(pos1, pos2=None, set_self_to_nan: bool = False, exclude_cross_terms
     if exclude_cross_terms:
         dis = np.sqrt(np.sum((pos1 - pos2)**2, axis=-1))
     else:
-        dis = np.sqrt(np.sum((pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :])**2, axis=-1))
+        dis = np.sqrt(
+            np.sum((pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :])**2,
+                   axis=-1))
 
     if set_self_to_nan:
         nb_flies = pos1.shape[1]
-        dis[..., range(nb_flies), range(nb_flies)] = np.nan  # set diag to np.nan
+        dis[..., range(nb_flies),
+            range(nb_flies)] = np.nan  # set diag to np.nan
     return dis
 
 
@@ -81,10 +92,13 @@ def yx2fwdlat(pos1, pos2, dyx):
         [type]: [description]
     """
     mags = np.linalg.norm(dyx, axis=2)  # acceleration magnitude
-    angle_diff = angle(dyx, degrees=False) - angle(pos1, pos2, degrees=False)  # angle difference between dyx and orientation
-    fwdlat = np.empty_like(dyx)    # acceleration components with reference to self orientation
-    fwdlat[:, :, 0] = mags*np.cos(angle_diff)    # forward
-    fwdlat[:, :, 1] = -mags*np.sin(angle_diff)    # lateral
+    angle_diff = angle(dyx, degrees=False) - angle(
+        pos1, pos2,
+        degrees=False)  # angle difference between dyx and orientation
+    fwdlat = np.empty_like(
+        dyx)  # acceleration components with reference to self orientation
+    fwdlat[:, :, 0] = mags * np.cos(angle_diff)  # forward
+    fwdlat[:, :, 1] = -mags * np.sin(angle_diff)  # lateral
     return fwdlat
 
 
@@ -105,7 +119,10 @@ def derivative(x, dt: float = 1, degree: int = 1, axis: int = 0):
     return x
 
 
-def velocity(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 'self'):
+def velocity(pos1,
+             pos2: np.array = None,
+             timestep: float = 1,
+             ref: str = 'self'):
     """
     arg:
         pos1: position of vector's base, center of agent. [time, agent, y/x]
@@ -121,7 +138,10 @@ def velocity(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 'self'
     return vels
 
 
-def acceleration(pos1, pos2: np.array = None, timestep: float = 1, ref: str = 'self'):
+def acceleration(pos1,
+                 pos2: np.array = None,
+                 timestep: float = 1,
+                 ref: str = 'self'):
     """
     arg:
         pos1: position of vector's base, center of agent. [time, flies, y/x]
@@ -154,7 +174,8 @@ def angle(pos1, pos2=None, degrees: bool = True, unwrap: bool = False):
     if pos2 is None:
         ang = np.arctan2(pos1[..., 0], pos1[..., 1])
     else:
-        ang = np.arctan2(pos2[..., 0] - pos1[..., 0], pos2[..., 1] - pos1[..., 1])
+        ang = np.arctan2(pos2[..., 0] - pos1[..., 0],
+                         pos2[..., 1] - pos1[..., 1])
 
     if unwrap:
         ang = np.unwrap(ang)
@@ -173,10 +194,14 @@ def relative_angle(pos1, pos2):
         rel_angles: orientation of flies with respect to chamber. [time, flies, flies]
     """
     d0 = pos2 - pos1
-    d1 = pos1[:, np.newaxis, :, :] - pos2[:, :, np.newaxis, :]  # all pairwise "distances"
+    d1 = pos1[:,
+              np.newaxis, :, :] - pos2[:, :, np.
+                                       newaxis, :]  # all pairwise "distances"
 
-    dot = d0[:, :, np.newaxis, 1]*d1[:, :, :, 1] + d0[:, :, np.newaxis, 0]*d1[:, :, :, 0]
-    det = d0[:, :, np.newaxis, 1]*d1[:, :, :, 0] - d0[:, :, np.newaxis, 0]*d1[:, :, :, 1]
+    dot = d0[:, :, np.newaxis, 1] * d1[:, :, :, 1] + d0[:, :, np.newaxis,
+                                                        0] * d1[:, :, :, 0]
+    det = d0[:, :, np.newaxis, 1] * d1[:, :, :, 0] - d0[:, :, np.newaxis,
+                                                        0] * d1[:, :, :, 1]
 
     rel_angles = np.arctan2(det, dot)
 
@@ -234,45 +259,52 @@ def project_velocity(vx, vy, radians):
     return rot_vx, rot_vy
 
 
-def internal_angle(A: np.array, B: np.array, C: np.array, deg:bool=True, array_logic: str='tfc'):
-    """Calculates internal angle (∠ABC) between three points (aka, angle between lines AB and BC). If A,B,C are lists or arrays, calculation happens element-wise.
-    
+def internal_angle(A: np.array,
+                   B: np.array,
+                   C: np.array,
+                   deg: bool = True,
+                   array_logic: str = 'tfc'):
+    """Calculates internal angle (∠ABC) between three points (aka, angle between lines AB and BC).
+    If A,B,C are lists or arrays, calculation happens element-wise.
+
     Args:
-        A, B, C ([type]): position of points between which the angle is calculated.
-        deg ([type]): Return angle in degrees if True, radians if False (default).
+        A, B, C (np.array): position of points between which the angle is calculated.
+        deg (bool): Return angle in degrees if True, radians if False (default).
 
     Returns:
-        angles ([type]): internal angle between lines AB and BC.
+        angles (np.array): internal angle between lines AB and BC.
     """
 
-    v1s = B-A # vector from point B to A
-    v2s = B-C # vector from point B to C
+    v1s = B - A  # vector from point B to A
+    v2s = B - C  # vector from point B to C
 
     # reshape vector arrays to be [time, coordinates, ...]
     if A.ndim == 3:
         if array_logic == 'tfc':
-            v1s = np.swapaxes(v1s,1,2)
-            v2s = np.swapaxes(v2s,1,2)
+            v1s = np.swapaxes(v1s, 1, 2)
+            v2s = np.swapaxes(v2s, 1, 2)
         elif array_logic == 'ftc':
-            v1s = np.swapaxes(v1s,1,2)
-            v1s = np.swapaxes(v1s,0,2)
-            v2s = np.swapaxes(v2s,1,2)
-            v2s = np.swapaxes(v2s,0,2)
+            v1s = np.swapaxes(v1s, 1, 2)
+            v1s = np.swapaxes(v1s, 0, 2)
+            v2s = np.swapaxes(v2s, 1, 2)
+            v2s = np.swapaxes(v2s, 0, 2)
         elif array_logic == 'fct':
-            v1s = np.swapaxes(v1s,0,2)
-            v2s = np.swapaxes(v2s,0,2)
+            v1s = np.swapaxes(v1s, 0, 2)
+            v2s = np.swapaxes(v2s, 0, 2)
     elif A.ndim > 3:
         print('Result might not be correct, only tested for arrays with 2 or 3 dimensions. Contact Adrian for help, if required.')
 
     dot_v1_v2 = np.einsum('ij...,ij...->i...', v1s, v2s)
     dot_v1_v1 = np.einsum('ij...,ij...->i...', v1s, v1s)
-    dot_v1_v1[dot_v1_v1 == 0] = 0.0001 # small values for dot products which happen to be zero (shouldn't happen)
     dot_v2_v2 = np.einsum('ij...,ij...->i...', v2s, v2s)
-    dot_v2_v2[dot_v2_v2 == 0] = 0.0001 # small values for dot products which happen to be zero (shouldn't happen)
 
-    angles = np.arccos(dot_v1_v2/np.sqrt(dot_v1_v1*dot_v2_v2))
+    # small values for dot products which happen to be zero (shouldn't happen)
+    dot_v1_v1[dot_v1_v1 == 0] = 0.0001
+    dot_v2_v2[dot_v2_v2 ==0] = 0.0001
+
+    angles = np.arccos(dot_v1_v2 / np.sqrt(dot_v1_v1 * dot_v2_v2))
 
     if deg:
-        angles *= 180/np.pi
+        angles *= 180 / np.pi
 
     return angles

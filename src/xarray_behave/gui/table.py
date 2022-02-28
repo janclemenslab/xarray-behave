@@ -1,10 +1,18 @@
 from qtpy import QtWidgets, QtCore
 import numpy as np
+from typing import List, Optional
 
 
 class Table(QtWidgets.QDialog):
 
-    def __init__(self, data=[], model=None, as_dialog=True, **kwargs):
+    def __init__(self,
+                 data: Optional[List] = None,
+                 model=None,
+                 as_dialog: bool = True,
+                 **kwargs):
+        if data is None:
+            data = []
+
         super().__init__(**kwargs)
         self.title = 'Edit song definitions'
 
@@ -14,7 +22,7 @@ class Table(QtWidgets.QDialog):
         self.cancelled = False
         self.initUI(self.as_dialog)
 
-    def initUI(self, as_dialog=True):
+    def initUI(self, as_dialog: bool = True):
         self.setWindowTitle(self.title)
         # self.setGeometry(self.left, self.top, self.width, self.height)
 
@@ -34,8 +42,9 @@ class Table(QtWidgets.QDialog):
 
         if as_dialog:
             buttons = QtWidgets.QDialogButtonBox(
-                QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
-                QtCore.Qt.Horizontal, self)
+                QtWidgets.QDialogButtonBox.Ok
+                | QtWidgets.QDialogButtonBox.Cancel, QtCore.Qt.Horizontal,
+                self)
             buttons.accepted.connect(self.accept)
             buttons.rejected.connect(self.reject)
             self.layout.addWidget(buttons)
@@ -56,10 +65,11 @@ class Table(QtWidgets.QDialog):
             self._make_row(row_index, row_data, editable_categories=False)
         self.table.move(0, 0)
 
-    def _make_row(self, row_index=None,
-                  row_data=['', 'segment'],
-                  row_items=["segment", "event"],
-                  editable_categories=True):
+    def _make_row(self,
+                  row_index: Optional[int] = None,
+                  row_data: Optional[List[str]] = None,
+                  row_items: Optional[List[str]] = None,
+                  editable_categories: bool = True):
         """[summary]
 
         Args:
@@ -71,7 +81,10 @@ class Table(QtWidgets.QDialog):
         if row_index is None:
             row_index = self.table.rowCount()
             self.table.insertRow(row_index)
-
+        if row_data is None:
+            row_data = ['', 'segment']
+        if row_items is None:
+            row_items = ['segment', 'event']
         item = QtWidgets.QTableWidgetItem(row_data[0])
         item.original_text = row_data[0]
         self.table.setItem(row_index, 0, item)
@@ -88,15 +101,22 @@ class Table(QtWidgets.QDialog):
             self.table.setCellWidget(row_index, 1, cb)
         else:
             item = QtWidgets.QTableWidgetItem(row_data[1])
-            item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEnabled & ~QtCore.Qt.ItemIsEditable)
+            item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEnabled
+                          & ~QtCore.Qt.ItemIsEditable)
             item.original_text = row_data[1]
             self.table.setItem(row_index, 1, item)
 
     def get_cell_data(self, row: int, col: int):
         if self.table.item(row, col) is not None:
-            return [self.table.item(row, col).text(), self.table.item(row, col).original_text]
+            return [
+                self.table.item(row, col).text(),
+                self.table.item(row, col).original_text
+            ]
         elif self.table.cellWidget(row, col) is not None:
-            return [self.table.cellWidget(row, col).currentText(), self.table.cellWidget(row, col).original_text]
+            return [
+                self.table.cellWidget(row, col).currentText(),
+                self.table.cellWidget(row, col).original_text
+            ]
         else:
             return None
 
@@ -142,8 +162,10 @@ class Table(QtWidgets.QDialog):
     def load(self):
         filename = self.model._get_filename_from_ds(suffix="_definitions.csv")
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, caption="Select definitions file", dir=filename, filter=self.tr("Any File (*_definitions.csv)")
-        )
+            self,
+            caption="Select definitions file",
+            dir=filename,
+            filter=self.tr("Any File (*_definitions.csv)"))
 
         if len(filename):
             # load data
@@ -160,11 +182,14 @@ class Table(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def save(self):
-        savefilename = self.model._get_filename_from_ds(suffix="_definitions.csv")
+        savefilename = self.model._get_filename_from_ds(
+            suffix="_definitions.csv")
 
         savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, caption="Select file for saving", dir=savefilename, filter=self.tr("Any File (*_definitions.csv)")
-        )
+            self,
+            caption="Select file for saving",
+            dir=savefilename,
+            filter=self.tr("Any File (*_definitions.csv)"))
 
         if len(savefilename):
             # sanitize data
