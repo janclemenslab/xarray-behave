@@ -3,7 +3,7 @@ import logging
 import collections
 from glob import glob
 import os.path
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 import zarr
 import numpy as np
@@ -164,6 +164,9 @@ def make(data_folder: str, store_folder: str,
         if sum(file_splits.values()) > 1.0:
             raise ValueError('Sum of file splits > 1.0!')
 
+        # remove zero-size sets
+        file_splits = {name: fraction for name, fraction in file_splits.items() if fraction > 0}
+
         if len(file_splits) < 3:
             file_splits['remainder'] = max(0, 1 - sum(file_splits.values()))
 
@@ -185,6 +188,9 @@ def make(data_folder: str, store_folder: str,
 
     data_split_names = []
     if len(data_splits):
+        # remove zero-size sets
+        data_splits = {name: fraction for name, fraction in data_splits.items() if fraction > 0}
+
         logger.info(f"Splitting individual data files: {data_splits}.")
         # TODO: Keep this as a dict!! SIMPLIFY THIS!!
         fractions = np.array(list(data_splits.values()))
