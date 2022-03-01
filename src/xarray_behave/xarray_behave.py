@@ -389,7 +389,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                                             'amplitude_units': 'volts'})
             dataset_data['non_song_raw'] = non_song_raw
 
-    logging.info('   segmentations')
+    logging.info('   Segmentations')
     song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
     song_events = xr.DataArray(data=song_events,  # start with empty song_events matrix
                                 dims=['time', 'event_types'],
@@ -410,7 +410,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         dataset_data['event_names'] = ds_eventtimes.event_names
         dataset_data['event_names'].attrs['possible_event_names'] = ds_eventtimes.attrs['possible_event_names']
     except Exception as e:
-        logging.error('Failed to generate event_times data arrays:')
+        logging.error('      Failed to generate event_times data arrays:')
         logging.exception(e)
 
     # BODY POSITION
@@ -418,7 +418,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         pixel_size_mm = np.nan
 
     if with_tracks:
-        logging.info('   tracking')
+        logging.info('   Tracking')
         xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time, target_time=time, extrapolate=True)
         xr_tracks.attrs.update({'description': 'coords are "allocentric" - rel. to the full frame',
                                         'sampling_rate_Hz': sampling_rate / step,
@@ -431,7 +431,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
     # POSES
     if with_poses:
-        logging.info('   poses')
+        logging.info('   Poses')
         xr_poses = align_time(xr_poses, ss, target_samples, ref_time=ref_time, target_time=time)
         xr_poses.attrs.update({'description': 'coords are "egocentric" - rel. to box',
                                     'sampling_rate_Hz': sampling_rate / step,
@@ -456,7 +456,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
     # BALLTRACKS
     if with_balltracker:
-        logging.info('   balltracker')
+        logging.info('   Balltracker')
         xr_balltracks = align_time(xr_balltracks, ss_ball, target_samples, target_time=time,
                                    dim='frame_number_ball', suffix='_ball', ref_time=ref_time)
         xr_balltracks.attrs.update({'description': '',
@@ -467,7 +467,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
     # MOVIEPARAMS
     if with_movieparams:
-        logging.info('   movieparams')
+        logging.info('   Movieparams')
         xr_movieparams = align_time(xr_movieparams, ss_movie, target_samples, dim='frame_number_movie', suffix='_movie',
                                     ref_time=ref_time, target_time=time, extrapolate=True)
         xr_movieparams.attrs.update({'description': '',
@@ -477,7 +477,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         dataset_data['movieparams'] = xr_movieparams
 
     # MAKE THE DATASET
-    logging.info('   assembling')
+    logging.info('   Assembling')
 
     dataset = xr.Dataset(dataset_data, attrs={})
     if 'time' not in dataset:
@@ -505,7 +505,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             dataset.attrs['swap_events'] = [[ii, f1, f2] for ii, f1, f2 in zip(indices, flies1, flies2)]
             logging.info(f'  Fixed fly identities using info from {filepath_swap}.')
         except (FileNotFoundError, OSError) as e:
-            logging.debug(f'  Could not load fly identities using info from {filepath_swap}.')
+            logging.debug(f'      Could not load fly identities using info from {filepath_swap}.')
             logging.debug(e)
     logging.info('Done.')
     return dataset
@@ -519,7 +519,6 @@ def add_time(ds, ss, dim: str = 'frame_number', suffix: str = ''):
 
 def align_time(ds, ss, target_samples, target_time, ref_time, dim: str = 'frame_number',
                suffix: str = '', time=None, extrapolate: bool = False):
-
     target_frames_float = ss.times2frames(ss.sample_time(target_samples))
     interp_kwargs = {}
     if extrapolate:
