@@ -108,7 +108,6 @@ def update_traces(ds, event_times):
     fs = ds.song_events.attrs['sampling_rate_Hz']
     event_categories = infer_event_categories_from_shape(event_times)
     # populate with data:
-    logging.info(f'Updating:')
     for cnt, (event_name, event_data) in enumerate(event_times.items()):
         logging.info(f'   {event_name} ({event_data.shape[0]} instances')
         if event_categories[event_name] == 'event':
@@ -124,7 +123,6 @@ def update_traces(ds, event_times):
                 greater_zero = onset_idx >= 0 and offset_idx >= 0
                 if within_bounds and greater_zero:
                     new_values[onset_idx:offset_idx, cnt] = 1
-    logging.info(f'Done:')
 
     # rebuild dataset
     song_events = xr.DataArray(data=new_values,
@@ -157,7 +155,6 @@ def eventtimes_to_traces(ds, event_times):
     """
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
-    logging.info('Updating song_events from event_times:')
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         logging.info(f'   {event_name}')
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
@@ -174,7 +171,6 @@ def eventtimes_to_traces(ds, event_times):
             if event_times[event_name].shape[0] > 0:
                 for onset, offset in zip(event_times[event_name][:, 0], event_times[event_name][:, 1]):
                     ds.song_events.sel(time=slice(onset, offset), event_types=event_name).data[:] = 1
-    logging.info(f'Done.')
     return ds
 
 
