@@ -90,7 +90,13 @@ def make(data_folder: str, store_folder: str,
         class_names.extend(event_times.names)
         class_types.extend(event_times.categories.values())
 
-        file_definition = file_annotation.removesuffix('_annotations.csv') + '_definitions.csv'
+        # this only works in py39!!
+        # file_definition = file_annotation.removesuffix('_annotations.csv') + '_definitions.csv'
+        suffix = '_annotations.csv'
+        file_definition = file_annotation
+        if file_definition.endswith(suffix):
+            file_definition = file_definition[:-len(suffix)] + '_definitions.csv'
+
         if os.path.exists(file_definition):
             data = np.loadtxt(file_definition, dtype=str, delimiter=",")
             class_names.extend(list(data[:, 0]))
