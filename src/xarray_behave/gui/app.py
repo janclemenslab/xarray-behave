@@ -607,7 +607,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # populate values for postprocessing from params if they exist
         model_path = model_path.rsplit('_',1)[0]  # split off suffix (_model.h5 or params.yaml)
         params = das.utils.load_params(model_path)
-        if 'post_opt' in params and params['post_opt']:
+        if 'post_opt' in params and isinstance(params['post_opt'], dict):
             dialog.form['segment_fillgap'] = params['post_opt']['gap_dur']
             dialog.form['segment_minlen'] = params['post_opt']['min_len']
 
