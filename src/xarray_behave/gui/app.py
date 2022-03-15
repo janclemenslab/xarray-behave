@@ -627,6 +627,12 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 model_path = model_path.rsplit('_',1)[0]  # split off suffix
 
+            # set these to 0 to avoid post processing - none will use values from params file
+            if form_data['segment_fillgap'] is None:
+                form_data['segment_fillgap'] = 0
+            if form_data['segment_minlen'] is None:
+                form_data['segment_minlen'] = 0
+
             if form_data['file'] != "Current file":
                 if form_data['folder'] != " ":
                     file_path = form_data['folder']
