@@ -79,7 +79,7 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename
 
         for path in paths:
             for provider in providers:
-                loader = provider.get_loader(path)
+                loader = provider.get_loader(path.lower())
                 if loader is not None and loader.KIND == kind:
                     if stop_after_match:
                         return loader
