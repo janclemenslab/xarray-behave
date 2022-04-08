@@ -673,6 +673,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 logging.info(f'   Running inference on audio.')
                 logging.info(f'   Model from {model_path}.')
+                params = das.utils.load_params(model_path)
+                fs_model = params['samplerate_x_Hz']
+                fs_audio = self.ds.song_raw.attrs['sampling_rate_Hz']
+
+                if form_data['resample'] and fs_audio and fs_audio != fs_model:
+                    logging.info(f"   Resampling. Audio rate is {fs_audio}Hz but model was trained on data with {fs_model}Hz.")
+                    audio = das.utils.resample(audio, fs_audio, fs_model)
 
                 events, segments, _, _ = das.predict.predict(audio, model_path, verbose=1, batch_size=batch_size,
                                                         event_thres=form_data['event_thres'], event_dist=form_data['event_dist'],

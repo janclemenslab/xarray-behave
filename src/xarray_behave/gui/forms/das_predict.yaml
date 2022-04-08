@@ -63,8 +63,12 @@ main:
   label: Proof reading mode
   type: bool
   default: True
-  help: If True, will append '_proposals' to song name. Individual proposals can be corrected approved.
+  help: Appends '_proposals' to song name. Individual proposals can be corrected and approved.
 
+- name: resample_audio
+  label: Resample audio to rate used for training
+  type: bool
+  default: True
 
 - type: text
   text: '<b>Event detection</b>'
