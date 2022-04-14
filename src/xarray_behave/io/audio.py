@@ -168,7 +168,7 @@ class AudioFile(io.BaseProvider):
 
     KIND = 'audio'
     NAME = 'generic audio file'
-    SUFFIXES = ['.wav', '.aif', '.mp3', '.flac']
+    SUFFIXES = ['.wav', '.WAV', '.aif', '.mp3', '.flac']
 
     def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
              return_nonsong_channels: bool = False, lazy: bool = False,

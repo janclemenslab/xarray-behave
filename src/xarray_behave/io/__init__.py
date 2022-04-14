@@ -42,6 +42,8 @@ class BaseProvider():
 # TODO set precedence - maybe with provider.PRIORITY and sort providers accordingly?
 providers = []
 kinds = OrderedDict()
+
+
 def register_provider(func):
     providers.append(func)
     if func.KIND not in kinds:
@@ -79,7 +81,7 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename
 
         for path in paths:
             for provider in providers:
-                loader = provider.get_loader(path.lower())
+                loader = provider.get_loader(path)
                 if loader is not None and loader.KIND == kind:
                     if stop_after_match:
                         return loader
