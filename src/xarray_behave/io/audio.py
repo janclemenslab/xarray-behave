@@ -140,6 +140,30 @@ class Npy(io.BaseProvider):
         song, non_song = split_song_and_nonsong(data, song_channels, return_nonsong_channels)
         return song, non_song, sampling_rate
 
+@io.register_provider
+class AudioFile(io.BaseProvider):
+
+    KIND = 'audio'
+    NAME = 'generic audio file'
+    SUFFIXES = ['.wav', '.aif', '.mp3', '.flac']
+
+    def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
+             return_nonsong_channels: bool = False, lazy: bool = False,
+             **kwargs):
+
+        if filename is None:
+            filename = self.path
+
+        # import soundfile
+        # data, sampling_rate = soundfile.read(filename)
+        import librosa
+        data, sampling_rate = librosa.load(filename, sr=None, mono=False)
+        data = data.T
+        data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
+
+        song, non_song = split_song_and_nonsong(data, song_channels, return_nonsong_channels)
+        return song, non_song, sampling_rate
+
 
 @io.register_provider
 class Wav(io.BaseProvider):
@@ -157,28 +181,6 @@ class Wav(io.BaseProvider):
 
         import scipy.io.wavfile
         sampling_rate, data = scipy.io.wavfile.read(filename)
-        data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
-
-        song, non_song = split_song_and_nonsong(data, song_channels, return_nonsong_channels)
-        return song, non_song, sampling_rate
-
-
-@io.register_provider
-class AudioFile(io.BaseProvider):
-
-    KIND = 'audio'
-    NAME = 'generic audio file'
-    SUFFIXES = ['.wav', '.WAV', '.aif', '.mp3', '.flac']
-
-    def load(self, filename: Optional[str], song_channels: Optional[Sequence[int]] = None,
-             return_nonsong_channels: bool = False, lazy: bool = False,
-             **kwargs):
-
-        if filename is None:
-            filename = self.path
-
-        import soundfile
-        data, sampling_rate = soundfile.read(filename)
         data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
 
         song, non_song = split_song_and_nonsong(data, song_channels, return_nonsong_channels)
