@@ -10,5 +10,5 @@ def test_imports():
 
     from xarray_behave.io import (annotations, annotations_manual, audio,
                                   balltracks, movieparams, poses, tracks)
-    from xarray_behave.gui import (app, colormaps, das, formbuilder, table,
+    from xarray_behave.gui import (app, das, formbuilder, table,
                                    utils, views)
