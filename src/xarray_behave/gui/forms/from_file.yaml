@@ -42,18 +42,6 @@ main:
   default: " "
   help: 'will try default STEM + _definitions.csv'
 
-- type: text
-  text: 'Enter each song type as a comma separate name,category pair. Name can be any string w/o a space, comma or semicolon.
-  Category can be either "event" for pulse like events or segements for syllables with a beginning and an end.
-  Multiple song types should be separated by a semicolon: "pulse,event;sine,segment;aggression,segment".'
-
-- name: events_string
-  label: Initialize annotations
-  type: optional_string
-  default_disabled: True
-  none_label: what
-  default: ""
-
 - name: target_samplingrate
   label: Samplerate for events in Hz (Defaults to samplerate of the recording)
   type: optional_int

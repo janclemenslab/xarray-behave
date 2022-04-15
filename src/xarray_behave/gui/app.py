@@ -849,26 +849,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 if form_data['target_samplingrate'] < 1:
                     form_data['target_samplingrate'] = None
 
-                event_names = []
-                event_categories = []
-                if len(form_data['events_string']):
-                    for pair in form_data['events_string'].split(';'):
-                        items = pair.strip().split(',')
-                        if len(items)>0:
-                            event_names.append(items[0].strip())
-                        if len(items)>1:
-                            event_categories.append(items[1].strip())
-                        else:
-                            event_categories.append('segment')
-
                 ds = xb.assemble(filepath_daq=filename,
                                  filepath_annotations=form_data['annotation_path'],
                                  filepath_definitions=form_data['definition_path'],
                                  audio_sampling_rate=form_data['samplerate'],
                                  target_sampling_rate=form_data['target_samplingrate'],
                                  audio_dataset=form_data['data_set'],
-                                 event_names=event_names,
-                                 event_categories=event_categories)
+                                )
 
                 if form_data['filter_song'] == 'yes':
                     ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
