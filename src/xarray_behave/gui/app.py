@@ -676,7 +676,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 fs_model = params['samplerate_x_Hz']
                 fs_audio = self.ds.song_raw.attrs['sampling_rate_Hz']
 
-                if form_data['resample'] and fs_audio and fs_audio != fs_model:
+                if form_data['resample_audio'] and fs_audio and fs_audio != fs_model:
                     logging.info(f"   Resampling. Audio rate is {fs_audio}Hz but model was trained on data with {fs_model}Hz.")
                     audio = das.utils.resample(audio, fs_audio, fs_model)
 
