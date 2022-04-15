@@ -781,7 +781,6 @@ class MainWindow(QtWidgets.QMainWindow):
                                 samplerate = file['samplerate_Hz']
                             except KeyError:
                                 samplerate = None
-                    data_loader = 'npz'
                 except KeyError:
                     logging.info(f'{filename} no sample rate info in NPZ file. Need to save "samplerate" variable with the audio data.')
             elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5') or filename.endswith('.mat'):
@@ -791,21 +790,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     with h5py.File(filename, 'r') as f:
                         datasets = utils.allkeys(f, keys=[])
                         datasets.remove('/')  # remove root
-                    data_loader = 'h5'
-                except:
-                    pass
-            elif filename.endswith('.wav'):
-                try:  # to load as audio file
-                    import scipy.io.wavfile
-                    samplerate, _ = scipy.io.wavfile.read(filename, mmap=True)
                 except:
                     pass
             else:
                 try:  # to load as audio file
-                    import soundfile
-                    fileinfo = soundfile.info(filename)
-                    samplerate = fileinfo.samplerate
-                    logging.info(fileinfo)
+                    import librosa
+                    samplerate = librosa.get_samplerate(filename)
+                    logging.info(samplerate)
                 except:
                     pass
 
