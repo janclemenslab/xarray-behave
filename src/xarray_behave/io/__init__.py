@@ -78,6 +78,7 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename
             paths = glob(basename)
         else:  # add registered suffix
             paths = glob(basename + suffix)
+            paths.extend(glob(basename + suffix.upper()))
 
         for path in paths:
             for provider in providers:
