@@ -15,8 +15,6 @@ from typing import Tuple
 
 from .. import xarray_behave as xb
 from . import utils
-from . import formbuilder
-from . import app
 
 
 logger = logging.getLogger(__name__)
@@ -351,8 +349,12 @@ class SpecView(pg.ImageView):
         self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90,
                                         pen=pg.mkPen(color='r', width=1))
         self.addItem(self.pos_line)
+
         if colormap is not None:
-            self.imageItem.setLookupTable(colormap)  # apply the colormap
+            colormap = 'turbo'
+        cmap = pg.colormap.getFromMatplotlib(colormap)
+        lut = cmap.getLookupTable()
+        self.imageItem.setLookupTable(lut)  # apply the colormap
         self.old_items = []
 
     @property

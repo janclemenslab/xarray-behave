@@ -35,8 +35,7 @@ from .. import (xarray_behave as xb,
                 annot,
                 event_utils)
 
-from . import (colormaps,
-               utils,
+from . import (utils,
                views,
                table)
 
@@ -1500,17 +1499,9 @@ class PSV(MainWindow):
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
 
-        if cmap_name in colormaps.cmaps:
-            colormap = colormaps.cmaps[cmap_name]
-            colormap._init()
-            lut = (colormap._lut * 255).view(np.ndarray)  # convert matplotlib colormap from 0-1 to 0 -255 for Qt
-        else:
-            logging.warning(f'Unknown colormap "{cmap_name}"" provided. Using default (turbo).')
-            lut = None
-
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
-        self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=lut)
+        self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=cmap_name)
 
         self.ly = QtWidgets.QVBoxLayout()
         self.ly.addLayout(self.hl)
