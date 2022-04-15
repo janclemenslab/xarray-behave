@@ -3,8 +3,6 @@
 `python -m xarray_behave.ui datename root cuepoints`
 """
 import os
-os.environ['QT_MAC_WANTS_LAYER'] = '1'  # fixed app window not showing on macOS Big Sur
-
 import sys
 import logging
 import time
