@@ -115,18 +115,26 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                                      basename_is_full_name=filepath_daq_is_custom)
         if audio_loader is None and filepath_daq_is_custom:
             audio_loader = io.audio.AudioFile(basename)
+
         try:
             song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, song_channels=audio_channels,
                                                                       return_nonsong_channels=True, lazy=lazy_load_song,
                                                                       audio_dataset=audio_dataset)
+
+            logging.info(f'   {audio_loader.path} loaded using {audio_loader.NAME}.')
             if sampling_rate is None:
                 sampling_rate = audio_sampling_rate
-            sample_times = np.arange(len(song_raw)) / sampling_rate
-            frame_times = sample_times[::10]
-            last_sample_number = len(sample_times)
-            ss = SampStamp(sample_times.flatten(), frame_times.flatten())
+            last_sample_number = len(song_raw)
+            sample_numbers = np.arange(0, last_sample_number, sampling_rate).flatten()
+
+            # make sure we include the last sample
+            if sample_numbers[-1] < last_sample_number:
+                sample_numbers = np.append(sample_numbers, last_sample_number)
+            sample_times = sample_numbers / sampling_rate
+            ss = SampStamp(sample_times, sample_times[::100],
+                           sample_numbers=sample_numbers, frame_numbers=sample_numbers[::100])
         except:
-            raise ValueError(f'Could not read {audio_loader.path}.')
+            raise ValueError(f'Loading {audio_loader.path} using {audio_loader.NAME} failed.')
 
     if filepath_timestamps_ball is None:
         filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timestamps.h5')
