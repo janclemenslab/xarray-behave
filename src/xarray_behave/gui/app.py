@@ -1906,7 +1906,7 @@ class PSV(MainWindow):
         # FIXME: self.time0 and self.time1 are indices into self.ds.sampletime, not time points
         # rename to sampletime_index0/1?
         self.x = self.ds.sampletime.data[self.time0:self.time1]
-        self.step = int(max(1, np.ceil(len(self.x) / self.fs_song)))  # make sure step is >= 1
+        self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
         self.y_other = None
 
         if 'song' in self.ds and self.current_channel_name == 'Merged channels':
