@@ -806,7 +806,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_file.yaml",
                                 title=f'Load {filename}')
-            dialog.form['target_samplingrate'] = samplerate
+            dialog.form['target_samplingrate'] = 1_000 # samplerate
             dialog.form['samplerate'] = samplerate
             dialog.form['spec_freq_max'] = samplerate / 2
 
@@ -828,7 +828,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 dialog.form['target_samplingrate'] = target_samplingrate
             if len(events_string):
                 dialog.form['events_string'] = events_string
-
 
             if not skip_dialog:
                 dialog.show()
@@ -903,7 +902,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 form_data = dialog.form.get_form_data()
                 logging.info(f"Making new dataset from directory {dirname}.")
 
-                if form_data['target_samplingrate'] == 0:
+                if form_data['target_samplingrate'] == 0 or form_data['target_samplingrate'] is None:
                     resample_video_data = False
                 else:
                     resample_video_data = True
@@ -915,6 +914,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 lazy_load_song = not form_data['filter_song']  # faster that way
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
+
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
                                  fix_fly_indices=form_data['fix_fly_indices'],
                                  include_song=~form_data['ignore_song'],
