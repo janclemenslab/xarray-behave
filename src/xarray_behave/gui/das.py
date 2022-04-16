@@ -318,7 +318,6 @@ def make(data_folder: str, store_folder: str,
     logger.info('The dataset has been made.')
 
 
-
 def onset_offset_events(df, ):
     adf = das.annot.Events.from_df(df)
     start_seconds = []
