@@ -68,6 +68,8 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     Returns:
         xarray.Dataset
     """
+    song_raw = None
+    non_song_raw = None
 
     # load RECORDING and TIMING INFORMATION
     if filepath_daq is None:
@@ -308,26 +310,27 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
 
         # load RAW song traces
-        logging.info('Loading audio data:')
-        if not filepath_daq_is_custom:
-            basename = os.path.join(root, dat_path, datename, datename)
-        else:
-            basename = filepath_daq
+        if song_raw is None:
+            logging.info('Loading audio data:')
+            if not filepath_daq_is_custom:
+                basename = os.path.join(root, dat_path, datename, datename)
+            else:
+                basename = filepath_daq
 
-        audio_loader = io.get_loader(kind='audio',
-                                     basename=basename,
-                                     basename_is_full_name=filepath_daq_is_custom)
-        if not audio_loader and filepath_daq_is_custom:
-            audio_loader = io.audio.AudioFile(basename)
+            audio_loader = io.get_loader(kind='audio',
+                                         basename=basename,
+                                         basename_is_full_name=filepath_daq_is_custom)
+            if not audio_loader and filepath_daq_is_custom:
+                audio_loader = io.audio.AudioFile(basename)
 
-        if audio_loader:
-            try:
-                song_raw, non_song_raw, samplerate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
-                logging.info(f'   {audio_loader.path} loaded using {audio_loader.NAME}.')
-            except Exception as e:
-                logging.info(f'   Loading {audio_loader.path} using {audio_loader.NAME} failed.')
-                logging.exception(e)
-        logging.info('Done.')
+            if audio_loader:
+                try:
+                    song_raw, non_song_raw, samplerate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
+                    logging.info(f'   {audio_loader.path} loaded using {audio_loader.NAME}.')
+                except Exception as e:
+                    logging.info(f'   Loading {audio_loader.path} using {audio_loader.NAME} failed.')
+                    logging.exception(e)
+            logging.info('Done.')
 
     # merge manual and auto events -
     # manual will overwrite existing auto events with the same key
