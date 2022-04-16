@@ -1604,7 +1604,8 @@ class PSV(MainWindow):
     def framenumber(self):
         if 'nearest_frame' in self.ds.coords:
             try:  # in case nearest_frame is nan
-                return int(self.ds.coords['nearest_frame'][self.index_other].data)
+                time = self.ds.sampletime.data[int(self.t0)]
+                return int(self.ds.nearest_frame.sel(time=time, method='nearest'))
             except:
                 pass
 
@@ -1651,7 +1652,10 @@ class PSV(MainWindow):
 
     @property
     def index_other(self):
-        return int(self.t0 * self.fs_other / self.fs_song)
+        current_sampletime = self.ds.sampletime.data[int(self.t0)]
+        current_time = self.ds.time.sel(time=current_sampletime, method='nearest')
+        index_other = np.where(self.ds.time==current_time)[0]
+        return int(index_other)
 
     def _add_keyed_menuitem(self, parent, label: str, callback, qt_keycode=None, checkable=False, checked=True):
         """Add new action to menu and register key press."""
