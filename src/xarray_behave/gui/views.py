@@ -397,10 +397,13 @@ class SpecView(pg.ImageView):
         f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=spec_win,
                                              noverlap=spec_win // 2, nfft=nfft, mode='magnitude')
 
+        # select freq limits
+        f_idx0 = 0
         if self.m.fmin is not None:
             f_idx0 = np.argmax(f >= self.m.fmin)
-        else:
-            f_idx0 = 0
+        f_idx1 = -1
+        if self.m.fmax is not None:
+            f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
 
         S = np.log2(1 + psd[f_idx0:f_idx1, :])
         S = S / np.max(S) * 255  # normalize to 0...255
