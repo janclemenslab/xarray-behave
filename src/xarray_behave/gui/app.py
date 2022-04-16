@@ -38,6 +38,12 @@ from . import (utils,
                table)
 
 try:
+    import numba
+    pg.setConfigOption('useNumba', True)
+except:
+    pass
+
+try:
     from . import das
 except Exception as e:
     logging.exception(e)
