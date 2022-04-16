@@ -233,9 +233,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             logging.info('   Found no movie params data.')
         logging.info('Done.')
 
-    # Init empty audio and event data
-    song_raw = None
-    non_song_raw = None
+    # Init empty and event data
     auto_event_seconds = {}
     auto_event_categories = {}
 
