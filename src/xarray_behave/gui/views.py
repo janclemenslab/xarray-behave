@@ -341,6 +341,8 @@ class SpecView(pg.ImageView):
         self._m = model
         self.callback = callback
         self.imageItem.mouseClickEvent = self._click
+        self.t_step = 1
+        self.max_pix = 6_000
 
         self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90,
                                         pen=pg.mkPen(color='r', width=1))
@@ -373,42 +375,27 @@ class SpecView(pg.ImageView):
         [self.removeItem(item) for item in self.old_items]  # remove annotations <- slowest part of update_spec!!!
 
     def update_spec(self, x, y):
-        # hash x to avoid re-calculation? only useful when annotating
-        # t0 = time.time()
-        # t1 = time.time()
-        # logger.debug(f'  update spec - clear annotations: {t1-t0}')
-
-        # S, f, t = self._calc_spec(y)
-        S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
-        self.S = S
+        self.S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
         trange = (self.m.x[-1] - self.m.x[0])
-        # t2 = time.time()
-        # logger.debug(f'  update spec - calc spec: {t2-t0}')
-
-        self.setImage(S.T, autoRange=False, scale=[trange / len(t), (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
+        self.max_pix = 6_000
+        self.t_step = max(1, self.S.shape[1] // self.max_pix)
+        self.setImage(self.S.T[::self.t_step], autoRange=False, scale=[trange / len(t) * self.t_step, (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
-
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
-        # t3 = time.time()
-        # logger.debug(f'  update spec - draw: {t3-t2}')
-        # t4 = time.time()
-        # logger.debug(f'update spec - TOTAL: {t4-t0}')
-
-    @lru_cache(maxsize=2, typed=False)
+    @lru_cache(maxsize=4, typed=False)
     def _calc_spec(self, y, spec_win):
         y = np.array(y)
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
         spec_win = min(len(y), spec_win)
-        f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=spec_win,
-                                             noverlap=spec_win // 2, nfft=spec_win * 4, mode='magnitude')
-        self.spec_t = t
 
-        if self.m.fmax is not None:
-            f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
-        else:
-            f_idx1 = -1
+        # ranges between 1 and 4 times spec_win - smaller when zoomed out
+        # to accelerate calc
+        nfft = spec_win * max(1, 4 // self.t_step)
+
+        f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=spec_win,
+                                             noverlap=spec_win // 2, nfft=nfft, mode='magnitude')
 
         if self.m.fmin is not None:
             f_idx0 = np.argmax(f >= self.m.fmin)
@@ -451,7 +438,7 @@ class SpecView(pg.ImageView):
     def _click(self, event):
         event.accept()
         pos = event.pos()[0]
-        mouseT = self.pos_to_time(pos)
+        mouseT = self.pos_to_time(pos) * self.t_step
         self.callback(mouseT, event.button())
 
 
