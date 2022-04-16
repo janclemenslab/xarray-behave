@@ -281,11 +281,7 @@ class TraceView(pg.PlotWidget):
     def add_event(self, xx, event_type, pen, movable=False, text=None):
         if not len(xx):
             return
-        # if not movable:
-        #     xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
-        #     yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
-        #     utils.fast_plot(self, xx.T, yy.T, pen)
-        # else:
+
         for x in xx:
             line = EventItem(x, event_type, self.xrange, movable=True, angle=90, pen=pen)
             if text is not None:
@@ -326,7 +322,7 @@ class TrackView(TraceView):
 
 class SpecView(pg.ImageView):
 
-    def __init__(self, model, callback, colormap=None):
+    def __init__(self, model, callback, colormap='turbo'):
         super().__init__(view=pg.PlotItem())
         self.ui.histogram.hide()
         self.ui.roiBtn.hide()
@@ -350,8 +346,6 @@ class SpecView(pg.ImageView):
                                         pen=pg.mkPen(color='r', width=1))
         self.addItem(self.pos_line)
 
-        if colormap is not None:
-            colormap = 'turbo'
         cmap = pg.colormap.getFromMatplotlib(colormap)
         lut = cmap.getLookupTable()
         self.imageItem.setLookupTable(lut)  # apply the colormap
@@ -426,8 +420,7 @@ class SpecView(pg.ImageView):
         return S, f[f_idx0:f_idx1], t
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
-        onset_spec, offset_spec = onset, offset
-        region = SegmentItem((onset_spec, offset_spec), region_typeindex, self.xrange,
+        region = SegmentItem((onset, offset), region_typeindex, self.xrange,
                              time_bounds=(onset, offset), brush=brush, pen=pen, movable=movable)
         if text is not None:
             pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
@@ -440,15 +433,9 @@ class SpecView(pg.ImageView):
     def add_event(self, xx, event_type, pen, movable=False, text=None):
         if not len(xx):
             return
-        xx0 = xx.copy()
-        # xx = self.time_to_pos(xx)
-        # if not movable:
-        #     xx = np.broadcast_to(xx[np.newaxis, :], (2, len(xx)))
-        #     yy = np.zeros_like(xx) + self.yrange[:, np.newaxis]
-        #     self.old_items.append(utils.fast_plot(self, xx.T, yy.T, pen))
-        # else:
-        for (x, x0) in zip(xx, xx0):
-            line = EventItem(x, event_type, self.xrange, time_pos=x0, movable=True, angle=90, pen=pen)
+
+        for x in xx:
+            line = EventItem(x, event_type, self.xrange, time_pos=x, movable=True, angle=90, pen=pen)
             if text is not None:
                 pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
             line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
