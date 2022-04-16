@@ -1591,12 +1591,12 @@ class PSV(MainWindow):
     def t0(self, val: float):
         old_t0 = self._t0
         self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)  # ensure t0 stays within bounds
-        if self._t0 != old_t0:
+
+        if not np.isclose(self._t0, old_t0):
             self.scrollbar.setValue(self.t0)
             self.edit_time.setText(str(self.t0 / self.fs_song))
             if self.vr is not None:
                 self.edit_frame.setText(str(self.framenumber))
-
             self.update_xy()
             self.update_frame()
 
