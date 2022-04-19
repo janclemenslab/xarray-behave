@@ -113,26 +113,27 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         audio_loader = io.get_loader(kind='audio',
                                      basename=basename,
                                      basename_is_full_name=filepath_daq_is_custom)
-        if audio_loader is None and filepath_daq_is_custom:
+        if not audio_loader and filepath_daq_is_custom:
             audio_loader = io.audio.AudioFile(basename)
 
         try:
             song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, song_channels=audio_channels,
                                                                       return_nonsong_channels=True, lazy=lazy_load_song,
                                                                       audio_dataset=audio_dataset)
-
             logging.info(f'   {audio_loader.path} loaded using {audio_loader.NAME}.')
             if sampling_rate is None:
                 sampling_rate = audio_sampling_rate
             last_sample_number = len(song_raw)
             sample_numbers = np.arange(0, last_sample_number, sampling_rate).flatten()
-
             # make sure we include the last sample
             if sample_numbers[-1] < last_sample_number:
                 sample_numbers = np.append(sample_numbers, last_sample_number)
             sample_times = sample_numbers / sampling_rate
-            ss = SampStamp(sample_times, sample_times[::100],
-                           sample_numbers=sample_numbers, frame_numbers=sample_numbers[::100])
+            frame_step = max(1, len(sample_times) // 1_000)
+            frame_times = sample_times[::frame_step]
+            frame_numbers = sample_numbers[::frame_step]
+            ss = SampStamp(sample_times, frame_times,
+                           sample_numbers=sample_numbers, frame_numbers=frame_numbers)
         except:
             raise ValueError(f'Loading {audio_loader.path} using {audio_loader.NAME} failed.')
 
@@ -549,7 +550,7 @@ def align_time(ds, ss, target_samples, target_time, ref_time, dim: str = 'frame_
     return ds
 
 
-def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smooth_positions: bool = True):
+def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smooth_positions: bool = True, infer_timestep_from_ds: bool = False):
     """[summary]
 
     Args:
@@ -557,6 +558,7 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         make_abs (bool, optional): [description]. Defaults to True.
         make_rel (bool, optional): [description]. Defaults to True.
         smooth_positions (bool, optional): [description]. Defaults to True.
+        infer_timestep_from_ds (bool, optional): Defaults to False.
 
     Returns:
         [type]: [description]
@@ -581,6 +583,14 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
 
     sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
     frame_rate = dataset.pose_positions.attrs['video_fps']
+
+    # TODO:
+    # - all calls get timestep arg
+    # - update spatial and time units in attrs
+    if infer_timestep_from_ds:
+        timestep = 1  # do sth here with the sampling_rate of the poses? or compute mean sample interval in case data are unevenly sampled?
+    else:
+        timestep = 1
 
     thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax', :].values.astype(np.float32)
     heads = dataset.pose_positions_allo.loc[:, :, 'head', :].values.astype(np.float32)
