@@ -32,7 +32,11 @@ requirements:
     - toolz
     - scikit-image
     - samplestamps
-    - librosa
+    - tqdm
+    - librosa>0.8
+    - pyqtgraph
+    - qtpy>2.0
+    - pyvideoreader
 
   run:
     - python>=3.9
@@ -53,13 +57,18 @@ requirements:
     - toolz
     - scikit-image
     - samplestamps
-    - librosa
+    - tqdm
+    - librosa>0.8
+    # # test:
+    - pyqtgraph
+    - qtpy>2.0
+    - pyvideoreader
 
 test:
   imports:
     - xarray_behave
   commands:
-    - xb --help [ not win ]
+    - xb --help
 
 about:
   home: "http://github.com/janclemenslab/xarray-behave"
