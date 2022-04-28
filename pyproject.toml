@@ -9,13 +9,13 @@ author = "Jan Clemens"
 author-email = "clemensjan@googlemail.com"
 home-page = "https://github.com/janclemenslab/xarray-behave"
 classifiers = ["License :: OSI Approved :: MIT License"]
-requires-python = ">=3.6"
+requires-python = ">3.6"
 requires = ['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
             'dask', 'toolz', 'samplestamps', 'pysoundfile', 'opencv-python-headless']
 description-file = "README.md"
 
 [tool.flit.metadata.requires-extra]
-gui = ['pyside2', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy',
+gui = ['pyside6', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy',
        'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet',
        'peakutils']
 
