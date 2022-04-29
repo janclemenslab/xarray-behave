@@ -1,10 +1,9 @@
 {% set data = load_setup_py_data(setup_file='../../setup.py', from_recipe_dir=True) %}
-{% set name = "xarray-behave" %}
+{% set name = data.get('name') %}
 {% set version = data.get('version') %}
-# {% set version = "0.27.5" %}
 
 package:
-  name: xarray-behave
+  name: "{{ name }}"
   version: "{{ version }}"
 
 source:
@@ -15,34 +14,10 @@ build:
 
 requirements:
   host:
-    - defopt
-    - flammkuchen
-    - h5py
-    - librosa
-    - matplotlib
-    - matplotlib-scalebar
-    - pandas
-    - peakutils
+    - python {{ python }}
     - pip
-    - python
-    - pyyaml
-    #- scipy
-    - scikit-learn
-    - zarr
-    - xarray
-    - dask
-    - pyside2
-    - pyqtgraph>0.12.2
-    - qtpy
-    - colorcet
-    - python-sounddevice
-    - scikit-image
-    - pyyaml
-    - pyvideoreader
-    - samplestamps
-    - numpy>1.19
-
   run:
+    - python {{ python }}
     - defopt
     - flammkuchen
     - h5py
@@ -51,9 +26,7 @@ requirements:
     - matplotlib-scalebar
     - pandas
     - peakutils
-    - python
     - pyyaml
-    #- scipy
     - scikit-learn
     - zarr
     - xarray
@@ -66,7 +39,6 @@ requirements:
     - scikit-image
     - pyvideoreader
     - samplestamps
-    - numpy>1.19
 
 test:
   imports:

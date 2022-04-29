@@ -14,36 +14,12 @@ build:
 
 requirements:
   host:
-    - python>=3.9
-    - zarr
-    - python-sounddevice
+    - python {{ python }}
     - pip
-    - git
-    - colorcet
-    - pyyaml
-    - peakutils
-    - defopt
-    - pandas
-    - xarray
-    - h5py
-    - zarr
-    - dask
-    - flammkuchen
-    - toolz
-    - scikit-image
-    - samplestamps
-    - tqdm
-    - librosa>0.8
-    - pyqtgraph
-    - qtpy>2.0
-    - pyvideoreader
-
   run:
-    - python>=3.9
+    - python {{ python }}
     - zarr
     - python-sounddevice
-    - pip
-    - git
     - colorcet
     - pyyaml
     - peakutils
@@ -59,7 +35,6 @@ requirements:
     - samplestamps
     - tqdm
     - librosa>0.8
-    # # test:
     - pyqtgraph
     - qtpy>2.0
     - pyvideoreader
