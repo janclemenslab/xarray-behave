@@ -164,9 +164,8 @@ def make(data_folder: str, store_folder: str,
     file_split_dict = collections.defaultdict(lambda: None)
     # parts = ['train', 'val', 'test']
 
-
     if len(file_splits):
-        logger.info("Splitting data by files: {file_splits}.")
+        logger.info(f"Splitting data by files: {file_splits}.")
         if sum(file_splits.values()) > 1.0:
             raise ValueError('Sum of file splits > 1.0!')
 
@@ -177,7 +176,7 @@ def make(data_folder: str, store_folder: str,
             file_splits['remainder'] = max(0, 1 - sum(file_splits.values()))
 
         if block_stratify:
-            logger.info("   Block stratifiction.")
+            logger.info("   Block stratification.")
             annotation_files = [file_base + '_annotations.csv' for file_base in file_bases]
             block_stats_map = das.block_stratify.blockstats_from_files(annotation_files)
             block_stats = block_stats_map.values()
