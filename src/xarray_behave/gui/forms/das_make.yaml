@@ -113,12 +113,9 @@ main:
   "Block stratify":
   - type: text
     text: 'Stratification splits the data into blocks and distributes the blocks across the train/val/test sets such that
-           the class distribution is the same the train/val/test sets.<br />
+           the class distribution is the same in the train/val/test sets.<br />
            Particularly important if the different song types are unevenly distributed in your data,
-           for instance syllable "YIP" only occurs in the first minute and syllable "YAP" in the second minute of audio.
-           <br />
-           NOTE: This currently only works if you split by samples, not by files.
-           '
+           for instance, if syllable "YIP" only occurs in the first minute and syllable "YAP" in the second minute of audio.'
   - name: block_size
     label: Block size (seconds)
     type: double
