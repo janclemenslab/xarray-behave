@@ -84,10 +84,13 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     if filepath_timestamps is None:
         filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timestamps.h5')
 
+    # Create samplestamps object
+    ss = None
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
         ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
         if sampling_rate is None:
             sampling_rate = audio_sampling_rate
+        path_tried = (filepath_daq, filepath_timestamps)
     elif os.path.exists(filepath_video):  # Video (+tracks) only
         # if there is only the video, generate fake timestamps for video and samples from fps
         from videoreader import VideoReader
@@ -101,6 +104,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         sample_times = np.arange(0, vr.number_of_frames, 1 / sampling_rate) / vr.frame_rate
         last_sample_number = len(sample_times)
         ss = SampStamp(sample_times, frame_times)
+        path_tried = (filepath_video)
     elif os.path.exists(filepath_daq) and not os.path.exists(filepath_timestamps):  # Audio (+ annotations) only
         # if there is no video and no timestamps - generate fake from samplerate and number of samples
         # THIS SHOULD BE THE FIRST THING WE DO:
@@ -136,6 +140,13 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
                            sample_numbers=sample_numbers, frame_numbers=frame_numbers)
         except:
             raise ValueError(f'Loading {audio_loader.path} using {audio_loader.NAME} failed.')
+        path_tried = (filepath_daq)
+    else:
+        raise ValueError(f'Nothing found at {(filepath_daq, filepath_video, filepath_timestamps)}.')
+
+
+    if ss is None:
+        raise ValueError(f'No data found at {path_tried}.')
 
     if filepath_timestamps_ball is None:
         filepath_timestamps_ball = Path(root, dat_path, datename, f'{datename}_ball_timestamps.h5')
