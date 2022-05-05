@@ -521,9 +521,9 @@ class MovieView(utils.FastImageWidget):
                 if self.m.crop:
                     x_range, y_range = self.crop_frame(frame)
                 else:
-                    x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
+                    x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
             else:
-                x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
+                x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
 
             self.setImage(frame, auto_scale=True)
             self.viewBox.setRange(xRange=y_range, yRange=x_range)
@@ -573,8 +573,8 @@ class MovieView(utils.FastImageWidget):
             fly_pos = self.m.ds.body_positions.data[self.m.index_other, self.m.focal_fly, self.m.track_center_index]
         fly_pos = np.array(fly_pos).astype(np.uintp)  # in case this is a dask.array
         # makes sure crop does not exceed frame bounds
-        fly_pos[0] = np.clip(fly_pos[0], self.m.box_size, self.m.vr.frame_width - 1 - self.m.box_size)
-        fly_pos[1] = np.clip(fly_pos[1], self.m.box_size, self.m.vr.frame_height - 1 - self.m.box_size)
+        fly_pos[0] = np.clip(fly_pos[0], self.m.box_size, self.m.vr.frame_height - 1 - self.m.box_size)
+        fly_pos[1] = np.clip(fly_pos[1], self.m.box_size, self.m.vr.frame_width - 1 - self.m.box_size)
         x_range = (int(fly_pos[0] - self.m.box_size), int(fly_pos[0] + self.m.box_size))
         y_range = (int(fly_pos[1] - self.m.box_size), int(fly_pos[1] + self.m.box_size))
         # frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
