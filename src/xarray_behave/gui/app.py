@@ -40,7 +40,7 @@ from . import (utils,
 try:
     import numba
     pg.setConfigOption('useNumba', True)
-except:
+except ImportError:
     pass
 
 try:
