@@ -1686,13 +1686,14 @@ class PSV(MainWindow):
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
-            deleted_events = 0
-            deleted_events += self.event_times.delete_range(self.current_event_name,
+            deleted_events = self.event_times.delete_range(self.current_event_name,
                                                             self.time0 / self.fs_song,
                                                             self.time1 / self.fs_song)
-            logging.info(f'   Deleted all  {deleted_events} of {self.current_event_name} in view.')
-            if self.STOP:
-                self.update_xy()
+            nb_deleted_events = len(deleted_events)
+            if nb_deleted_events:
+                logging.info(f'   Deleted {nb_deleted_events} annotation(s) of type {self.current_event_name}.')
+                if self.STOP:
+                    self.update_xy()
         else:
             logging.info(f'   No event type selected. Not deleting anything.')
 

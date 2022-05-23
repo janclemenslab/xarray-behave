@@ -460,7 +460,7 @@ class Events(UserDict):
         """
         indices = self.select_range(name, t0, t1, strict)
         self[name] = np.delete(self[name], indices, axis=0)
-        return len(indices)
+        return indices
 
     def find_next(self, t: float, names: Optional[List[str]] = None):
         """Find event starting after `t` of type in names.
