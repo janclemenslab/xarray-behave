@@ -2140,8 +2140,8 @@ class PSV(MainWindow):
 
             deleted_name, deleted_time = self.event_times.delete_time(time=mouseT, name=current_event_name,
                                                                       tol=0.05,
-                                                                      min_time=float(self.ds.time[self.time0]),
-                                                                      max_time=float(self.ds.time[self.time1]))
+                                                                      min_time=self.time0 / self.fs_song,
+                                                                      max_time=self.time1 / self.fs_song)
             if len(deleted_time):
                 logging.info(f'  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.')
             self.update_xy()
