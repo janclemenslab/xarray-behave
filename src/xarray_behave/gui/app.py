@@ -1696,6 +1696,18 @@ class PSV(MainWindow):
         else:
             logging.info(f'   No event type selected. Not deleting anything.')
 
+    def delete_all_events(self, qt_keycode):
+        for event_name in self.event_times.names:
+            deleted_events = self.event_times.delete_range(event_name,
+                                                            self.time0 / self.fs_song,
+                                                            self.time1 / self.fs_song)
+            nb_deleted_events = len(deleted_events)
+            if nb_deleted_events:
+                logging.info(f'   Deleted {nb_deleted_events} annotation(s) of type {event_name}.')
+
+        if self.STOP:
+            self.update_xy()
+
     def threshold(self, qt_keycode):
         if self.STOP and self.current_event_name is not None:
             if self.event_times.categories[self.current_event_name] == 'event':
@@ -1737,16 +1749,6 @@ class PSV(MainWindow):
         win /= np.sum(win)
         env = np.sqrt(np.convolve(self.y.astype(np.float)**2, win, mode='same'))
         return env
-
-    def delete_all_events(self, qt_keycode):
-        deleted_events = 0
-        for event_name in self.event_times.names:
-            deleted_events += self.event_times.delete_range(event_name,
-                                                            self.time0 / self.fs_song,
-                                                            self.time1 / self.fs_song)
-        logging.info(f'   Deleted all {deleted_events} events in view.')
-        if self.STOP:
-            self.update_xy()
 
     def set_prev_channel(self, qt_keycode):
         idx = self.cb2.currentIndex()
