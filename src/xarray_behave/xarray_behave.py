@@ -315,7 +315,8 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         if definitions_loader:
             try:
                 manual_event_seconds_loaded, manual_event_categories_loaded = definitions_loader.load(definitions_loader.path)
-                manual_event_seconds.update(manual_event_seconds_loaded)
+                # add non-existing keys w/o overwriting values for existing ones
+                manual_event_seconds.update({k: v for k, v in manual_event_seconds_loaded.items() if k not in manual_event_seconds})
                 manual_event_categories.update(manual_event_categories_loaded)
                 logging.info(f'   {definitions_loader.path} loaded.')
             except Exception as e:
