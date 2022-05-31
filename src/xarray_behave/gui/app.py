@@ -461,7 +461,7 @@ class MainWindow(QtWidgets.QMainWindow):
             form_data['use_separable'] = [item.lower()=='true' for item in form_data['use_separable']]
             if is_cli:
                 form_data['use_separable'] = ' '.join([str(item) for item in form_data['use_separable']])
-                for field in ['ignore_boundaries', 'reduce_lr', 'tensorboard']:
+                for field in ['ignore_boundaries', 'reduce_lr', 'tensorboard', 'post_opt']:
                     if field in form_data:
                         if form_data[field] is False:  # rename and pre-prend "no_"
                             del form_data[field]
