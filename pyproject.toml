@@ -1,27 +1,33 @@
 [build-system]
-requires = ["flit_core >=3"]
+requires = ["flit_core >=3.2"]
 build-backend = "flit_core.buildapi"
 
-[tool.flit.metadata]
-dist-name = "xarray-behave"
-module = "xarray_behave"
-author = "Jan Clemens"
-author-email = "clemensjan@googlemail.com"
-home-page = "https://github.com/janclemenslab/xarray-behave"
+[project]
+name = "xarray-behave"
+authors = [
+       {name = "Jan Clemens", email = "clemensjan@googlemail.com"},
+]
 classifiers = ["License :: OSI Approved :: MIT License"]
-dynamic = ["version"]
+dynamic = ["version", "description"]
 requires-python = ">3.6"
-requires = ['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
-            'dask', 'toolz', 'samplestamps', 'pysoundfile', 'opencv-python-headless']
-description-file = "README.md"
+dependencies = ['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
+                'dask', 'toolz', 'samplestamps', 'pysoundfile', 'opencv-python-headless']
+readme = "README.md"
 
-[tool.flit.metadata.requires-extra]
+[project.optional-dependencies]
 gui = ['pyside6', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy',
        'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet',
        'peakutils']
 
-[tool.flit.scripts]
+[project.scripts]
 xb = "xarray_behave.gui.app:cli"
+
+[project.urls]
+source = "https://github.com/janclemenslab/xarray-behave"
+documentation = "https://janclemenslab.org/das/"
+
+[tool.flit.module]
+name = "xarray_behave"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
