@@ -800,13 +800,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:  # to load as audio file
                     import librosa
                     samplerate = librosa.get_samplerate(filename)
-                    logging.info(samplerate)
                 except:
                     pass
 
             dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_file.yaml",
                                 title=f'Load {filename}')
-            dialog.form['target_samplingrate'] = 1_000 # samplerate
+
+            dialog.form['target_samplingrate'] = 1_000
             dialog.form['samplerate'] = samplerate
             dialog.form['spec_freq_max'] = samplerate / 2
 
@@ -840,8 +840,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 form_data = dialog.form.get_form_data()
                 logging.info(f"Making new dataset from {filename}.")
-                if form_data['target_samplingrate'] < 1:
-                    form_data['target_samplingrate'] = None
+                # if form_data['target_samplingrate'] is None:
+                #     form_data['target_samplingrate'] = None
 
                 ds = xb.assemble(filepath_daq=filename,
                                  filepath_annotations=form_data['annotation_path'],
@@ -855,7 +855,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
 
                 cue_points = []
-                if form_data['load_cues']=='yes':
+                if form_data['load_cues'] == 'yes':
                     cue_points = cls.load_cuepoints(form_data['cues_file'])
 
                 ds.attrs['filename'] = filename
@@ -914,8 +914,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 lazy_load_song = not form_data['filter_song']  # faster that way
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
+                annotation_path = None if not len(form_data['annotation_path']) else form_data['annotation_path']
 
                 ds = xb.assemble(datename, root, dat_path, res_path='res',
+                                 filepath_annotations=annotation_path,
                                  fix_fly_indices=form_data['fix_fly_indices'],
                                  include_song=~form_data['ignore_song'],
                                  target_sampling_rate=form_data['target_samplingrate'],
