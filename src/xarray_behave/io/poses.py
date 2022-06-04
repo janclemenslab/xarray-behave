@@ -231,7 +231,7 @@ class DeepPoseKit(Poses, io.BaseProvider):
 
         # ROTATE egocentric poses such that the angle between head and thorax is 0 degrees (straight upwards)
         head_thorax_angle = 270 + np.arctan2(poses_ego.sel(poseparts='head', coords='y'),
-                                            poses_ego.sel(poseparts='head', coords='x')) * 180 / np.pi
+                                             poses_ego.sel(poseparts='head', coords='x')) * 180 / np.pi
         for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle.data, poses_ego.data)):
             for fly in range(nb_flies):
                 poses_ego.data[cnt, fly, ...] = rotate_pose(p_ego[fly], -a[fly])
