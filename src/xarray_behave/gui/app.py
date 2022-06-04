@@ -2430,7 +2430,7 @@ def main(source: str = '', *, events_string: str = '',
         pass
     elif not os.path.exists(source):
         logging.info(f'{source} does not exist - skipping.')
-    elif source.endswith('.wav') or source.endswith('.npz') or source.endswith('.h5') or source.endswith('.hdf5') or source.endswith('.mat'):
+    elif source.lower().endswith('.wav') or source.lower().endswith('.npz') or source.lower().endswith('.h5') or source.endswith('.hdf5') or source.lower().endswith('.mat'):
         MainWindow.from_file(filename=source,
                              events_string=events_string,
                              target_samplingrate=target_samplingrate,
