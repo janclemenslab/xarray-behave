@@ -19,7 +19,7 @@ def make_colors(nb_colors: int) -> Iterable:
         # cmap = colorcet.cm['glasbey_bw_minc_20_minl_50']
         cmap = colorcet.cm['glasbey_bw_minc_20_minl_30']
         # ignore first (red)
-        colors = (cmap(np.arange(1, nb_colors+1)) * 255)[:, :3].astype(np.uint8)
+        colors = (cmap(np.arange(1, nb_colors + 1)) * 255)[:, :3].astype(np.uint8)
     return colors
 
 
@@ -141,17 +141,20 @@ def find_nearest(array, value):
     return array[idx]
 
 
-def allkeys(obj, keys=[]):
-  """Recursively find all keys"""
-  # from https://stackoverflow.com/questions/59897093/get-all-keys-and-its-hierarchy-in-h5-file-using-python-library-h5py
-  keys.append(obj.name)
-  if isinstance(obj, h5py.Group):
-    for item in obj:
-      if isinstance(obj[item], h5py.Group):
-        allkeys(obj[item], keys)
-      else: # isinstance(obj[item], h5py.Dataset):
-        keys.append(obj[item].name)
-  return keys
+def allkeys(obj, keys=None):
+    """Recursively find all keys"""
+    # from https://stackoverflow.com/questions/59897093/get-all-keys-and-its-hierarchy-in-h5-file-using-python-library-h5py
+    if keys is None:
+        keys = []
+
+    keys.append(obj.name)
+    if isinstance(obj, h5py.Group):
+        for item in obj:
+            if isinstance(obj[item], h5py.Group):
+                allkeys(obj[item], keys)
+            else:  # isinstance(obj[item], h5py.Dataset):
+                keys.append(obj[item].name)
+    return keys
 
 
 def is_sorted(array):
@@ -184,7 +187,10 @@ def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
     idxs = np.searchsorted(array, values, side="left")
 
     # find indexes where previous index is closer
-    prev_idx_is_less = ((idxs == len(array))|(np.fabs(values - array[np.maximum(idxs-1, 0)]) < np.fabs(values - array[np.minimum(idxs, len(array)-1)])))
+    prev_idx_is_less = (
+        (idxs == len(array)) |
+        (np.fabs(values - array[np.maximum(idxs - 1, 0)]) < np.fabs(values - array[np.minimum(idxs,
+                                                                                              len(array) - 1)])))
     idxs[prev_idx_is_less] -= 1
     return idxs
 
@@ -227,10 +233,12 @@ class InvokeEvent(QtCore.QEvent):
 
 
 class Invoker(QtCore.QObject):
+
     def event(self, event):
         event.fn(*event.args, **event.kwargs)
 
         return True
+
 
 _invoker = Invoker()
 
@@ -244,6 +252,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
     # Subclass Delegate to increase item height
     class Delegate(QtWidgets.QStyledItemDelegate):
+
         def sizeHint(self, option, index):
             size = super().sizeHint(option, index)
             size.setHeight(20)
