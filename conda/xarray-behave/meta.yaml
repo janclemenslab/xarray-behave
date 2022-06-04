@@ -21,7 +21,7 @@ requirements:
     - defopt
     - flammkuchen
     - h5py
-    - librosa
+    - librosa>0.8
     - matplotlib
     - matplotlib-scalebar
     - pandas
@@ -31,7 +31,8 @@ requirements:
     - zarr
     - xarray
     - dask
-    - pyside2
+    - pyside2  # [not arm64]
+    - pyqt  # [arm64]
     - pyqtgraph>0.12.2
     - qtpy
     - colorcet
@@ -39,6 +40,7 @@ requirements:
     - scikit-image
     - pyvideoreader
     - samplestamps
+    - pysoundfile
 
 test:
   imports:
