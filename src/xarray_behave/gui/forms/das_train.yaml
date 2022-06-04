@@ -8,7 +8,7 @@ main:
   type: file_dir
   default: " "
   filter: "*.npy"
-  help: 'Directory should be created with <b>Multi-Animal Bottom-Up Pipeline</b>:<br />
+  help: '<b>Directory should be created with <b>Multi-Animal Bottom-Up Pipeline</b>:<br />
   This pipeline uses single model with two output heads:
   a "<u>confidence map</u>" head to predicts the
   nodes for an entire image and a "<u>part affinity field</u>" head to group
@@ -155,15 +155,16 @@ main:
 - name: postopt
   label: Optimize postprocessing
   type: stacked
-
-  default: "Yes"
+  default: "No"
   options: "No,Yes"
 
   "No":
 
   "Yes":
   - type: text
-    text: 'Will bruteforce grid search using training data. Can take a while and be memory intensive.'
+    text: 'Will bruteforce grid search using training data. Can take a while and be memory intensive.
+           <b>Only use with small-ish training datasets.</b> Otherwise you will get an out-of-memory error
+           and the post-optimization will fail. However, you will still be able to use the trained network.'
 
   - type: text
     text: '<i>Fill gaps shorter than a threshold</i>'
