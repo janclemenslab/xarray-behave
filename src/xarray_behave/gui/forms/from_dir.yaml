@@ -65,6 +65,12 @@ main:
   range: 0.0,1000000.0
   default: 1000.0
 
+- name: annotation_path
+  label: File with annotations
+  type: file_open
+  default: ""
+  help: 'will try default STEM + _annotations.csv'
+
 - name: init_annotations
   label: Initialize annotations
   type: bool
