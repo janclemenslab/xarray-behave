@@ -11,28 +11,35 @@ from pathlib import Path
 import pandas as pd
 from glob import glob
 from typing import List, Optional
-from . import (loaders as ld,
-               metrics as mt,
-               event_utils,
-               annot,
-               io)
+from . import (loaders as ld, metrics as mt, event_utils, annot, io)
 
 
-def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat', res_path: str = 'res',
+def assemble(datename: Optional[str] = '',
+             root: str = '',
+             dat_path: str = 'dat',
+             res_path: str = 'res',
              filepath_timestamps: Optional[str] = None,
              filepath_video: Optional[str] = None,
              filepath_timestamps_ball: Optional[str] = None,
              filepath_daq: Optional[str] = None,
              filepath_annotations: Optional[str] = None,
              filepath_definitions: Optional[str] = None,
-             target_sampling_rate: float = 1_000, audio_sampling_rate: Optional[float] = None,
-             audio_channels: Optional[List[int]] = None, audio_dataset: str = None,
-             event_names: Optional[List[str]] = None, event_categories: Optional[List[str]] = None,
+             target_sampling_rate: float = 1_000,
+             audio_sampling_rate: Optional[float] = None,
+             audio_channels: Optional[List[int]] = None,
+             audio_dataset: str = None,
+             event_names: Optional[List[str]] = None,
+             event_categories: Optional[List[str]] = None,
              resample_video_data: bool = True,
-             include_song: bool = True, include_tracks: bool = True,
-             include_poses: bool = True, include_balltracker: bool = True, include_movieparams: bool = True,
-             fix_fly_indices: bool = True, pixel_size_mm: Optional[float] = None,
-             lazy_load_song: bool = False) -> xr.Dataset:
+             include_song: bool = True,
+             include_tracks: bool = True,
+             include_poses: bool = True,
+             include_balltracker: bool = True,
+             include_movieparams: bool = True,
+             fix_fly_indices: bool = True,
+             pixel_size_mm: Optional[float] = None,
+             lazy_load_song: bool = False,
+             make_song_events: bool = True) -> xr.Dataset:
     """[summary]
 
     Args:
@@ -65,6 +72,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
+        make_song_events (bool, optional): Make binary matrix of song events. Defaults to True.
     Returns:
         xarray.Dataset
     """
@@ -114,15 +122,15 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         else:
             basename = filepath_daq
 
-        audio_loader = io.get_loader(kind='audio',
-                                     basename=basename,
-                                     basename_is_full_name=filepath_daq_is_custom)
+        audio_loader = io.get_loader(kind='audio', basename=basename, basename_is_full_name=filepath_daq_is_custom)
         if not audio_loader and filepath_daq_is_custom:
             audio_loader = io.audio.AudioFile(basename)
 
         try:
-            song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path, song_channels=audio_channels,
-                                                                      return_nonsong_channels=True, lazy=lazy_load_song,
+            song_raw, non_song_raw, sampling_rate = audio_loader.load(audio_loader.path,
+                                                                      song_channels=audio_channels,
+                                                                      return_nonsong_channels=True,
+                                                                      lazy=lazy_load_song,
                                                                       audio_dataset=audio_dataset)
             logging.info(f'   {audio_loader.path} loaded using {audio_loader.NAME}.')
             if sampling_rate is None:
@@ -136,14 +144,12 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             frame_step = max(1, len(sample_times) // 1_000)
             frame_times = sample_times[::frame_step]
             frame_numbers = sample_numbers[::frame_step]
-            ss = SampStamp(sample_times, frame_times,
-                           sample_numbers=sample_numbers, frame_numbers=frame_numbers)
+            ss = SampStamp(sample_times, frame_times, sample_numbers=sample_numbers, frame_numbers=frame_numbers)
         except:
             raise ValueError(f'Loading {audio_loader.path} using {audio_loader.NAME} failed.')
         path_tried = (filepath_daq)
     else:
         raise ValueError(f'Nothing found at {(filepath_daq, filepath_video, filepath_timestamps)}.')
-
 
     if ss is None:
         raise ValueError(f'No data found at {path_tried}.')
@@ -234,7 +240,7 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         if movieparams_loader:
             try:
                 xr_movieparams = movieparams_loader.make(movieparams_loader.path)
-                xr_movieparams = add_time(xr_movieparams, ss_movie, dim='frame_number_movie',  suffix='_movie')
+                xr_movieparams = add_time(xr_movieparams, ss_movie, dim='frame_number_movie', suffix='_movie')
 
                 logging.info(f'   {movieparams_loader.path} loaded.')
                 with_movieparams = True
@@ -255,7 +261,8 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         event_categories = []
 
     if len(event_names) != len(event_categories):
-        logging.warning(f'event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}.')
+        logging.warning(
+            f'event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}.')
         event_categories = []
 
     if event_names and not event_categories:
@@ -270,7 +277,10 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         if not custom_filepath_annotations:
             filepath_annotations = os.path.join(root, res_path, datename, datename)
 
-        annot_loader = io.get_loader(kind='annotations', basename=filepath_annotations, stop_after_match=False, basename_is_full_name=custom_filepath_annotations)
+        annot_loader = io.get_loader(kind='annotations',
+                                     basename=filepath_annotations,
+                                     stop_after_match=False,
+                                     basename_is_full_name=custom_filepath_annotations)
         if annot_loader:
             if isinstance(annot_loader, str):
                 annot_loader = list(annot_loader)
@@ -290,7 +300,9 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
         # load MANUAL SONG ANNOTATIONS
         logging.info('Loading manual annotations:')
-        manual_annot_loader = io.get_loader(kind='annotations_manual', basename=filepath_annotations, basename_is_full_name=custom_filepath_annotations)
+        manual_annot_loader = io.get_loader(kind='annotations_manual',
+                                            basename=filepath_annotations,
+                                            basename_is_full_name=custom_filepath_annotations)
         if manual_annot_loader:
             try:
                 manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(manual_annot_loader.path)
@@ -309,9 +321,12 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
         logging.info('Loading song definitions:')
         custom_filepath_definitions = filepath_definitions is not None
         if not custom_filepath_definitions:
-            filepath_definitions = os.path.join(root, res_path, datename, datename)  # or construct form audio file name - .ext + _definitions.csv
+            filepath_definitions = os.path.join(root, res_path, datename,
+                                                datename)  # or construct form audio file name - .ext + _definitions.csv
 
-        definitions_loader = io.get_loader(kind='definitions_manual', basename=filepath_definitions, basename_is_full_name=custom_filepath_definitions)
+        definitions_loader = io.get_loader(kind='definitions_manual',
+                                           basename=filepath_definitions,
+                                           basename_is_full_name=custom_filepath_definitions)
         if definitions_loader:
             try:
                 manual_event_seconds_loaded, manual_event_categories_loaded = definitions_loader.load(definitions_loader.path)
@@ -327,7 +342,6 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             logging.info('   Found no song definitions.')
         logging.info('Done.')
 
-
         # load RAW song traces
         if song_raw is None:
             logging.info('Loading audio data:')
@@ -336,15 +350,15 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
             else:
                 basename = filepath_daq
 
-            audio_loader = io.get_loader(kind='audio',
-                                         basename=basename,
-                                         basename_is_full_name=filepath_daq_is_custom)
+            audio_loader = io.get_loader(kind='audio', basename=basename, basename_is_full_name=filepath_daq_is_custom)
             if not audio_loader and filepath_daq_is_custom:
                 audio_loader = io.audio.AudioFile(basename)
 
             if audio_loader:
                 try:
-                    song_raw, non_song_raw, samplerate = audio_loader.load(audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song)
+                    song_raw, non_song_raw, samplerate = audio_loader.load(audio_loader.path,
+                                                                           return_nonsong_channels=True,
+                                                                           lazy=lazy_load_song)
                     logging.info(f'   {audio_loader.path} loaded using {audio_loader.NAME}.')
                 except Exception as e:
                     logging.info(f'   Loading {audio_loader.path} using {audio_loader.NAME} failed.')
@@ -365,7 +379,9 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     if not with_tracks:
         first_tracked_frame = int(ss.frame(0))
         last_tracked_frame = int(ss.frame(last_sample_number))
-        logging.info(f'No tracks - setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).')
+        logging.info(
+            f'No tracks - setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame}).'
+        )
     else:
         first_tracked_frame, last_tracked_frame = int(xr_tracks.frame_number[0]), int(xr_tracks.frame_number[-1])
         logging.info(f'Tracked frame {first_tracked_frame} to {last_tracked_frame}.')
@@ -387,45 +403,62 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
 
     # PREPARE DataArrays
     dataset_data = dict()
-
+    # import time as tt
+    # t0 = tt.time()
     logging.info('Making all datasets:')
     if song_raw is not None:
         if 0 not in song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
-            song_raw = xr.DataArray(data=song_raw[:, :],  # cut recording to match new grid
+            song_raw = xr.DataArray(data=song_raw[:, :],
                                     dims=['sampletime', 'channels'],
-                                    coords={'sampletime': ss.sample_time(np.arange(song_raw.shape[0])) - ref_time, },
-                                    attrs={'description': 'Raw song recording (multi channel).',
+                                    coords={
+                                        'sampletime': ss.sample_time(np.arange(song_raw.shape[0])) - ref_time,
+                                    },
+                                    attrs={
+                                        'description': 'Raw song recording (multi channel).',
                                         'sampling_rate_Hz': sampling_rate,
                                         'time_units': 'seconds',
-                                        'amplitude_units': 'volts'})
+                                        'amplitude_units': 'volts'
+                                    })
             dataset_data['song_raw'] = song_raw
 
     if non_song_raw is not None:
         if 0 not in non_song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
-            non_song_raw = xr.DataArray(data=non_song_raw[:, :],  # cut recording to match new grid
-                                        dims=['sampletime', 'no_song_channels'],
-                                        coords={'sampletime': ss.sample_time(np.arange(non_song_raw.shape[0])) - ref_time, },
-                                        attrs={'description': 'Non song (stimulus) data.',
-                                            'sampling_rate_Hz': sampling_rate,
-                                            'time_units': 'seconds',
-                                            'amplitude_units': 'volts'})
+            non_song_raw = xr.DataArray(
+                data=non_song_raw[:, :],  # cut recording to match new grid
+                dims=['sampletime', 'no_song_channels'],
+                coords={
+                    'sampletime': ss.sample_time(np.arange(non_song_raw.shape[0])) - ref_time,
+                },
+                attrs={
+                    'description': 'Non song (stimulus) data.',
+                    'sampling_rate_Hz': sampling_rate,
+                    'time_units': 'seconds',
+                    'amplitude_units': 'volts'
+                })
             dataset_data['non_song_raw'] = non_song_raw
 
     logging.info('   Segmentations')
-    song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
-    song_events = xr.DataArray(data=song_events,  # start with empty song_events matrix
-                                dims=['time', 'event_types'],
-                                coords={'time': time,
-                                        'event_types': list(event_seconds.keys()),
-                                       'event_categories': (('event_types'), list(event_categories.values())), },
-                                attrs={'description': 'Event times as boolean arrays.',
-                                        'sampling_rate_Hz': sampling_rate / step,
-                                        'time_units': 'seconds',
-                                        'event_times': event_seconds})
-    # now populate from event_times attribute
-    song_events_ds = event_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
-                                                        song_events.attrs['event_times'])
-    dataset_data['song_events'] = song_events_ds.song_events
+    if make_song_events:
+        song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
+        song_events = xr.DataArray(
+            data=song_events,  # start with empty song_events matrix
+            dims=['time', 'event_types'],
+            coords={
+                'time': time,
+                'event_types': list(event_seconds.keys()),
+                'event_categories': (('event_types'), list(event_categories.values())),
+            },
+            attrs={
+                'description': 'Event times as boolean arrays.',
+                'sampling_rate_Hz': sampling_rate / step,
+                'time_units': 'seconds',
+                'event_times': event_seconds
+            })
+        # now populate from event_times attribute
+        song_events_ds = event_utils.eventtimes_to_traces(song_events.to_dataset(name='song_events'),
+                                                          song_events.attrs['event_times'])
+        dataset_data['song_events'] = song_events_ds.song_events
+
     try:
         ds_eventtimes = annot.Events(event_seconds).to_dataset()
         dataset_data['event_times'] = ds_eventtimes.event_times
@@ -442,60 +475,81 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     if with_tracks:
         logging.info('   Tracking')
         xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time, target_time=time, extrapolate=True)
-        xr_tracks.attrs.update({'description': 'coords are "allocentric" - rel. to the full frame',
-                                        'sampling_rate_Hz': sampling_rate / step,
-                                        'time_units': 'seconds',
-                                        'video_fps': fps,
-                                        'spatial_units': 'pixels',
-                                        'pixel_size_mm': pixel_size_mm,
-                                        'tracks_fixed': with_fixed_tracks})
+        xr_tracks.attrs.update({
+            'description': 'coords are "allocentric" - rel. to the full frame',
+            'sampling_rate_Hz': sampling_rate / step,
+            'time_units': 'seconds',
+            'video_fps': fps,
+            'spatial_units': 'pixels',
+            'pixel_size_mm': pixel_size_mm,
+            'tracks_fixed': with_fixed_tracks
+        })
         dataset_data['body_positions'] = xr_tracks
 
     # POSES
     if with_poses:
         logging.info('   Poses')
         xr_poses = align_time(xr_poses, ss, target_samples, ref_time=ref_time, target_time=time)
-        xr_poses.attrs.update({'description': 'coords are "egocentric" - rel. to box',
-                                    'sampling_rate_Hz': sampling_rate / step,
-                                    'time_units': 'seconds',
-                                    'video_fps': fps,
-                                    'spatial_units': 'pixels',
-                                    'pixel_size_mm': pixel_size_mm,
-                                    'poses_from': poses_from})
+        xr_poses.attrs.update({
+            'description': 'coords are "egocentric" - rel. to box',
+            'sampling_rate_Hz': sampling_rate / step,
+            'time_units': 'seconds',
+            'video_fps': fps,
+            'spatial_units': 'pixels',
+            'pixel_size_mm': pixel_size_mm,
+            'poses_from': poses_from
+        })
         dataset_data['pose_positions'] = xr_poses
 
         # poses in ALLOcentric (frame-relative) coordinates
         xr_poses_allo = align_time(xr_poses_allo, ss, target_samples, ref_time=ref_time, target_time=time)
-        xr_poses_allo.attrs.update({'description': 'coords are "allocentric" - rel. to frame',
-                                         'sampling_rate_Hz': sampling_rate / step,
-                                         'time_units': 'seconds',
-                                         'video_fps': fps,
-                                         'spatial_units': 'pixels',
-                                         'pixel_size_mm': pixel_size_mm,
-                                         'poses_from': poses_from})
+        xr_poses_allo.attrs.update({
+            'description': 'coords are "allocentric" - rel. to frame',
+            'sampling_rate_Hz': sampling_rate / step,
+            'time_units': 'seconds',
+            'video_fps': fps,
+            'spatial_units': 'pixels',
+            'pixel_size_mm': pixel_size_mm,
+            'poses_from': poses_from
+        })
 
         dataset_data['pose_positions_allo'] = xr_poses_allo
 
     # BALLTRACKS
     if with_balltracker:
         logging.info('   Balltracker')
-        xr_balltracks = align_time(xr_balltracks, ss_ball, target_samples, target_time=time,
-                                   dim='frame_number_ball', suffix='_ball', ref_time=ref_time)
-        xr_balltracks.attrs.update({'description': '',
-                                    'sampling_rate_Hz': sampling_rate / step,
-                                    'time_units': 'seconds',
-                                    'video_fps': fps, })
+        xr_balltracks = align_time(xr_balltracks,
+                                   ss_ball,
+                                   target_samples,
+                                   target_time=time,
+                                   dim='frame_number_ball',
+                                   suffix='_ball',
+                                   ref_time=ref_time)
+        xr_balltracks.attrs.update({
+            'description': '',
+            'sampling_rate_Hz': sampling_rate / step,
+            'time_units': 'seconds',
+            'video_fps': fps,
+        })
         dataset_data['balltracks'] = xr_balltracks
 
     # MOVIEPARAMS
     if with_movieparams:
         logging.info('   Movieparams')
-        xr_movieparams = align_time(xr_movieparams, ss_movie, target_samples, dim='frame_number_movie', suffix='_movie',
-                                    ref_time=ref_time, target_time=time, extrapolate=True)
-        xr_movieparams.attrs.update({'description': '',
-                                     'sampling_rate_Hz': sampling_rate / step,
-                                     'time_units': 'seconds',
-                                     'video_fps': fps, })
+        xr_movieparams = align_time(xr_movieparams,
+                                    ss_movie,
+                                    target_samples,
+                                    dim='frame_number_movie',
+                                    suffix='_movie',
+                                    ref_time=ref_time,
+                                    target_time=time,
+                                    extrapolate=True)
+        xr_movieparams.attrs.update({
+            'description': '',
+            'sampling_rate_Hz': sampling_rate / step,
+            'time_units': 'seconds',
+            'video_fps': fps,
+        })
         dataset_data['movieparams'] = xr_movieparams
 
     # MAKE THE DATASET
@@ -507,16 +561,22 @@ def assemble(datename: Optional[str] = '', root: str = '', dat_path: str = 'dat'
     if 'sampletime' not in dataset:
         dataset.coords['sampletime'] = time
     if 'nearest_frame' not in dataset:
-         dataset.coords['nearest_frame'] = (('time'), (ss.times2frames(dataset['time'] + ref_time).astype(np.intp)))
+        dataset.coords['nearest_frame'] = (('time'), (ss.times2frames(dataset['time'] + ref_time).astype(np.intp)))
 
     # convert spatial units to mm using info in attrs
-    dataset = convert_spatial_units(dataset, to_units='mm',
-                                    names=['body_positions', 'pose_positions', 'pose_positions_allo'])
+    dataset = convert_spatial_units(dataset, to_units='mm', names=['body_positions', 'pose_positions', 'pose_positions_allo'])
 
     # save command line args
-    dataset.attrs = {'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
-                     'datename': datename, 'root': root, 'dat_path': dat_path, 'res_path': res_path,
-                     'sampling_rate_Hz': sampling_rate, 'target_sampling_rate_Hz': target_sampling_rate, 'ref_time': ref_time}
+    dataset.attrs = {
+        'video_filename': str(Path(root, dat_path, datename, f'{datename}.mp4')),
+        'datename': datename,
+        'root': root,
+        'dat_path': dat_path,
+        'res_path': res_path,
+        'sampling_rate_Hz': sampling_rate,
+        'target_sampling_rate_Hz': target_sampling_rate,
+        'ref_time': ref_time
+    }
 
     filepath_swap = Path(root, res_path, datename, f'{datename}_idswaps.txt')
     if fix_fly_indices and os.path.exists(filepath_swap):
@@ -539,8 +599,15 @@ def add_time(ds, ss, dim: str = 'frame_number', suffix: str = ''):
     return ds
 
 
-def align_time(ds, ss, target_samples, target_time, ref_time, dim: str = 'frame_number',
-               suffix: str = '', time=None, extrapolate: bool = False):
+def align_time(ds,
+               ss,
+               target_samples,
+               target_time,
+               ref_time,
+               dim: str = 'frame_number',
+               suffix: str = '',
+               time=None,
+               extrapolate: bool = False):
     target_frames_float = ss.times2frames(ss.sample_time(target_samples))
     interp_kwargs = {}
     if extrapolate:
@@ -556,13 +623,20 @@ def align_time(ds, ss, target_samples, target_time, ref_time, dim: str = 'frame_
     fps = 1 / np.nanmean(np.diff(ds['frametimes' + suffix]))
     ds.attrs.update({'video_fps': fps})
 
-    ds = ds.drop_vars(['frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix,
-                       'framenumber' + suffix, 'frametimes' + suffix, 'framesamples' + suffix], errors='Ignore')
+    ds = ds.drop_vars([
+        'frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix, 'framenumber' + suffix,
+        'frametimes' + suffix, 'framesamples' + suffix
+    ],
+                      errors='Ignore')
 
     return ds
 
 
-def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smooth_positions: bool = True, infer_timestep_from_ds: bool = False):
+def assemble_metrics(dataset,
+                     make_abs: bool = True,
+                     make_rel: bool = True,
+                     smooth_positions: bool = True,
+                     infer_timestep_from_ds: bool = False):
     """[summary]
 
     Args:
@@ -644,35 +718,36 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         # wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
         # wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
         # wing_angle_sum = mt.internal_angle(wing_left,thoraces,wing_right)
-        wing_angle_left = 180-mt.internal_angle(wing_left, thoraces, heads)
-        wing_angle_right = 180-mt.internal_angle(wing_right, thoraces, heads)
+        wing_angle_left = 180 - mt.internal_angle(wing_left, thoraces, heads)
+        wing_angle_right = 180 - mt.internal_angle(wing_right, thoraces, heads)
         wing_angle_sum = wing_angle_left + wing_angle_right
 
         list_absolute = [
-            angles, rotational_speed, rotational_acc,
-            vels_mag, vels_x, vels_y, vels_forward, vels_lateral,
-            accs_mag, accs_x, accs_y, accs_forward, accs_lateral,
-            wing_angle_left, wing_angle_right, wing_angle_sum
+            angles, rotational_speed, rotational_acc, vels_mag, vels_x, vels_y, vels_forward, vels_lateral, accs_mag, accs_x,
+            accs_y, accs_forward, accs_lateral, wing_angle_left, wing_angle_right, wing_angle_sum
         ]
 
         abs_feature_names = [
-            'angles', 'rotational_speed', 'rotational_acceleration',
-            'velocity_magnitude', 'velocity_x', 'velocity_y', 'velocity_forward', 'velocity_lateral',
-            'acceleration_mag', 'acceleration_x', 'acceleration_y', 'acceleration_forward', 'acceleration_lateral',
-            'wing_angle_left', 'wing_angle_right', 'wing_angle_sum'
+            'angles', 'rotational_speed', 'rotational_acceleration', 'velocity_magnitude', 'velocity_x', 'velocity_y',
+            'velocity_forward', 'velocity_lateral', 'acceleration_mag', 'acceleration_x', 'acceleration_y',
+            'acceleration_forward', 'acceleration_lateral', 'wing_angle_left', 'wing_angle_right', 'wing_angle_sum'
         ]
 
         absolute = np.stack(list_absolute, axis=2)
 
         ds_dict['abs_features'] = xr.DataArray(data=absolute.data,
                                                dims=['time', 'flies', 'absolute_features'],
-                                               coords={'time': time,
-                                                       'absolute_features': abs_feature_names,
-                                                       'nearest_frame': (('time'), nearest_frame)},
-                                               attrs={'description': 'coords are "egocentric" - rel. to box',
-                                                      'sampling_rate_Hz': sampling_rate,
-                                                      'time_units': 'seconds',
-                                                      'spatial_units': 'pixels'})
+                                               coords={
+                                                   'time': time,
+                                                   'absolute_features': abs_feature_names,
+                                                   'nearest_frame': (('time'), nearest_frame)
+                                               },
+                                               attrs={
+                                                   'description': 'coords are "egocentric" - rel. to box',
+                                                   'sampling_rate_Hz': sampling_rate,
+                                                   'time_units': 'seconds',
+                                                   'spatial_units': 'pixels'
+                                               })
     if make_rel:
         # RELATIVE FEATURES #
         dis = mt.distance(thoraces)
@@ -680,29 +755,31 @@ def assemble_metrics(dataset, make_abs: bool = True, make_rel: bool = True, smoo
         rel_orientation = angles[:, np.newaxis, :] - angles[:, :, np.newaxis]
         rel_velocities_y = chamber_vels[..., 0][:, np.newaxis, :] - chamber_vels[..., 0][:, :, np.newaxis]
         rel_velocities_x = chamber_vels[..., 1][:, np.newaxis, :] - chamber_vels[..., 1][:, :, np.newaxis]
-        rel_velocities_lateral, rel_velocities_forward = mt.project_velocity(rel_velocities_x, rel_velocities_y, np.radians(angles))
+        rel_velocities_lateral, rel_velocities_forward = mt.project_velocity(rel_velocities_x, rel_velocities_y,
+                                                                             np.radians(angles))
         rel_velocities_mag = np.sqrt(rel_velocities_forward**2 + rel_velocities_lateral**2)
 
-        list_relative = [
-            dis, rel_angles, rel_orientation,
-            rel_velocities_mag, rel_velocities_forward, rel_velocities_lateral
-        ]
+        list_relative = [dis, rel_angles, rel_orientation, rel_velocities_mag, rel_velocities_forward, rel_velocities_lateral]
 
         rel_feature_names = [
-            'distance', 'relative_angle', 'relative_orientation',
-            'relative_velocity_mag', 'relative_velocity_forward', 'relative_velocity_lateral'
+            'distance', 'relative_angle', 'relative_orientation', 'relative_velocity_mag', 'relative_velocity_forward',
+            'relative_velocity_lateral'
         ]
 
         relative = np.stack(list_relative, axis=3)
         ds_dict['rel_features'] = xr.DataArray(data=relative.data,
                                                dims=['time', 'flies', 'relative_flies', 'relative_features'],
-                                               coords={'time': time,
-                                                       'relative_features': rel_feature_names,
-                                                       'nearest_frame': (('time'), nearest_frame)},
-                                               attrs={'description': 'coords are "egocentric" - rel. to box',
-                                                      'sampling_rate_Hz': sampling_rate,
-                                                      'time_units': 'seconds',
-                                                      'spatial_units': 'pixels'})
+                                               coords={
+                                                   'time': time,
+                                                   'relative_features': rel_feature_names,
+                                                   'nearest_frame': (('time'), nearest_frame)
+                                               },
+                                               attrs={
+                                                   'description': 'coords are "egocentric" - rel. to box',
+                                                   'sampling_rate_Hz': sampling_rate,
+                                                   'time_units': 'seconds',
+                                                   'spatial_units': 'pixels'
+                                               })
 
     # MAKE ONE DATASET
     feature_dataset = xr.Dataset(ds_dict, attrs={})
@@ -798,8 +875,7 @@ def _normalize_strings(dataset):
     return dataset
 
 
-def load(savepath, lazy: bool = False, normalize_strings: bool = True,
-         use_temp: bool = False):
+def load(savepath, lazy: bool = False, normalize_strings: bool = True, use_temp: bool = False):
     """[summary]
 
     Args:
