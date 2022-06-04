@@ -2017,14 +2017,8 @@ class PSV(MainWindow):
 
     def play_video(self):  # TODO: get rate from ds (video fps attr)
         RUN = True
-        cnt = 0
-        dt0 = time.time()
         while RUN:
             self.t0 += self.frame_interval
-            cnt += 1
-            if cnt % 10 == 0:
-                # logging.info(time.time() - dt0)
-                dt0 = time.time()
             if self.STOP:
                 RUN = False
                 self.update_xy()
