@@ -725,7 +725,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if 'sequence' in segments:
                     detected_segment_names = np.unique(segments['sequence'])
                     # if these are indices, get corresponding names
-                    if len(detected_segment_names) and type(detected_segment_names[0]) is not str and type(detected_segment_names[0]) is not np.str_:
+                    if len(detected_segment_names) and detected_segment_names[0] is not None and type(detected_segment_names[0]) is not str and type(detected_segment_names[0]) is not np.str_:
                         detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
                 else:
                     detected_segment_names = []
