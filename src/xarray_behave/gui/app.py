@@ -2189,6 +2189,7 @@ class PSV(MainWindow):
                     except ValueError as e:
                         # logging.exception(e)
                         y = y/y.max()/10 * self.MAX_AUDIO_AMP
+                    # sd.play(ss.resample_poly(y, 44100, self.fs_song), 44100)
                     sd.play(y, self.fs_song)
                 elif has_simpleaudio:
                     y = y * 32767 / max_amp
