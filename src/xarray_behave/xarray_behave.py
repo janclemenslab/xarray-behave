@@ -90,7 +90,7 @@ def assemble(datename: Optional[str] = '',
         filepath_video = str(Path(root, dat_path, datename, f'{datename}.mp4'))
 
     if filepath_timestamps is None:
-        filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timestamps.h5')
+        filepath_timestamps = Path(root, dat_path, datename, f'{datename}_timeStamps.h5')
 
     # Create samplestamps object
     ss = None
