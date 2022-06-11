@@ -1075,8 +1075,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if 'song_raw' in ds:  # this will take a long time:
             if f_high is None:
                 f_high = ds.song_raw.attrs['sampling_rate_Hz'] / 2 - 1
-            sos_bp = ss.butter(5, [f_low, f_high], 'bandpass', output='sos',
-                                fs=ds.song_raw.attrs['sampling_rate_Hz'])
+            else:
+                f_high = min(f_high, ds.song_raw.attrs['sampling_rate_Hz'] / 2 - 1)
+            sos_bp = ss.butter(5, [f_low, f_high], 'bandpass', output='sos', fs=ds.song_raw.attrs['sampling_rate_Hz'])
             logging.info(f'Filtering `song_raw` between {f_low} and {f_high} Hz.')
             ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
         return ds
