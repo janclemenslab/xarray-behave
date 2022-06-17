@@ -708,7 +708,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 if len(detected_event_names) > 0 and detected_event_names[0] is not None:
                     logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
-                    event_samples = (np.array(events['seconds']) * self.fs_song  + start_index).astype(np.uintp)
+                    event_samples = (np.array(events['seconds']) * self.fs_song + start_index).astype(np.uintp)
 
                     # make sure all detected events are within bounds
                     event_samples = event_samples[event_samples >= 0]
@@ -725,7 +725,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if 'sequence' in segments:
                     detected_segment_names = np.unique(segments['sequence'])
                     # if these are indices, get corresponding names
-                    if len(detected_segment_names) and detected_segment_names[0] is not None and type(detected_segment_names[0]) is not str and type(detected_segment_names[0]) is not np.str_:
+                    if len(detected_segment_names) and type(detected_segment_names[0]) is not str and type(detected_segment_names[0]) is not np.str_:
                         detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
                 else:
                     detected_segment_names = []
@@ -1594,14 +1594,14 @@ class PSV(MainWindow):
     def t0(self, val: float):
         old_t0 = self._t0
         self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)  # ensure t0 stays within bounds
-
-        if not np.isclose(self._t0, old_t0):
+        if not np.isclose(self._t0, old_t0, rtol=0.0, atol=1.e-4):
             self.scrollbar.setValue(self.t0)
             self.edit_time.setText(str(self.t0 / self.fs_song))
             if self.vr is not None:
                 self.edit_frame.setText(str(self.framenumber))
             self.update_xy()
             self.update_frame()
+            self.app.processEvents()
 
     @property
     def framenumber(self):
@@ -2027,7 +2027,7 @@ class PSV(MainWindow):
                 self.update_xy()
                 self.update_frame()
                 logging.debug('   Stopped playback.')
-            self.app.processEvents()
+                self.app.processEvents()
 
     def on_region_change_finished(self, region):
         """Called when dragging a segment-like song_event - will change its bounds."""
