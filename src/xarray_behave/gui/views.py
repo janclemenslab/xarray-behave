@@ -375,7 +375,7 @@ class SpecView(pg.ImageView):
         [self.removeItem(item) for item in self.old_items]  # remove annotations <- slowest part of update_spec!!!
 
     def update_spec(self, x, y):
-        self.S, f, t = self._calc_spec(tuple(y), self.m.spec_win)  # tuple-ify for caching
+        self.S, f, t = self._calc_spec(tuple(y), self.m.spec_win, self.m.spec_compression_ratio)  # tuple-ify for caching
         trange = (self.m.x[-1] - self.m.x[0])
         self.max_pix = 6_000
         self.t_step = max(1, self.S.shape[1] // self.max_pix)
@@ -384,7 +384,7 @@ class SpecView(pg.ImageView):
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
     @lru_cache(maxsize=4, typed=False)
-    def _calc_spec(self, y, spec_win):
+    def _calc_spec(self, y, spec_win, spec_compression_ratio):
         y = np.array(y)
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
@@ -405,7 +405,7 @@ class SpecView(pg.ImageView):
         if self.m.fmax is not None:
             f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
 
-        S = np.log2(1 + psd[f_idx0:f_idx1, :])
+        S = np.log2(1 + 2**spec_compression_ratio * psd[f_idx0:f_idx1, :])
         S = S / np.max(S) * 255  # normalize to 0...255
         return S, f[f_idx0:f_idx1], t
 

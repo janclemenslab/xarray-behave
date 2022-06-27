@@ -14,6 +14,12 @@ main:
   range: 0.0,1000000.0
   default: 1000.0
 
+- name: spec_compression_ratio
+  label: Compression ratio
+  type: int
+  range: 0,128
+  default: 0
+
 - name: set
   label: Set freqs for spec display data
   type: button

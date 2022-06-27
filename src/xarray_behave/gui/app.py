@@ -1365,7 +1365,7 @@ class PSV(MainWindow):
         view_audio.addSeparator()
         self._add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), None,
                                 checkable=True, checked=self.show_spec)
-        self._add_keyed_menuitem(view_audio, "Set display frequency limits", self.set_spec_freq)
+        self._add_keyed_menuitem(view_audio, "Set spectrogram display parameters", self.set_spec_freq)
         self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.inc_freq_res, "R")
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.dec_freq_res, "T")
         view_audio.addSeparator()
@@ -1478,14 +1478,13 @@ class PSV(MainWindow):
                     source.update_xy()
             self.cb3.currentTextChanged.connect(lambda: on_tracksel_changed(self))
 
-
-
         self.movie_view = None
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
 
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
+        self.spec_compression_ratio = 0
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=cmap_name)
 
         self.ly = QtWidgets.QVBoxLayout()
@@ -1878,9 +1877,10 @@ class PSV(MainWindow):
 
     def set_spec_freq(self, qt_keycode):
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/spec_freq.yaml",
-                            title=f'Set frequency limits in display')
+                            title=f'Set spectrogram display options')
         dialog.form['spec_freq_min'] = self.fmin
         dialog.form['spec_freq_max'] = self.fmax
+        dialog.form['spec_compression_ratio'] = self.spec_compression_ratio
         dialog.show()
 
         result = dialog.exec_()
@@ -1889,7 +1889,8 @@ class PSV(MainWindow):
             form_data = dialog.form.get_form_data()  # why call this twice
             self.fmin = form_data['spec_freq_min']
             self.fmax = form_data['spec_freq_max']
-            logging.info(f'Set frequency range for spectrogram display to {self.fmin}:{self.fmax} Hz.')
+            self.spec_compression_ratio = float(form_data['spec_compression_ratio'])
+            logging.info(f'Set frequency range to {self.fmin}:{self.fmax} Hz and compression ratio to {self.spec_compression_ratio}.')
             self.update_xy()
 
     def set_envelope_computation(self, qt_keycode):
