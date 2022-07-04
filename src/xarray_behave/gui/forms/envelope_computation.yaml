@@ -1,7 +1,7 @@
 main:
 
 - name: thres_env_std
-  label: Smoothing factor for envelope (seconds)
+  label: Smoothing window for envelope (seconds)
   type: double
   default_disabled: True
   range: 0.0,1.0

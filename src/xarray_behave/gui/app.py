@@ -1904,9 +1904,13 @@ class PSV(MainWindow):
         result = dialog.exec_()
 
         if result == QtWidgets.QDialog.Accepted:
-            form_data = dialog.form.get_form_data()  # why call this twice
-            self.thres_min_dist = form_data['thres_min_dist']
-            self.thres_env_std = form_data['thres_env_std']
+            form_data = dialog.form.get_form_data()
+            # fix these to be at least 1/fs audio
+            self.thres_min_dist = max(form_data['thres_min_dist'], 1 / self.fs_song)
+            self.thres_env_std = max(form_data['thres_env_std'], 1 / self.fs_song)
+            logging.info("Setting parameters for envelope computation:")
+            logging.info(f"     Minimal distance between events: {self.thres_min_dist} seconds")
+            logging.info(f"     Smoothing window for envelope: {self.thres_env_std} seconds")
             self.update_xy()
 
     def update_xy(self):
