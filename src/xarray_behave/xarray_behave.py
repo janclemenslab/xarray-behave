@@ -644,7 +644,9 @@ def assemble_metrics(dataset,
         make_abs (bool, optional): [description]. Defaults to True.
         make_rel (bool, optional): [description]. Defaults to True.
         smooth_positions (bool, optional): [description]. Defaults to True.
-        infer_timestep_from_ds (bool, optional): Defaults to False.
+        infer_timestep_from_ds (bool, optional): Will infer dt for speed and accelereation calculations as the median timestep over all samples.
+                                                 CAUTION: Only correct for evenly sampled pose data.
+                                                 Defaults to False (timestep=1).
 
     Returns:
         [type]: [description]
@@ -670,11 +672,9 @@ def assemble_metrics(dataset,
     sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
     frame_rate = dataset.pose_positions.attrs['video_fps']
 
-    # TODO:
-    # - all calls get timestep arg
-    # - update spatial and time units in attrs
     if infer_timestep_from_ds:
-        timestep = 1  # do sth here with the sampling_rate of the poses? or compute mean sample interval in case data are unevenly sampled?
+        # use median interval - only correct for evenly sampled data!
+        timestep = np.nanmedian(np.diff(dataset.time.data))
     else:
         timestep = 1
 
@@ -697,9 +697,9 @@ def assemble_metrics(dataset,
 
     ds_dict = dict()
     if make_abs:
-        vels = mt.velocity(thoraces, heads)
-        accelerations = mt.acceleration(thoraces, heads)
-        chamber_acc = mt.acceleration(thoraces, ref='chamber')
+        vels = mt.velocity(thoraces, heads, timestep=timestep)
+        accelerations = mt.acceleration(thoraces, heads, timestep=timestep)
+        chamber_acc = mt.acceleration(thoraces, ref='chamber', timestep=timestep)
 
         vels_x = chamber_vels[..., 1]
         vels_y = chamber_vels[..., 0]
@@ -712,12 +712,9 @@ def assemble_metrics(dataset,
         accs_lateral = accelerations[..., 1]
         accs_mag = np.linalg.norm(accelerations, axis=2)
 
-        rotational_speed = mt.rot_speed(thoraces, heads)
-        rotational_acc = mt.rot_acceleration(thoraces, heads)
+        rotational_speed = mt.rot_speed(thoraces, heads, timestep=timestep)
+        rotational_acc = mt.rot_acceleration(thoraces, heads, timestep=timestep)
 
-        # wing_angle_left = mt.angle(heads, thoraces) - mt.angle(thoraces, wing_left)
-        # wing_angle_right = -(mt.angle(heads, thoraces) - mt.angle(thoraces, wing_right))
-        # wing_angle_sum = mt.internal_angle(wing_left,thoraces,wing_right)
         wing_angle_left = 180 - mt.internal_angle(wing_left, thoraces, heads)
         wing_angle_right = 180 - mt.internal_angle(wing_right, thoraces, heads)
         wing_angle_sum = wing_angle_left + wing_angle_right
