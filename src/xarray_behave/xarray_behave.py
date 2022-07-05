@@ -636,7 +636,7 @@ def assemble_metrics(dataset,
                      make_abs: bool = True,
                      make_rel: bool = True,
                      smooth_positions: bool = True,
-                     infer_timestep_from_ds: bool = False):
+                     use_true_times: bool = False):
     """[summary]
 
     Args:
@@ -644,9 +644,8 @@ def assemble_metrics(dataset,
         make_abs (bool, optional): [description]. Defaults to True.
         make_rel (bool, optional): [description]. Defaults to True.
         smooth_positions (bool, optional): [description]. Defaults to True.
-        infer_timestep_from_ds (bool, optional): Will infer dt for speed and accelereation calculations as the median timestep over all samples.
-                                                 CAUTION: Only correct for evenly sampled pose data.
-                                                 Defaults to False (timestep=1).
+        use_true_times (bool, optional): Will use times for each frame from the data as dt for speed and accelereation calculations.
+                                         Defaults to False (timestep=1).
 
     Returns:
         [type]: [description]
@@ -672,9 +671,8 @@ def assemble_metrics(dataset,
     sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
     frame_rate = dataset.pose_positions.attrs['video_fps']
 
-    if infer_timestep_from_ds:
-        # use median interval - only correct for evenly sampled data!
-        timestep = np.nanmedian(np.diff(dataset.time.data))
+    if use_true_times:
+        timestep = dataset.time.data
     else:
         timestep = 1
 
