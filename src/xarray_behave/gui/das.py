@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 def data_loader_wav(filename):
     # load the recording
     fs, x = scipy.io.wavfile.read(filename)
-    x = x[:, np.newaxis] if x.ndim==1 else x  # adds singleton dim for single-channel wavs
+    x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
     return fs, x
 
 
@@ -44,7 +44,7 @@ def data_loader_npz(filename):
     file = np.load(filename)
     fs = file['samplerate']
     x = file['data']
-    x = x[:, np.newaxis] if x.ndim==1 else x  # adds singleton dim for single-channel wavs
+    x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
     return fs, x
 
 
@@ -160,7 +160,7 @@ def make(data_folder: str, store_folder: str,
     store.attrs['delete_intermediate_store'] = delete_intermediate_store
 
     # first split files into a train-test and val
-    file_split_dict = collections.defaultdict(lambda: None)
+    file_split_dict: Dict = collections.defaultdict(lambda: None)
     # parts = ['train', 'val', 'test']
 
     if len(file_splits):
