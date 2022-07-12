@@ -211,6 +211,7 @@ main:
 - name: batch_size
   label: Batch size
   type: int
+  range: 0,100000
   default: 32
 
 - name: learning_rate
