@@ -1948,6 +1948,8 @@ class PSV(MainWindow):
 
         if self.threshold_mode:
             self.envelope = self.get_envelope()
+        else:
+            self.envelope = None
 
         if self.show_trace:
             self.slice_view.update_trace()
