@@ -3,7 +3,7 @@ import logging
 import collections
 from glob import glob
 import os.path
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 
 import zarr
 import numpy as np
@@ -14,7 +14,6 @@ import das.annot
 
 import scipy.signal
 import pandas as pd
-import matplotlib.pyplot as plt
 import scipy.io.wavfile
 
 from .. import annot
