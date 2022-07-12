@@ -267,15 +267,15 @@ class TraceView(pg.PlotWidget):
             env_line = pg.PlotCurveItem(x=x, y=self.m.envelope[::self.m.step], pen=pg.mkPen(color=[196, 98, 98], width=1))
             self.addItem(env_line)
 
-
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
         region = SegmentItem((onset, offset), region_typeindex, self.xrange,
                              brush=brush, pen=pen, movable=movable)
         if text is not None:
-            pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
+            pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
 
         self.addItem(region)
         if movable:
+            # update duration in label via region.sigRegionChanged.connect()
             region.sigRegionChangeFinished.connect(self.m.on_region_change_finished)
 
     def add_event(self, xx, event_type, pen, movable=False, text=None):
@@ -285,12 +285,12 @@ class TraceView(pg.PlotWidget):
         for x in xx:
             line = EventItem(x, event_type, self.xrange, movable=True, angle=90, pen=pen)
             if text is not None:
-                pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
+                pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
             line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
             self.addItem(line)
 
-    def time_to_pos(self, time):
-        return np.interp(time, self.m.trange, self.xrange)
+    def time_to_pos(self, t):
+        return np.interp(t, self.m.trange, self.xrange)
 
     def pos_to_time(self, pos):
         return np.interp(pos, self.xrange, self.m.trange)
@@ -580,7 +580,6 @@ class MovieView(utils.FastImageWidget):
         # frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
         # return frame, x_range, y_range
         return x_range, y_range
-
 
     def _click(self, event):
         event.accept()
