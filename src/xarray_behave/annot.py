@@ -244,103 +244,39 @@ class Events(UserDict):
         if name in self.categories:
             del self.categories[name]
 
-    def add_time(self,
-                 name: str,
-                 start_seconds: float,
-                 stop_seconds: float = None,
-                 add_new_name: bool = True,
-                 category: Optional[str] = None):
-        """Add a new segment/event.
+    def _get_name_of_nearest(self, time: float, min_time: Optional[float] = None, max_time: Optional[float] = None):
+        nearest_starts = dict()
+        nearest_stops = dict()
+        for name in self.keys():
+            within_range_indices = self.select_range(name, min_time, max_time, strict=False)
+            if len(within_range_indices):
+                nearest_starts[name] = self._find_nearest(self.start_seconds(name)[within_range_indices], time)
+                nearest_stops[name] = self._find_nearest(self.stop_seconds(name)[within_range_indices], time)
 
-        Args:
-            name (str): name of the segment/event.
-            start_seconds (float): start of the segment/event
-            stop_seconds (float, optional): end of the segment/event (for events, should equal start). Defaults to None (use start_seconds).
-            add_new_name (bool, optional): Add new song type if name does not exist yet. Defaults to True.
-            category (str, optional): Manually specify category here.
-        """
-        if stop_seconds is None:
-            stop_seconds = start_seconds
-
-        if name not in self and add_new_name:
-            if category is None:
-                category = 'event' if stop_seconds == start_seconds else 'segment'
-            self.add_name(name, category=category)
-
-        self[name] = np.insert(self[name],
-                               len(self[name]),
-                               sorted([start_seconds, stop_seconds]),
-                               axis=0)
-
-    def move_time(self, name: str, old_time: float, new_time: float):
-        """[summary]
-
-        Args:
-            name ([type]): [description]
-            old_time ([type]): [description]
-            new_time ([type]): [description]
-        """
-        self[name][self[name] == old_time] = new_time
-
-    def delete_time(self,
-                    time: float,
-                    name: Optional[str] = None,
-                    tol: float = 0,
-                    min_time: Optional[float] = None,
-                    max_time: Optional[float] = None):
-        """[summary]
-
-        Args:
-            name ([type], optional): [description]. Defaults to None.
-            time ([type], optional): [description]. Defaults to None.
-            tol (int, optional): [description]. Defaults to 0.
-            min_time ([type], optional): [description]. Defaults to None.
-            max_time ([type], optional): [description]. Defaults to None.
-
-        Returns:
-            [type]: [description]
-        """
-        # TODO:
-        # [ ] if hover - relevant for overlapping segments - delete that event (detect hover by checking self.mouseHovering for all LinearRegionItems in view)
-        # [x] otherwise - provide min/max time and delete neareast event in view
-        # [x] delete by matching both start and stop
-        # [ ] refactor - have basic `delete_time(name, time)`, and then `delete_nearest(name, time, min_time, max_time)``
-        if name is None:
-            nearest_starts = dict()
-            nearest_stops = dict()
-            for name in self.keys():
-                within_range_indices = self.select_range(name,
-                                                         min_time,
-                                                         max_time,
-                                                         strict=False)
-                if len(within_range_indices):
-                    nearest_starts[name] = self._find_nearest(
-                        self.start_seconds(name)[within_range_indices], time)
-                    nearest_stops[name] = self._find_nearest(
-                        self.stop_seconds(name)[within_range_indices], time)
-
-            if len(nearest_starts):
-                nearest_starts_times = list(nearest_starts.values())
-                nearest_stops_times = list(nearest_stops.values())
-                nearest_names = list(nearest_starts.keys())
-                distance_start = np.abs(time - np.array(nearest_starts_times))
-                distance_stop = np.abs(time - np.array(nearest_stops_times))
-                if np.min(distance_start) < np.min(distance_stop):
-                    name = nearest_names[np.nanargmin(distance_start)]
-                else:
-                    name = nearest_names[np.nanargmin(distance_stop)]
+        if len(nearest_starts):
+            nearest_starts_times = list(nearest_starts.values())
+            nearest_stops_times = list(nearest_stops.values())
+            nearest_names = list(nearest_starts.keys())
+            distance_start = np.abs(time - np.array(nearest_starts_times))
+            distance_stop = np.abs(time - np.array(nearest_stops_times))
+            if np.min(distance_start) < np.min(distance_stop):
+                name = nearest_names[np.nanargmin(distance_start)]
             else:
-                return None, []
+                name = nearest_names[np.nanargmin(distance_stop)]
+        else:
+            name = None
+        return name
 
-        within_range_indices = self.select_range(name,
-                                                 min_time,
-                                                 max_time,
-                                                 strict=False)
+    def _get_index_of_nearest(self,
+                              time: float,
+                              name: str,
+                              tol: float = 0,
+                              min_time: Optional[float] = None,
+                              max_time: Optional[float] = None):
+        within_range_indices = self.select_range(name, min_time, max_time, strict=False)
         if len(within_range_indices):
-            nearest_start = self._find_nearest(
-                self.start_seconds(name)[within_range_indices], time)
-            nearest_stop = self._find_nearest(
-                self.stop_seconds(name)[within_range_indices], time)
+            nearest_start = self._find_nearest(self.start_seconds(name)[within_range_indices], time)
+            nearest_stop = self._find_nearest(self.stop_seconds(name)[within_range_indices], time)
         else:
             nearest_start = None
             nearest_stop = None
@@ -370,7 +306,106 @@ class Events(UserDict):
         else:
             event_at_time = False
 
-        if event_at_time:
+        if not event_at_time:
+            return None
+        else:
+            return index
+
+    def change_name(self,
+                    time: float,
+                    new_name: str,
+                    tol: float = 0,
+                    min_time: Optional[float] = None,
+                    max_time: Optional[float] = None) -> Tuple[Optional[List[int]], Optional[str], Optional[str]]:
+        """Change the name of the annotation.
+
+        Args:
+            time (float): Time point of/near annotation.
+            new_name (str): New name for the annotation
+            tol (float, optional): Tolerance for matching events. Defaults to 0.
+            min_time (Optional[float], optional): _description_. Defaults to None.
+            max_time (Optional[float], optional): _description_. Defaults to None.
+
+        Returns:
+            Tuple[List[int], str, str]: ([start_seconds, stop_seconds], old_name, new_name
+            Tuple[None, None, None] if no event near time, or new_name is old_name
+        """
+        name = self._get_name_of_nearest(time, min_time, max_time)
+
+        # nothing to do
+        if name is None or name == new_name or self.categories[name] != self.categories[new_name]:
+            return None, None, None
+
+        index = self._get_index_of_nearest(time, name, tol, min_time, max_time)
+        if index is not None:
+            changed_time = self[name][index, :]
+            old_name = name
+            self[old_name] = np.delete(self[old_name], index, axis=0)
+            self.add_time(new_name, *changed_time)
+            return changed_time, old_name, new_name
+        else:
+            return None, None, None
+
+    def add_time(self,
+                 name: str,
+                 start_seconds: float,
+                 stop_seconds: float = None,
+                 add_new_name: bool = True,
+                 category: Optional[str] = None):
+        """Add a new segment/event.
+
+        Args:
+            name (str): name of the segment/event.
+            start_seconds (float): start of the segment/event
+            stop_seconds (float, optional): end of the segment/event (for events, should equal start). Defaults to None (use start_seconds).
+            add_new_name (bool, optional): Add new song type if name does not exist yet. Defaults to True.
+            category (str, optional): Manually specify category here.
+        """
+        if stop_seconds is None:
+            stop_seconds = start_seconds
+
+        if name not in self and add_new_name:
+            if category is None:
+                category = 'event' if stop_seconds == start_seconds else 'segment'
+            self.add_name(name, category=category)
+
+        self[name] = np.insert(self[name], len(self[name]), sorted([start_seconds, stop_seconds]), axis=0)
+
+    def move_time(self, name: str, old_time: float, new_time: float):
+        """[summary]
+
+        Args:
+            name ([type]): [description]
+            old_time ([type]): [description]
+            new_time ([type]): [description]
+        """
+        self[name][self[name] == old_time] = new_time
+
+    def delete_time(self,
+                    time: float,
+                    name: Optional[str] = None,
+                    tol: float = 0,
+                    min_time: Optional[float] = None,
+                    max_time: Optional[float] = None):
+        """[summary]
+
+        Args:
+            name ([type], optional): [description]. Defaults to None.
+            time ([type], optional): [description]. Defaults to None.
+            tol (int, optional): [description]. Defaults to 0.
+            min_time ([type], optional): [description]. Defaults to None.
+            max_time ([type], optional): [description]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """
+        if name is None:
+            name = self._get_name_of_nearest(time, min_time, max_time)
+            if name is None:
+                return None, []
+
+        index = self._get_index_of_nearest(time, name, tol, min_time, max_time)
+        if index is not None:
             deleted_time = self[name][index, :]
             deleted_name = name
             self[name] = np.delete(self[name], index, axis=0)

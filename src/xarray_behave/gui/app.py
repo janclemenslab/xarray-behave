@@ -2121,7 +2121,29 @@ class PSV(MainWindow):
         """
         if self.current_event_index is None:
             return
-        if mouseButton == 1:  # add event
+
+        modifiers = QtWidgets.QApplication.keyboardModifiers()
+
+        if mouseButton == 1 and modifiers == QtCore.Qt.ControlModifier:  # change event type
+            self.sinet0 = None
+
+            if not self.edit_only_current_events:
+                return
+            else:
+                current_event_name = self.current_event_name
+
+            changed_time, old_name, new_name = self.event_times.change_name(time=mouseT,
+                                                                      new_name=current_event_name,
+                                                                      tol=0.05,
+                                                                      min_time=self.time0 / self.fs_song,
+                                                                      max_time=self.time1 / self.fs_song)
+            if changed_time is not None:
+                if self.event_times.categories[self.current_event_name] == 'event':
+                    logging.info(f"  Changed event at {changed_time[0]:1.4f} from {old_name} to {new_name}.")
+                else:
+                    logging.info(f"  Changed segment at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}.")
+                self.update_xy()
+        elif mouseButton == 1:  # add event
             if self.current_event_index is not None:
                 if self.event_times.categories[self.current_event_name] == 'segment':
                     if self.sinet0 is None:
