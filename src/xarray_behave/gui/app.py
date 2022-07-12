@@ -772,7 +772,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if filename:
             # infer loader from file name and set default in form
             # infer samplerate (catch error) and set default in form
-            samplerate = 10_000  # Hz
+            samplerate = None  # Hz
             datasets = ['']
 
             if filename.endswith('.npz'):
@@ -786,9 +786,9 @@ class MainWindow(QtWidgets.QMainWindow):
                             try:
                                 samplerate = file['samplerate_Hz']
                             except KeyError:
-                                samplerate = None
+                                pass
                 except KeyError:
-                    logging.info(f'{filename} no sample rate info in NPZ file. Need to save "samplerate" variable with the audio data.')
+                    logging.info(f'{filename} no sample rate info in NPZ file. Need to save "samplerate" variable with the audio data. Defaulting to {samplerate}')
             elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5') or filename.endswith('.mat'):
                 # infer data set (for hdf5) and populate form
                 try:
@@ -809,8 +809,12 @@ class MainWindow(QtWidgets.QMainWindow):
                                 title=f'Load {filename}')
 
             dialog.form['target_samplingrate'] = 1_000
-            dialog.form['samplerate'] = samplerate
-            dialog.form['spec_freq_max'] = samplerate / 2
+            if samplerate is None:
+                samplerate = 10_000
+                dialog.form['samplerate'] = samplerate
+            else:
+                dialog.form['samplerate'] = samplerate
+                dialog.form['spec_freq_max'] = samplerate / 2
 
             dialog.form.fields['data_set'].set_options(datasets)  # add datasets
             dialog.form.fields['data_set'].setValue(datasets[0])  # select first
