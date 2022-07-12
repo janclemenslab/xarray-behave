@@ -260,8 +260,6 @@ class Sleap(Poses, io.BaseProvider):
             else:
                 pose_parts = f['node_names'][:]
 
-            # track_names = f['track_names']
-            # track_occupancy = f['track_occupancy'][:]
             tracks = f['tracks'][:]  # flies, (x/y), bodypart, frame
 
         poses_allo = tracks.transpose([3, 0, 2, 1])   # -> [frames, flies, bodypart, x/y]
