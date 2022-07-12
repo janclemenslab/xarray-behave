@@ -599,6 +599,45 @@ def add_time(ds, ss, dim: str = 'frame_number', suffix: str = ''):
     return ds
 
 
+def _interp(ds, dim, target_frames_float, interp_kwargs={}):
+    new_shape = list(ds.shape)
+    new_shape[0] = len(target_frames_float)
+
+    # interp for first item to get interp all coords correctly
+    ds_new = ds[:, :1, ...].interp({dim: target_frames_float}, assume_sorted=True, kwargs=interp_kwargs)
+
+    # but now the first dim is size 1 - so we need to fix this
+    coords = ds_new.coords
+    # maps for the too short dims: dim name - ref dim
+    coords_map = {'flies': 'flies', 'chambers': 'flies', 'data_ball': 'data_ball', 'params_movie':'params_movie'}
+    new_coords = {}
+    for key in coords_map.keys():
+        if key in coords:
+            new_coords[key] = ds.coords[key].data  # keep the data from the too short dim
+            del coords[key]  # remove the too short dim
+
+    # make new DataArray missing values for the too short dims
+    ds_x = xr.DataArray(data=np.empty(new_shape), coords=coords)
+    ds_x.attrs = ds.attrs.copy()
+
+    # add back in the too short dims from the original ds
+    for key in new_coords.keys():
+        ds_x.coords[key] = ((coords_map[key]), new_coords[key])
+
+    # no need to run interp for the first dim again
+    ds_x.data[:, 0, ...] = ds_new.data[:, 0, ...]
+    del ds_new
+
+    # now interp all remaining dims
+    for fly in range(1, new_shape[1]):
+        interpolator = scipy.interpolate.interp1d(ds[dim].data, ds.data[:, fly, ...], axis=0,
+                                                  bounds_error=False, assume_sorted=True,
+                                                  **interp_kwargs)
+        ds_x.data[:, fly, ...] = interpolator(target_frames_float)
+
+    return ds_x
+
+
 def align_time(ds,
                ss,
                target_samples,
@@ -612,7 +651,10 @@ def align_time(ds,
     interp_kwargs = {}
     if extrapolate:
         interp_kwargs['fill_value'] = 'extrapolate'
-    ds = ds.interp({dim: target_frames_float}, assume_sorted=True, kwargs=interp_kwargs)
+
+    ds = _interp(ds, dim, target_frames_float, interp_kwargs)
+    # ds = ds.interp({dim: target_frames_float}, assume_sorted=True, kwargs=interp_kwargs)
+
     ds = ds.drop_vars(['frame_number' + suffix, 'frame_times' + suffix, 'frame_samples' + suffix], errors='Ignore')
 
     # time_new = ds['frametimes' + suffix] - ref_time
@@ -644,7 +686,8 @@ def assemble_metrics(dataset,
         make_abs (bool, optional): [description]. Defaults to True.
         make_rel (bool, optional): [description]. Defaults to True.
         smooth_positions (bool, optional): [description]. Defaults to True.
-        use_true_times (bool, optional): Will use times for each frame from the data as dt for speed and accelereation calculations.
+        use_true_times (bool, optional): Will use times for each frame from the data as dt
+                                         for speed and acceleration calculations.
                                          Defaults to False (timestep=1).
 
     Returns:
@@ -862,8 +905,6 @@ def save(savepath, dataset):
 
 def _normalize_strings(dataset):
     """Ensure all keys in coords are proper (unicode?) python strings, not byte strings."""
-    dn = dict()
-
     for key, val in dataset.coords.items():
         if val.dtype == 'S16':
             dataset[key] = [v.decode() for v in val.data]
