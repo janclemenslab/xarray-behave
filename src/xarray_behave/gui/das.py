@@ -266,8 +266,7 @@ def make(data_folder: str, store_folder: str,
             block_names = [file_split_dict[file_base]]
             logger.info(f'      File added to {file_split_dict[file_base]} data.')
         elif block_stratify:  # split data from each remaining file into train and test chunks according to `splits`
-            block_size = int(block_size * fs)
-            block_stats_map = das.block_stratify.blockstats_from_data(data=y, block_size=block_size)
+            block_stats_map = das.block_stratify.blockstats_from_data(data=y, block_size=int(block_size * fs))
             block_stats = list(block_stats_map.values())
             split_points = list(block_stats_map.keys())
             blocks_x = das.block_stratify.blocks_from_split_points(x, split_points)
