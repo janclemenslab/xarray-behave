@@ -53,7 +53,7 @@ from .formbuilder import YamlDialog
 
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
-package_dir = xarray_behave.__path__[0]
+package_dir: str = xarray_behave.__path__[0]
 
 
 class ChkBxFileDialog(QtWidgets.QFileDialog):
@@ -98,11 +98,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
             self.app = QtGui.QApplication([])
-        self.app.setWindowIcon(QtGui.QIcon(package_dir  + '/gui/icon.png'))
+        self.app.setWindowIcon(QtGui.QIcon(package_dir + '/gui/icon.png'))
 
         self.resize(400, 200)
         self.setWindowTitle(title)
-        self.setWindowIcon(QtGui.QIcon(package_dir  + '/gui/icon.png'))
+        self.setWindowIcon(QtGui.QIcon(package_dir + '/gui/icon.png'))
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
 
         # build menu
@@ -558,7 +558,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 # progress = qt_logger.MyDialog(stop_event=stop_event)
                 # progress.show()
                 # progress.raise_()
-
 
                 form_data['_qt_progress'] = (queue, stop_event)
                 worker_training = utils.Worker(das.train.train, **form_data)
@@ -1174,7 +1173,7 @@ class PSV(MainWindow):
         try:
             import numba
             pg.setConfigOptions(useNumba=True)   # appears to be faster that way
-        except:
+        except ImportError:
             pass
         # build model:
         self.ds = ds
@@ -1326,7 +1325,7 @@ class PSV(MainWindow):
 
         view_play = self.bar.addMenu("Playback")
         self._add_keyed_menuitem(view_play, "Play video", self.toggle_playvideo, "Space",
-                                checkable=True, checked=not self.STOP)
+                                 checkable=True, checked=not self.STOP)
         view_play.addSeparator()
         self._add_keyed_menuitem(view_play, " < Reverse one frame", self.single_frame_reverse, "Left"),
         self._add_keyed_menuitem(view_play, "<< Reverse jump", self.jump_reverse, "A")
@@ -1342,35 +1341,35 @@ class PSV(MainWindow):
 
         view_video = self.bar.addMenu("Video")
         self._add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), "C",
-                                checkable=True, checked=self.crop)
+                                 checkable=True, checked=self.crop)
         self._add_keyed_menuitem(view_video, "Flip frame left-right", partial(self.toggle, 'frame_fliplr'), None,
-                                checkable=True, checked=self.frame_fliplr)
+                                 checkable=True, checked=self.frame_fliplr)
         self._add_keyed_menuitem(view_video, "Flip frame up-down", partial(self.toggle, 'frame_flipud'), None,
-                                checkable=True, checked=self.frame_flipud)
+                                 checkable=True, checked=self.frame_flipud)
         self._add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, "F")
         self._add_keyed_menuitem(view_video, "Change other fly", self.change_other_fly, "Z")
         self._add_keyed_menuitem(view_video, "Swap flies", self.swap_flies, "X")
         view_video.addSeparator()
         self._add_keyed_menuitem(view_video, "Move poses", partial(self.toggle, 'move_poses'), "B",
-                                checkable=True, checked=self.move_poses)
+                                 checkable=True, checked=self.move_poses)
         view_video.addSeparator()
         self._add_keyed_menuitem(view_video, "Show fly position", partial(self.toggle, 'show_dot'), "O",
-                                checkable=True, checked=self.show_dot)
+                                 checkable=True, checked=self.show_dot)
         self._add_keyed_menuitem(view_video, "Show poses", partial(self.toggle, 'show_poses'), "P",
-                                checkable=True, checked=self.show_poses)
+                                 checkable=True, checked=self.show_poses)
 
         view_audio = self.bar.addMenu("Audio")
         self._add_keyed_menuitem(view_audio, "Play waveform through speakers", self.play_audio, "E")
         view_audio.addSeparator()
         self._add_keyed_menuitem(view_audio, "Show all channels", partial(self.toggle, 'show_all_channels'), None,
-                                checkable=True, checked=self.show_all_channels)
+                                 checkable=True, checked=self.show_all_channels)
         self._add_keyed_menuitem(view_audio, "Auto-select loudest channel", partial(self.toggle, 'select_loudest_channel'), "Q",
-                                checkable=True, checked=self.select_loudest_channel)
+                                 checkable=True, checked=self.select_loudest_channel)
         self._add_keyed_menuitem(view_audio, "Select previous channel", self.set_next_channel, "Up")
         self._add_keyed_menuitem(view_audio, "Select next channel", self.set_prev_channel, "Down")
         view_audio.addSeparator()
         self._add_keyed_menuitem(view_audio, "Show spectrogram", partial(self.toggle, 'show_spec'), None,
-                                checkable=True, checked=self.show_spec)
+                                 checkable=True, checked=self.show_spec)
         self._add_keyed_menuitem(view_audio, "Set spectrogram display parameters", self.set_spec_freq)
         self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.inc_freq_res, "R")
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.dec_freq_res, "T")
@@ -1379,40 +1378,39 @@ class PSV(MainWindow):
         view_annotations = self.bar.addMenu("Annotations")
         self._add_keyed_menuitem(view_annotations, "Add or edit song types", self.edit_annotation_types)
         self._add_keyed_menuitem(view_annotations, "Show annotations", partial(self.toggle, 'show_songevents'), "V",
-                                checkable=True, checked=self.show_songevents)
+                                 checkable=True, checked=self.show_songevents)
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Allow moving annotations", partial(self.toggle, 'movable_events'), "M",
-                                checkable=True, checked=self.movable_events)
+                                 checkable=True, checked=self.movable_events)
         self._add_keyed_menuitem(view_annotations, "Only edit active song type", partial(self.toggle, 'edit_only_current_events'), None,
-                                checkable=True, checked=self.edit_only_current_events)
+                                 checkable=True, checked=self.edit_only_current_events)
         self._add_keyed_menuitem(view_annotations, "Show segment labels", partial(self.toggle, 'show_segment_text'), None,
-                                checkable=True, checked=self.show_segment_text)
+                                 checkable=True, checked=self.show_segment_text)
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Delete active song type in view",
-                                self.delete_current_events, "U")
+                                 self.delete_current_events, "U")
         self._add_keyed_menuitem(view_annotations, "Delete all song types in view", self.delete_all_events, "Y")
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Toggle thresholding mode", partial(self.toggle, 'threshold_mode'),
-                                checkable=True, checked=self.threshold_mode)
+                                 checkable=True, checked=self.threshold_mode)
         self._add_keyed_menuitem(view_annotations, "Generate proposal by envelope thresholding", self.threshold, "I")
         self._add_keyed_menuitem(view_annotations, "Adjust thresholding mode", self.set_envelope_computation)
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Approve proposals for active song type in view", self.approve_active_proposals, "G")
         self._add_keyed_menuitem(view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals, "H")
 
-
         view_view = self.bar.addMenu("View")
         # TODO? only show these if tracks and/or video
         self._add_keyed_menuitem(view_view, "Show spectrogram", partial(self.toggle, 'show_spec'), None,
-                                checkable=True, checked=self.show_spec)
+                                 checkable=True, checked=self.show_spec)
         self._add_keyed_menuitem(view_view, "Show waveform", partial(self.toggle, 'show_trace'), None,
-                                checkable=True, checked=self.show_trace)
+                                 checkable=True, checked=self.show_trace)
         if 'pose_positions_allo' in self.ds:
             self._add_keyed_menuitem(view_view, "Show tracks", partial(self.toggle, 'show_tracks'), None,
-                                    checkable=True, checked=self.show_tracks)
+                                     checkable=True, checked=self.show_tracks)
         if self.vr is not None:
             self._add_keyed_menuitem(view_view, "Show movie", partial(self.toggle, 'show_movie'), None,
-                                    checkable=True, checked=self.show_movie)
+                                     checkable=True, checked=self.show_movie)
 
         self.hl = QtWidgets.QHBoxLayout()
 
@@ -1422,7 +1420,7 @@ class PSV(MainWindow):
         self.cb.currentIndexChanged.connect(self.update_xy)
 
         def ta():
-            if self.cb.currentText()=='Initialize song types':
+            if self.cb.currentText() == 'Initialize song types':
                 self.edit_annotation_types()
         self.cb.activated.connect(ta)
 
@@ -1526,7 +1524,7 @@ class PSV(MainWindow):
             try:
                 frame_number = float(source.text())
                 # get sampletime from framenumber
-                idx = np.argmax(self.ds.nearest_frame.data>=frame_number)
+                idx = np.argmax(self.ds.nearest_frame.data >= frame_number)
                 self.t0 = self.ds.nearest_frame[idx].time.values * self.fs_song
             except Exception as e:
                 print(e)
@@ -1612,8 +1610,8 @@ class PSV(MainWindow):
     def framenumber(self):
         if 'nearest_frame' in self.ds.coords:
             try:  # in case nearest_frame is nan
-                time = self.ds.sampletime.data[int(self.t0)]
-                return int(self.ds.nearest_frame.sel(time=time, method='nearest'))
+                t = self.ds.sampletime.data[int(self.t0)]
+                return int(self.ds.nearest_frame.sel(time=t, method='nearest'))
             except:
                 pass
 
