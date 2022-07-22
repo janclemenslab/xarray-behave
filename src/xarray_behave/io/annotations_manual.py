@@ -15,7 +15,7 @@ class Manual_xb_csv(io.BaseProvider):
 
     KIND = 'annotations_manual'
     NAME = 'XB csv'
-    SUFFIXES = ['_annotations.csv', '_songmanual.csv']
+    SUFFIXES = ['_annotations.csv', '_songmanual.csv', '.csv']
 
     def load(self, filename: Optional[str] = None):
         """Load output produced by xb."""
