@@ -689,8 +689,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     )
                     return
 
-                # batch size so that at least 10 batches are run - minimizes loss of annotations from batch size "quantiziation" errors
-                batch_size = 96
+                # batch size so that at least 10 batches are run - minimizes loss of annotations from batch size "quantization" errors
+                batch_size = 32
                 nb_batches = lambda batch_size: int(
                     np.floor((audio.shape[0] - (((batch_size - 1)) + params['nb_hist'])) / (params['stride'] * (batch_size))))
                 while nb_batches(batch_size) < 10 and batch_size > 1:
