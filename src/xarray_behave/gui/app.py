@@ -1518,6 +1518,8 @@ class PSV(MainWindow):
                                  "H")
 
         view_view = self.bar.addMenu("View")
+        self._add_keyed_menuitem(view_view, "Video, waveform, and spectrogram display parameters", self.set_spec_freq)
+        view_view.addSeparator()
         # TODO? only show these if tracks and/or video
         self._add_keyed_menuitem(view_view,
                                  "Show spectrogram",
