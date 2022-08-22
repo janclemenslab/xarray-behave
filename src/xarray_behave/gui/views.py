@@ -16,7 +16,6 @@ from typing import Tuple
 from .. import xarray_behave as xb
 from . import utils
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -36,9 +35,15 @@ class Model():
 
 class SegmentItem(pg.LinearRegionItem):
 
-    def __init__(self, bounds: Tuple[float, float], event_index: int, xrange,
-                 time_bounds: Tuple[float, float] = None, movable=True,
-                 pen=None, brush=None, **kwargs):
+    def __init__(self,
+                 bounds: Tuple[float, float],
+                 event_index: int,
+                 xrange,
+                 time_bounds: Tuple[float, float] = None,
+                 movable=True,
+                 pen=None,
+                 brush=None,
+                 **kwargs):
         """[summary]
 
         Args:
@@ -64,9 +69,7 @@ class SegmentItem(pg.LinearRegionItem):
 
 class EventItem(pg.InfiniteLine):
 
-    def __init__(self, position: float, event_index: int, xrange,
-                 time_pos=None, movable=True,
-                 pen=None, **kwargs):
+    def __init__(self, position: float, event_index: int, xrange, time_pos=None, movable=True, pen=None, **kwargs):
         """[summary]
 
         Args:
@@ -92,6 +95,7 @@ class EventItem(pg.InfiniteLine):
 
 class Draggable(pg.GraphItem):
     """Draggable point cloud or graph."""
+
     def __init__(self, callback, acceptDrags=True):
         self.dragPoint = None
         self.dragOffset = None
@@ -136,7 +140,6 @@ class Draggable(pg.GraphItem):
         pg.GraphItem.setData(self, **self.data)
         for i, item in enumerate(self.textItems):
             item.setPos(*self.data['pos'][i])
-
 
     def mouseDragEvent(self, ev):
         if ev.button() != QtCore.Qt.LeftButton or not self.acceptDrags:
@@ -208,12 +211,13 @@ class TraceView(pg.PlotWidget):
         self.callback = callback
         self.getPlotItem().mouseClickEvent = self._click
 
-        self.threshold_line = pg.InfiniteLine(movable=True, angle=0,
-                                pos=0,
-                                pen=pg.mkPen(color='r', width=2, alpha=0.25),
-                                bounds=[0, None],
-                                label='Threshold',
-                                labelOpts={'position': 0.9})
+        self.threshold_line = pg.InfiniteLine(movable=True,
+                                              angle=0,
+                                              pos=0,
+                                              pen=pg.mkPen(color='r', width=2, alpha=0.25),
+                                              bounds=[0, None],
+                                              label='Threshold',
+                                              labelOpts={'position': 0.9})
 
         self.annotation_items = []
 
@@ -243,7 +247,7 @@ class TraceView(pg.PlotWidget):
 
         # draw background channels
         if self.m.nb_channels is not None and self.m.show_all_channels and self.m.y_other is not None:
-            y_other = self.m.y_other[::int(self.m.step*2), :]
+            y_other = self.m.y_other[::int(self.m.step * 2), :]
             x_other = self.m.x[::int(self.m.step * 2)]
             for chan in range(self.m.nb_channels - 1):
                 item = pg.PlotCurveItem(x_other, y_other[:, chan], pen=pg.mkPen(color=[127, 127, 127]))
@@ -251,7 +255,9 @@ class TraceView(pg.PlotWidget):
 
         # plot active channel
         x = self.m.x[::self.m.step]
-        item = pg.PlotCurveItem(x=x, y=np.array(self.m.y[::self.m.step], dtype=np.float), pen=pg.mkPen(color=[220, 220, 220], width=1))
+        item = pg.PlotCurveItem(x=x,
+                                y=np.array(self.m.y[::self.m.step], dtype=np.float),
+                                pen=pg.mkPen(color=[220, 220, 220], width=1))
         self.addItem(item)
         # self.autoRange(padding=0)
         if self._m.ylim is None:
@@ -261,8 +267,7 @@ class TraceView(pg.PlotWidget):
             self.setXRange(np.min(x), np.max(x))
 
         # time of current frame in trace
-        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90,
-                                   pen=pg.mkPen(color='r', width=1))
+        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90, pen=pg.mkPen(color='r', width=1))
         self.addItem(pos_line)
 
         # draw actice envelope and threshold
@@ -272,8 +277,7 @@ class TraceView(pg.PlotWidget):
             self.addItem(env_line)
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
-        region = SegmentItem((onset, offset), region_typeindex, self.xrange,
-                             brush=brush, pen=pen, movable=movable)
+        region = SegmentItem((onset, offset), region_typeindex, self.xrange, brush=brush, pen=pen, movable=movable)
         if text is not None:
             pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
 
@@ -319,7 +323,9 @@ class TrackView(TraceView):
         self.autoRange(padding=0)
 
         # time of current frame in trace
-        pos_line = pg.InfiniteLine(self.m.x_tracks[int(self.m.span / self.m.fs_ratio / 2)], movable=False, angle=90,
+        pos_line = pg.InfiniteLine(self.m.x_tracks[int(self.m.span / self.m.fs_ratio / 2)],
+                                   movable=False,
+                                   angle=90,
                                    pen=pg.mkPen(color='r', width=1))
         self.addItem(pos_line)
 
@@ -348,8 +354,7 @@ class SpecView(pg.ImageView):
         self.t_step = 1
         self.max_pix = 6_000
 
-        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90,
-                                        pen=pg.mkPen(color='r', width=1))
+        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(color='r', width=1))
         self.addItem(self.pos_line)
 
         cmap = pg.colormap.getFromMatplotlib(colormap)
@@ -364,7 +369,7 @@ class SpecView(pg.ImageView):
     @property
     def xrange(self):
         try:  # to prevent failure on init
-            return (0, self.S.shape[1]) #np.array(self.view.viewRange()[0])
+            return (0, self.S.shape[1])  #np.array(self.view.viewRange()[0])
         except AttributeError:
             return None
 
@@ -404,8 +409,12 @@ class SpecView(pg.ImageView):
         # to accelerate calc
         nfft = spec_win * max(1, 4 // self.t_step)
 
-        f, t, psd = scipy.signal.spectrogram(y, self.m.fs_song, nperseg=spec_win,
-                                             noverlap=spec_win // 2, nfft=nfft, mode='magnitude')
+        f, t, psd = scipy.signal.spectrogram(y,
+                                             self.m.fs_song,
+                                             nperseg=spec_win,
+                                             noverlap=spec_win // 2,
+                                             nfft=nfft,
+                                             mode='magnitude')
 
         # select freq limits
         f_idx0 = 0
@@ -424,10 +433,15 @@ class SpecView(pg.ImageView):
         return S, f[f_idx0:f_idx1], t
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
-        region = SegmentItem((onset, offset), region_typeindex, self.xrange,
-                             time_bounds=(onset, offset), brush=brush, pen=pen, movable=movable)
+        region = SegmentItem((onset, offset),
+                             region_typeindex,
+                             self.xrange,
+                             time_bounds=(onset, offset),
+                             brush=brush,
+                             pen=pen,
+                             movable=movable)
         if text is not None:
-            pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
+            pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
 
         self.addItem(region)
         self.old_items.append(region)
@@ -441,7 +455,7 @@ class SpecView(pg.ImageView):
         for x in xx:
             line = EventItem(x, event_type, self.xrange, time_pos=x, movable=True, angle=90, pen=pen)
             if text is not None:
-                pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1,0), anchor=(1, 1))
+                pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
             line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
             self.addItem(line)
             self.old_items.append(line)
@@ -507,7 +521,7 @@ class MovieView(utils.FastImageWidget):
     def m(self):  # read only access to the model
         return self._m
 
-    def update_frame(self, ):
+    def update_frame(self,):
         frame = self.m.vr[self.m.framenumber]
 
         if self.m.frame_fliplr:
@@ -551,8 +565,10 @@ class MovieView(utils.FastImageWidget):
             pos = np.array(self.m.ds.body_positions.data[self.m.index_other, :, self.m.track_center_index])
             cols = self.m.fly_colors
 
-        self.fly_positions.setData(pos=pos[:,::-1],
-                                   symbolBrush=self.brushes, pen=None, size=10,
+        self.fly_positions.setData(pos=pos[:, ::-1],
+                                   symbolBrush=self.brushes,
+                                   pen=None,
+                                   size=10,
                                    acceptDrags=not self.m.move_poses,
                                    focalFly=self.m.focal_fly)
 
@@ -574,9 +590,10 @@ class MovieView(utils.FastImageWidget):
     def annotate_poses(self, frame):
         poses = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, :])
         poses = poses.reshape(-1, 2)  # flatten
-        self.fly_poses.setData(pos=poses[:,::-1],
+        self.fly_poses.setData(pos=poses[:, ::-1],
                                adj=self.skeletons,
-                               symbolBrush=self.pose_brushes, size=6,
+                               symbolBrush=self.pose_brushes,
+                               size=6,
                                acceptDrags=self.m.move_poses)
         return frame
 
