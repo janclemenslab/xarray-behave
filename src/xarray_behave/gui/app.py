@@ -1207,8 +1207,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
 class ZarrOverwriteWarning(QtWidgets.QMessageBox):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
         self.setIcon(QtWidgets.QMessageBox.Warning)
         self.setText('Attempting to overwrite existing zarr file.')
         self.setInformativeText("This can corrupt the file and lead to data loss. \
@@ -1280,6 +1280,9 @@ class PSV(MainWindow):
         self.box_size = box_size
         self.fmin = fmin
         self.fmax = fmax
+        self.ylim = None
+        self.spec_denoise = False
+        self.spec_levels = [None, None]
 
         self.tmin = 0
         if 'song' in self.ds:
@@ -1481,7 +1484,6 @@ class PSV(MainWindow):
                                  None,
                                  checkable=True,
                                  checked=self.show_spec)
-        self._add_keyed_menuitem(view_audio, "Set spectrogram display parameters", self.set_spec_freq)
         self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.inc_freq_res, "R")
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.dec_freq_res, "T")
         view_audio.addSeparator()
@@ -1723,6 +1725,72 @@ class PSV(MainWindow):
         self.t0 = self.t0 + 0.0000000001
         self.span = self.span + 0.0000000001
         logging.info("DAS gui initialized.")
+
+        self.update_xy()
+        self.app.processEvents()
+
+    def _update_model(self):
+        try:
+            self.update_xy()
+        except (AttributeError, ValueError) as e:
+            logging.debug(e)
+
+    @property
+    def ylim(self):
+        return self._ylim
+
+    @ylim.setter
+    def ylim(self, value: float):
+        self._ylim = value
+        self._update_model()
+
+    @property
+    def fmin(self):
+        return self._fmin
+
+    @fmin.setter
+    def fmin(self, value: float):
+        self._fmin = value
+        self._update_model()
+
+    @property
+    def fmax(self):
+        return self._fmax
+
+    @fmax.setter
+    def fmax(self, value: float):
+        self._fmax = value
+        self._update_model()
+
+    @property
+    def spec_compression_ratio(self):
+        return self._spec_compression_ratio
+
+    @spec_compression_ratio.setter
+    def spec_compression_ratio(self, value: float):
+        self._spec_compression_ratio = value
+        self._update_model()
+
+    @property
+    def spec_denoise(self):
+        return self._spec_denoise
+
+    @spec_denoise.setter
+    def spec_denoise(self, value: bool):
+        self._spec_denoise = value
+        self._update_model()
+
+    @property
+    def box_size(self):
+        return self._box_size
+
+    @box_size.setter
+    def box_size(self, value: int):
+        self._box_size = value
+        try:
+            self.update_frame()
+        except:
+            pass
 
     @property
     def fs_ratio(self):
@@ -2027,22 +2095,10 @@ class PSV(MainWindow):
         self.t0 += self.span / 2
 
     def set_spec_freq(self, qt_keycode):
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/spec_freq.yaml", title=f'Set spectrogram display options')
-        dialog.form['spec_freq_min'] = self.fmin
-        dialog.form['spec_freq_max'] = self.fmax
-        dialog.form['spec_compression_ratio'] = self.spec_compression_ratio
+        from . import view_dialog
+        dialog = view_dialog.Form(parent=self, model=self)
         dialog.show()
-
-        result = dialog.exec_()
-
-        if result == QtWidgets.QDialog.Accepted:
-            form_data = dialog.form.get_form_data()  # why call this twice
-            self.fmin = form_data['spec_freq_min']
-            self.fmax = form_data['spec_freq_max']
-            self.spec_compression_ratio = float(form_data['spec_compression_ratio'])
-            logging.info(
-                f'Set frequency range to {self.fmin}:{self.fmax} Hz and compression ratio to {self.spec_compression_ratio}.')
-            self.update_xy()
+        dialog.exec_()
 
     def set_envelope_computation(self, qt_keycode):
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/envelope_computation.yaml",

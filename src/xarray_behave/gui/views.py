@@ -191,7 +191,7 @@ class Draggable(pg.GraphItem):
 # (so make ds-ref in View read-only via @property)
 class TraceView(pg.PlotWidget):
 
-    def __init__(self, model, callback):
+    def __init__(self, model, callback, ylim=None):
         # additionally make names of trace and event arrays in ds args?
         super().__init__()
         self.setMouseEnabled(x=False, y=False)
@@ -199,7 +199,7 @@ class TraceView(pg.PlotWidget):
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
         self.disableAutoRange()
         self.enableAutoRange(False, False)
-
+        self.setDefaultPadding(0.0)
         # leave enought space so axes are aligned aligned
         y_axis = self.getAxis('left')
         y_axis.setWidth(50)
@@ -253,8 +253,12 @@ class TraceView(pg.PlotWidget):
         x = self.m.x[::self.m.step]
         item = pg.PlotCurveItem(x=x, y=np.array(self.m.y[::self.m.step], dtype=np.float), pen=pg.mkPen(color=[220, 220, 220], width=1))
         self.addItem(item)
-
-        self.autoRange(padding=0)
+        # self.autoRange(padding=0)
+        if self._m.ylim is None:
+            self.autoRange(padding=0)
+        else:
+            self.setYRange(-self._m.ylim, self._m.ylim)
+            self.setXRange(np.min(x), np.max(x))
 
         # time of current frame in trace
         pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90,
@@ -375,16 +379,22 @@ class SpecView(pg.ImageView):
         [self.removeItem(item) for item in self.old_items]  # remove annotations <- slowest part of update_spec!!!
 
     def update_spec(self, x, y):
-        self.S, f, t = self._calc_spec(tuple(y), self.m.spec_win, self.m.spec_compression_ratio)  # tuple-ify for caching
+        self.S, f, t = self._calc_spec(tuple(y), self.m.spec_win, self.m.spec_compression_ratio, self.m.fmin,
+                                       self.m.fmax, self.m.spec_denoise)  # tuple-ify for caching
         trange = (self.m.x[-1] - self.m.x[0])
         self.max_pix = 6_000
         self.t_step = max(1, self.S.shape[1] // self.max_pix)
-        self.setImage(self.S.T[::self.t_step], autoRange=False, scale=[trange / len(t) * self.t_step, (f[-1] - f[0]) / len(f)], pos=[self.m.x[0], f[0]])
+        self.setImage(self.S.T[::self.t_step],
+                      autoRange=False,
+                      scale=[trange / len(t) * self.t_step, (f[-1] - f[0]) / len(f)],
+                      autoLevels=None in self.m.spec_levels,
+                      levels=None if None in self.m.spec_levels else self.m.spec_levels,
+                      pos=[self.m.x[0], f[0]])
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
     @lru_cache(maxsize=4, typed=False)
-    def _calc_spec(self, y, spec_win, spec_compression_ratio):
+    def _calc_spec(self, y, spec_win, spec_compression_ratio, fmin, fmax, spec_denoise: bool):
         y = np.array(y)
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
@@ -399,14 +409,18 @@ class SpecView(pg.ImageView):
 
         # select freq limits
         f_idx0 = 0
-        if self.m.fmin is not None:
+        if fmin is not None:
             f_idx0 = np.argmax(f >= self.m.fmin)
         f_idx1 = -1
-        if self.m.fmax is not None:
+        if fmax is not None:
             f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
 
-        S = np.log2(1 + 2**spec_compression_ratio * psd[f_idx0:f_idx1, :])
-        S = S / np.max(S) * 255  # normalize to 0...255
+        S = psd[f_idx0:f_idx1, :]
+        if spec_denoise:
+            noise_floor = np.nanmedian(S, axis=1, keepdims=True)
+            S /= noise_floor
+        S = np.log2(1.0 + 2.0**spec_compression_ratio * S)
+        # S = S / np.max(S) * 255  # normalize to 0...255
         return S, f[f_idx0:f_idx1], t
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
