@@ -1219,6 +1219,19 @@ class ZarrOverwriteWarning(QtWidgets.QMessageBox):
         self.setEscapeButton(QtWidgets.QMessageBox.Abort)
 
 
+class NoEventsRegisteredWarning(QtWidgets.QMessageBox):
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.setIcon(QtWidgets.QMessageBox.Warning)
+        self.setText('No song types added')
+        self.setInformativeText("To annotate song, you first need to add song types.")
+        self.setStandardButtons(QtWidgets.QMessageBox.Ignore)
+        self.button = self.addButton(self.tr("Add song types"), QtWidgets.QMessageBox.ActionRole)
+        self.setDefaultButton(QtWidgets.QMessageBox.Ignore)
+        self.setEscapeButton(QtWidgets.QMessageBox.Ignore)
+
+
 class PSV(MainWindow):
 
     MAX_AUDIO_AMP = 3.0
@@ -2272,7 +2285,11 @@ class PSV(MainWindow):
         song event at click position.
         """
         if self.current_event_index is None:
-            return
+            msgbox = NoEventsRegisteredWarning(
+                parent=self)  # display dialog with button leading to the add/edit events dialog
+            msgbox.exec()
+            if msgbox.clickedButton() == msgbox.button:
+                self.edit_annotation_types(dialog=None)
 
         modifiers = QtWidgets.QApplication.keyboardModifiers()
 
