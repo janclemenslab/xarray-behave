@@ -35,6 +35,8 @@ requirements:
     - pyqt  # [arm64]
     - pyqtgraph>0.12.2
     - qtpy
+    - superqt
+    - rich
     - colorcet
     - python-sounddevice
     - scikit-image

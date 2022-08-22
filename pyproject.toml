@@ -10,12 +10,12 @@ authors = [
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
 requires-python = ">3.6"
-dependencies = ['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen',
+dependencies = ['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen', 'rich',
                 'dask', 'toolz', 'samplestamps', 'pysoundfile', 'opencv-python-headless']
 readme = "README.md"
 
 [project.optional-dependencies]
-gui = ['pyside6', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy',
+gui = ['pyside6', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy', 'superqt',
        'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet',
        'peakutils']
 
