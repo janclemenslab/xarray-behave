@@ -169,17 +169,17 @@ main:
   - type: text
     text: '<i>Fill gaps shorter than a threshold</i>'
 
-  - name: fill_gaps_min
+  - name: post_opt_fill_gaps_min
     label:  Minimal gap size to try (seconds)
     type: float
     default: 0.001
     range: 0.001,1000
-  - name: fill_gaps_max
+  - name: post_opt_fill_gaps_max
     label: Maximal gap size to try (seconds)
     type: float
     default: 0.1
     range: 0.002,1000
-  - name: fill_gaps_steps
+  - name: post_opt_fill_gaps_steps
     label: Number gap sizes to try (min->max, log2-spaced)
     type: int
     default: 10
@@ -188,17 +188,17 @@ main:
   - type: text
     text: '<i>Remove syllables shorter than a threshold</i>'
 
-  - name: min_len_min
+  - name: post_opt_min_len_min
     label:  Minimal duration to try (seconds)
     type: float
     default: 0.001
     range: 0.001,1000
-  - name: min_len_max
+  - name: post_opt_min_len_max
     label: Maximal duration to try (seconds)
     type: float
     default: 0.1
     range: 0.002,1000
-  - name: min_len_steps
+  - name: post_opt_min_len_steps
     label: Number of durations to try (min->max, log2-spaced)
     type: int
     default: 10
