@@ -28,20 +28,22 @@ package_dir = xarray_behave.__path__[0]
 logger = logging.getLogger(__name__)
 
 
-# FIXME these should be xb.loaders!!
-def data_loader_wav(filename):
-    # load the recording
-    x, fs = librosa.load(filename, sr=None, mono=False)
+def data_loader_wav(filename, fs=None, duration=None):
+    x, fs = librosa.load(filename, sr=fs, mono=False, duration=duration)
     x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
     return fs, x
 
 
-def data_loader_npz(filename):
-    # load the recording
+def data_loader_npz(filename, fs=None, duration=None):
+    # TODO: memmap
     file = np.load(filename)
-    fs = file['samplerate']
-    x = file['data']
+    fs_file = file['samplerate']
+    x = file['data'][:min(file['data'].shape[0], int(duration * fs_file))]
     x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
+    if fs is not None and fs != fs_file:
+        x = librosa.resample(x, orig_sr=fs_file, target_sr=fs, res_type='kaiser_best')
+    else:
+        fs = fs_file
     return fs, x
 
 
@@ -49,11 +51,11 @@ def data_loader_npz(filename):
 data_loaders = {'npz': data_loader_npz, 'wav': data_loader_wav, None: None}
 
 
-def load_data(filename):
+def load_data(filename, **kwargs):
     extension = os.path.splitext(filename)[1][1:]  # [1:] strips '.'
     data_loader = data_loaders[extension]
     if data_loader is not None:
-        fs, x = data_loader(filename)
+        fs, x = data_loader(filename, **kwargs)
         return fs, x
     else:
         return None
@@ -100,7 +102,7 @@ def make(data_folder: str,
     # go through all annotation files and collect info on classes
     class_names = []
     class_types = []
-    logger.info('Collecting song types from annotation and definition files:')
+    logger.info('Collecting info on song types from annotation and definition files:')
     for file_annotation in files_annotation:
         # TODO load definition files
         logger.info(f"   {file_annotation}")
@@ -127,9 +129,9 @@ def make(data_folder: str,
     class_types = list(np.array(class_types)[first_indices])
     class_names = list(class_names)
 
-    logger.info('Identifying song types:')
+    logger.info('   Identifying song types:')
     for class_name, class_type in zip(class_names, class_types):
-        logger.info(f'   Found {class_name} of type {class_type}')
+        logger.info(f'      Found {class_name} of type {class_type}')
     logger.info('Done.')
 
     class_names.insert(0, 'noise')
@@ -156,9 +158,27 @@ def make(data_folder: str,
         logger.exception('No valid data files found.')
         raise ValueError('No valid data files found.')
 
-    fs, x = load_data(dfs[0])
-    fs = float(fs)
-    nb_channels = x.shape[1]
+    logger.info('Collecting info on sample rates and channels from audio files:')
+    # load small snippet from each file to get fs and channels
+    fss = set()
+    nb_channelss = set()
+    for df in dfs:
+        fs, xx = load_data(df, duration=0.01)
+        fss.add(fs)
+        nb_channelss.add(xx.shape[1])
+
+    if len(fss) > 1:
+        fs = float(max(fss))
+        logger.info(f"   Found multiple samplerates: {fss}.")
+        logger.warning(f"   Will resample all files to the max rate {fs} Hz.")
+    else:
+        logger.info(f"   Sample rate is {fs} Hz.")
+
+    if len(nb_channelss) > 1:
+        logger.exception(f"   Stopping. Files have different numbers of channels. Found these: {nb_channelss}.")
+        raise ValueError(f"Stopping. Files have different numbers of channels. Found these: {nb_channelss}.")
+    nb_channels = int(list(nb_channelss)[0])
+    logger.info(f"   Audio has {nb_channels} channels.")
 
     store = dsm.init_store(nb_channels=nb_channels,
                            nb_classes=len(class_names),
@@ -250,7 +270,7 @@ def make(data_folder: str,
             logger.warning(f'Unknown data file {file_base} - skipping.')
             continue
 
-        fs, x = data_loader(data_file)
+        fs, x = data_loader(data_file, fs=fs)
         nb_samples = x.shape[0]
 
         # load annotations
