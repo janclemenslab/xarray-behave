@@ -7,14 +7,12 @@ from typing import Optional, Dict
 
 import zarr
 import numpy as np
+import pandas as pd
+import librosa
 
 import das.make_dataset as dsm
 import das.npy_dir
 import das.annot
-
-import scipy.signal
-import pandas as pd
-import scipy.io.wavfile
 
 from .. import annot
 
@@ -26,15 +24,14 @@ import das.block_stratify
 
 import xarray_behave
 
-
 package_dir = xarray_behave.__path__[0]
 logger = logging.getLogger(__name__)
 
 
-# these should be xb.loaders!!
+# FIXME these should be xb.loaders!!
 def data_loader_wav(filename):
     # load the recording
-    fs, x = scipy.io.wavfile.read(filename)
+    x, fs = librosa.load(filename, sr=None, mono=False)
     x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
     return fs, x
 
@@ -48,7 +45,7 @@ def data_loader_npz(filename):
     return fs, x
 
 
-# TODO: auto register with decorator or, even better, use io.audio
+# FIXME auto register with decorator or, even better, use io.audio
 data_loaders = {'npz': data_loader_npz, 'wav': data_loader_wav, None: None}
 
 
@@ -62,18 +59,41 @@ def load_data(filename):
         return None
 
 
-def make(data_folder: str, store_folder: str,
-         file_splits: Dict[str, float], data_splits: Dict[str, float],
+def make(data_folder: str,
+         store_folder: str,
+         file_splits: Dict[str, float],
+         data_splits: Dict[str, float],
          make_single_class_datasets: bool = False,
          split_in_two: bool = False,
          block_stratify: bool = False,
-         block_size: int = 10,
+         block_size: float = 10,
          event_std_seconds: float = 0,
          gap_seconds: float = 0,
          delete_intermediate_store: bool = True,
          make_onset_offset_events: float = False,
          seed: Optional[float] = None):
+    """_summary_
 
+    Args:
+        data_folder (str): _description_
+        store_folder (str): _description_
+        file_splits (Dict[str, float]): _description_
+        data_splits (Dict[str, float]): _description_
+        make_single_class_datasets (bool, optional): _description_. Defaults to False.
+        split_in_two (bool, optional): _description_. Defaults to False.
+        block_stratify (bool, optional): _description_. Defaults to False.
+        block_size (float, optional): _description_. Defaults to 10.
+        event_std_seconds (float, optional): _description_. Defaults to 0.
+        gap_seconds (float, optional): _description_. Defaults to 0.
+        delete_intermediate_store (bool, optional): _description_. Defaults to True.
+        make_onset_offset_events (float, optional): _description_. Defaults to False.
+        seed (Optional[float], optional): _description_. Defaults to None.
+
+    Raises:
+        ValueError: _description_
+        ValueError: _description_
+    """
+    # FIXME this function should be in DAS
     annotation_loader = pd.read_csv
     files_annotation = glob(data_folder + '/*_annotations.csv')
 
@@ -146,7 +166,9 @@ def make(data_folder: str, store_folder: str,
                            class_names=class_names,
                            class_types=class_types,
                            make_single_class_datasets=make_single_class_datasets,
-                           store_type=zarr.TempStore, store_name='store.zarr', chunk_len=1_000_000)
+                           store_type=zarr.TempStore,
+                           store_name='store.zarr',
+                           chunk_len=1_000_000)
 
     # save args for reproducibility
     store.attrs['event_std_seconds'] = event_std_seconds
@@ -203,7 +225,7 @@ def make(data_folder: str, store_folder: str,
         data_split_names = list(data_splits.keys())
         data_split_sizes = list(data_splits.values())
         if split_in_two:
-            logger.info(f"   Splitting in two.")
+            logger.info("   Splitting in two.")
             data_split_names_old = data_split_names.copy()
             for target in data_split_names_old:
                 idx = data_split_names_old.index(target)
@@ -212,7 +234,7 @@ def make(data_folder: str, store_folder: str,
                 data_split_names.append(target)
         logger.info("Done.")
 
-    logger.info(f"Creating dataset:")
+    logger.info("Creating dataset:")
     for file_base, data_file in zip(file_bases, data_files):
         if data_file is None:
             logger.warning(f'Unknown data file for {file_base} - skipping.')
@@ -245,14 +267,12 @@ def make(data_folder: str, store_folder: str,
         if event_std_seconds > 0:
             for class_index, class_type in enumerate(class_types):
                 if class_type == 'event':
-                    y[:, class_index] = dsm.blur_events(y[:, class_index],
-                                                        event_std_seconds=event_std_seconds,
-                                                        samplerate=fs)
+                    y[:, class_index] = dsm.blur_events(y[:, class_index], event_std_seconds=event_std_seconds, samplerate=fs)
 
         # introduce small gaps between adjacent segments
         # OPTIONAL but makes boundary detection easier
         if gap_seconds > 0:
-            segment_idx = np.where(np.array(class_types)=='segment')[0]
+            segment_idx = np.where(np.array(class_types) == 'segment')[0]
             if len(segment_idx):
                 y[:, segment_idx] = dsm.make_gaps(y[:, segment_idx],
                                                   gap_seconds=gap_seconds,
@@ -301,12 +321,13 @@ def make(data_folder: str, store_folder: str,
 
             if make_single_class_datasets:
                 for cnt, class_name in enumerate(class_names[1:]):
-                    y_norm = dsm.normalize_probabilities(y[:, [0, cnt+1]])
+                    y_norm = dsm.normalize_probabilities(y[:, [0, cnt + 1]])
                     store[block_name][f'y_{class_name}'].append(y_norm)
 
     logger.info('Done.')
     # report
-    logger.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
+    logger.info(
+        f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
     # save as npy_dir
     logger.info(f'  Saving to {store_folder}.')
     das.npy_dir.save(store_folder, store)
@@ -315,7 +336,7 @@ def make(data_folder: str, store_folder: str,
     logger.info('The dataset has been made.')
 
 
-def onset_offset_events(df, ):
+def onset_offset_events(df,):
     adf = das.annot.Events.from_df(df)
     start_seconds = []
     stop_seconds = []
