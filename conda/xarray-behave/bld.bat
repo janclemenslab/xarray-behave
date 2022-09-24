@@ -5,6 +5,7 @@ set PIP_NO_DEPENDENCIES=False
 set PIP_IGNORE_INSTALLED=False
 
 @REM "%PYTHON%" -m pip install pysoundfile -vv
+"%PYTHON%" -m pip install pyvideoreader -vv --no-dependencies
 "%PYTHON%" -m pip install pkgutil_resolve_name -vv --no-dependencies
 "%PYTHON%" -m pip install xarray-behave[gui] -vv --no-dependencies
 if errorlevel 1 exit 1
