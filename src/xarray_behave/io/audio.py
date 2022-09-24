@@ -18,14 +18,14 @@ from .. import io
 from typing import Optional, Sequence
 
 
-def split_song_and_nonsong(data, song_channels = None, return_nonsong_channels = False):
-        song = data
-        nonsong = None
-        if song_channels is not None:
-            song = song[:, song_channels]
-            if  return_nonsong_channels:
-                nonsong = np.delete(data, song_channels, axis=-1)
-        return song, nonsong
+def split_song_and_nonsong(data, song_channels=None, return_nonsong_channels=False):
+    song = data
+    nonsong = None
+    if song_channels is not None:
+        song = song[:, song_channels]
+        if return_nonsong_channels:
+            nonsong = np.delete(data, song_channels, axis=-1)
+    return song, nonsong
 
 
 @io.register_provider
@@ -109,7 +109,7 @@ class Npz(io.BaseProvider):
                     sampling_rate = None
             data = file[audio_dataset]
 
-        data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
+        data = data[:, np.newaxis] if data.ndim == 1 else data  # adds singleton dim for single-channel wavs
 
         if song_channels is None:  # the first 16 channels in the data are the mic recordings
             song_channels = np.arange(np.min((16, data.shape[1])))
@@ -154,12 +154,10 @@ class AudioFile(io.BaseProvider):
         if filename is None:
             filename = self.path
 
-        # import soundfile
-        # data, sampling_rate = soundfile.read(filename)
         import librosa
         data, sampling_rate = librosa.load(filename, sr=None, mono=False)
         data = data.T
-        data = data[:, np.newaxis] if data.ndim==1 else data  # adds singleton dim for single-channel wavs
+        data = data[:, np.newaxis] if data.ndim == 1 else data  # adds singleton dim for single-channel wavs
 
         song, non_song = split_song_and_nonsong(data, song_channels, return_nonsong_channels)
         return song, non_song, sampling_rate
