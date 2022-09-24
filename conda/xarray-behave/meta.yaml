@@ -40,7 +40,7 @@ requirements:
     - colorcet
     - python-sounddevice
     - scikit-image
-#     - pyvideoreader  # install via pip no-dep to avoid opencv conflict
+    - pyvideoreader  [win]  # install via pip no-dep to avoid opencv conflict
     - samplestamps
     - pysoundfile
 
