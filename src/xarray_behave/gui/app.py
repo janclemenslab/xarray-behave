@@ -2341,8 +2341,7 @@ class PSV(MainWindow):
         song event at click position.
         """
         if self.current_event_index is None:
-            msgbox = NoEventsRegisteredWarning(
-                parent=self)  # display dialog with button leading to the add/edit events dialog
+            msgbox = NoEventsRegisteredWarning(parent=self)  # display dialog with button leading to the add/edit events dialog
             msgbox.exec()
             if msgbox.clickedButton() == msgbox.button:
                 self.edit_annotation_types(dialog=None)
