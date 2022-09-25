@@ -40,7 +40,8 @@ requirements:
     - colorcet
     - python-sounddevice
     - scikit-image
-    - opencv=4.4
+    - opencv
+    - ffmpeg
 #     - pyvideoreader
     - samplestamps
     - pysoundfile
