@@ -255,6 +255,7 @@ def make(data_folder: str,
         logger.info("Done.")
 
     logger.info("Creating dataset:")
+    data_split_dict = {}
     for file_base, data_file in zip(file_bases, data_files):
         if data_file is None:
             logger.warning(f'Unknown data file for {file_base} - skipping.')
@@ -304,6 +305,7 @@ def make(data_folder: str,
             blocks_x = [x]
             blocks_y = [y]
             block_names = [file_split_dict[file_base]]
+            split_points = []
             logger.info(f'      File added to {file_split_dict[file_base]} data.')
         elif block_stratify:  # split data from each remaining file into train and test chunks according to `splits`
             block_stats_map = das.block_stratify.blockstats_from_data(data=y, block_size=int(block_size * fs))
@@ -326,12 +328,17 @@ def make(data_folder: str,
             data_split_names = np.array(data_split_names)[order]
 
             logger.info(f'      Random {data_split_sizes} split into {data_split_names} data.')
-            blocks_x = das.block_stratify.group_splits(x, group_sizes=data_split_sizes)
-            blocks_y = das.block_stratify.group_splits(y, group_sizes=data_split_sizes)
+            blocks_x, split_points = das.block_stratify.group_splits(x, group_sizes=data_split_sizes)
+            blocks_y, _ = das.block_stratify.group_splits(y, group_sizes=data_split_sizes)
             block_names = data_split_names
         else:
             logger.info('      Skipping.')
+            split_points = []
             continue
+
+        data_split_dict[file_base] = {name: [] for name in data_split_names}
+        for name, start_end in zip(block_names, split_points):
+            data_split_dict[file_base][name].append([int(item) for item in start_end])
 
         for x, y, block_name in zip(blocks_x, blocks_y, block_names):
             store[block_name]['x'].append(x)
@@ -344,6 +351,7 @@ def make(data_folder: str,
                     y_norm = dsm.normalize_probabilities(y[:, [0, cnt + 1]])
                     store[block_name][f'y_{class_name}'].append(y_norm)
 
+    store.attrs['data_splits'] = data_split_dict
     logger.info('Done.')
     # report
     logger.info(
