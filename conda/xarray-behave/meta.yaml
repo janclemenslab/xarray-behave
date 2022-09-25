@@ -42,7 +42,7 @@ requirements:
     - scikit-image
     - opencv
     - ffmpeg
-#     - pyvideoreader
+    - pyvideoreader
     - samplestamps
     - pysoundfile
 
