@@ -30,9 +30,8 @@ logger = logging.getLogger(__name__)
 
 def data_loader_wav(filename, fs=None, duration=None):
     x, fs = librosa.load(filename, sr=fs, mono=False, duration=duration)
-    if x.ndim > 1:
-        x = x.T  # librosa returns mono data as (samples,) and multi as (channels, samples)
-    elif x.ndim == 1:
+    x = x.T  # librosa returns mono data as (samples,) and multi as (channels, samples)
+    if x.ndim == 1:
         x = x[:, np.newaxis]  # adds singleton dim for single-channel wavs
     return fs, x
 
