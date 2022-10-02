@@ -365,6 +365,9 @@ def assemble(datename: Optional[str] = '',
                     logging.exception(e)
             logging.info('Done.')
 
+        if song_raw is None:
+            song_raw = np.zeros((len(sample_times), 1), dtype=bool)
+
     # merge manual and auto events -
     # manual will overwrite existing auto events with the same key
     event_seconds = auto_event_seconds.copy()
