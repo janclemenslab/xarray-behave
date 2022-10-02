@@ -26,10 +26,6 @@ is :py:method:`FormBuilderLayout.add_item()`. Look there if you want to know
 what's supported in the YAML file, what exactly each field type does, or if you
 want to add a new type of supported form field.
 """
-
-
-
-# from PySide2 import QtWidgets, QtCore
 # modified from https://sleap.ai/_modules/sleap/gui/formbuilder.html
 import yaml
 from typing import Any, Dict, List, Optional, Union, Text
@@ -37,7 +33,6 @@ try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
     pass
-# from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
 from qtpy import QtWidgets, QtCore, QtGui
 
 
@@ -56,8 +51,7 @@ class YamlDialog(QtWidgets.QDialog):
 
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        # self.scroll_area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
-        # self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
         self.scroll_area.setWidget(self.form)
 
 
