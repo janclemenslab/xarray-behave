@@ -7,27 +7,26 @@ import xarray as xr
 import zarr
 import logging
 import os.path
+import os
 from pathlib import Path
-import pandas as pd
-from glob import glob
-from typing import List, Optional
+from typing import List, Optional, Union, Dict, Any
 from . import (loaders as ld, metrics as mt, event_utils, annot, io)
 
 
-def assemble(datename: Optional[str] = '',
+def assemble(datename: str = '',
              root: str = '',
              dat_path: str = 'dat',
              res_path: str = 'res',
-             filepath_timestamps: Optional[str] = None,
-             filepath_video: Optional[str] = None,
-             filepath_timestamps_ball: Optional[str] = None,
-             filepath_daq: Optional[str] = None,
-             filepath_annotations: Optional[str] = None,
-             filepath_definitions: Optional[str] = None,
+             filepath_timestamps: Optional[Union[Path, str]] = None,
+             filepath_video: Optional[Union[Path, str]] = None,
+             filepath_timestamps_ball: Optional[Union[Path, str]] = None,
+             filepath_daq: Optional[Union[Path, str]] = None,
+             filepath_annotations: Optional[Union[Path, str]] = None,
+             filepath_definitions: Optional[Union[Path, str]] = None,
              target_sampling_rate: float = 1_000,
              audio_sampling_rate: Optional[float] = None,
              audio_channels: Optional[List[int]] = None,
-             audio_dataset: str = None,
+             audio_dataset: Optional[str] = None,
              event_names: Optional[List[str]] = None,
              event_categories: Optional[List[str]] = None,
              resample_video_data: bool = True,
@@ -112,7 +111,7 @@ def assemble(datename: Optional[str] = '',
         sample_times = np.arange(0, vr.number_of_frames, 1 / sampling_rate) / vr.frame_rate
         last_sample_number = len(sample_times)
         ss = SampStamp(sample_times, frame_times)
-        path_tried = (filepath_video)
+        path_tried = (filepath_video,)
     elif os.path.exists(filepath_daq) and not os.path.exists(filepath_timestamps):  # Audio (+ annotations) only
         # if there is no video and no timestamps - generate fake from samplerate and number of samples
         # THIS SHOULD BE THE FIRST THING WE DO:
@@ -147,7 +146,7 @@ def assemble(datename: Optional[str] = '',
             ss = SampStamp(sample_times, frame_times, sample_numbers=sample_numbers, frame_numbers=frame_numbers)
         except:
             raise ValueError(f'Loading {audio_loader.path} using {audio_loader.NAME} failed.')
-        path_tried = (filepath_daq)
+        path_tried = (filepath_daq,)
     else:
         raise ValueError(f'Nothing found at {(filepath_daq, filepath_video, filepath_timestamps)}.')
 
@@ -252,8 +251,8 @@ def assemble(datename: Optional[str] = '',
         logging.info('Done.')
 
     # Init empty and event data
-    auto_event_seconds = {}
-    auto_event_categories = {}
+    auto_event_seconds: Dict[str, Any] = {}
+    auto_event_categories : Dict[str, Any]= {}
 
     if event_names is None:
         event_names = []
@@ -268,8 +267,8 @@ def assemble(datename: Optional[str] = '',
     if event_names and not event_categories:
         logging.info('No event_categories specified - defaulting to segments')
         event_categories = ['segment'] * len(event_names)
-    manual_event_seconds = {name: np.zeros((0,)) for name in event_names}
-    manual_event_categories = {nam: cat for nam, cat in zip(event_names, event_categories)}
+    manual_event_seconds: Dict[str, Any] = {name: np.zeros((0,)) for name in event_names}
+    manual_event_categories: Dict[str, Any] = {nam: cat for nam, cat in zip(event_names, event_categories)}
 
     if include_song:
         logging.info('Loading automatic annotations:')
@@ -406,8 +405,6 @@ def assemble(datename: Optional[str] = '',
 
     # PREPARE DataArrays
     dataset_data = dict()
-    # import time as tt
-    # t0 = tt.time()
     logging.info('Making all datasets:')
     if song_raw is not None:
         if 0 not in song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
@@ -427,7 +424,7 @@ def assemble(datename: Optional[str] = '',
     if non_song_raw is not None:
         if 0 not in non_song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
             non_song_raw = xr.DataArray(
-                data=non_song_raw[:, :],  # cut recording to match new grid
+                data=non_song_raw[:, :],
                 dims=['sampletime', 'no_song_channels'],
                 coords={
                     'sampletime': ss.sample_time(np.arange(non_song_raw.shape[0])) - ref_time,
