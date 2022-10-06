@@ -1,9 +1,8 @@
-import sys
 import logging
 import collections
 from glob import glob
 import os.path
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Any, Union
 
 import zarr
 import numpy as np
@@ -36,10 +35,10 @@ def data_loader_wav(filename, fs=None, duration=None):
     return fs, x
 
 
-def data_loader_npz(filename, fs=None, duration=None):
+def data_loader_npz(filename, fs=None, duration=0.01):
     # TODO: memmap
     file = np.load(filename)
-    fs_file = file['samplerate']
+    fs_file = float(file['samplerate'])
     x = file['data'][:min(file['data'].shape[0], int(duration * fs_file))]
     x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
     if fs is not None and fs != fs_file:
@@ -144,7 +143,7 @@ def make(data_folder: str,
         class_types.extend(['event', 'event'])
 
     file_bases = [f[:-len('_annotations.csv')] for f in files_annotation]
-    data_files = []
+    data_files: List[Union[str, None]] = []
     for file_base in file_bases:
         if os.path.exists(file_base + '.npz'):
             data_files.append(file_base + '.npz')
@@ -257,7 +256,7 @@ def make(data_folder: str,
         logger.info("Done.")
 
     logger.info("Creating dataset:")
-    data_split_dict = {}
+    data_split_dict: Dict[str, Any] = {}
     for file_base, data_file in zip(file_bases, data_files):
         if data_file is None:
             logger.warning(f'Unknown data file for {file_base} - skipping.')
