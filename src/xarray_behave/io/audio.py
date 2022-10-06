@@ -106,10 +106,10 @@ class Npz(io.BaseProvider):
 
         with np.load(filename) as file:
             try:
-                sampling_rate = file['samplerate']
+                sampling_rate = float(file['samplerate'])
             except KeyError:
                 try:
-                    sampling_rate = file['samplerate_Hz']
+                    sampling_rate = float(file['samplerate_Hz'])
                 except KeyError:
                     sampling_rate = None
             data = file[audio_dataset]

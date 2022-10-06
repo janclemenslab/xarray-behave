@@ -27,7 +27,7 @@ package_dir = xarray_behave.__path__[0]
 logger = logging.getLogger(__name__)
 
 
-def data_loader_wav(filename, fs=None, duration=None):
+def data_loader_wav(filename: str, fs: Optional[float] = None, duration: Optional[float] = None):
     x, fs = librosa.load(filename, sr=fs, mono=False, duration=duration)
     x = x.T  # librosa returns mono data as (samples,) and multi as (channels, samples)
     if x.ndim == 1:
@@ -35,11 +35,14 @@ def data_loader_wav(filename, fs=None, duration=None):
     return fs, x
 
 
-def data_loader_npz(filename, fs=None, duration=0.01):
-    # TODO: memmap
+def data_loader_npz(filename: str, fs: Optional[float] = None, duration: Optional[float] = None):
     file = np.load(filename)
     fs_file = float(file['samplerate'])
-    x = file['data'][:min(file['data'].shape[0], int(duration * fs_file))]
+    if duration is None:
+        dur = -1
+    else:
+        dur = min(file['data'].shape[0], int(duration * fs_file))
+    x = file['data'][:dur]
     x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
     if fs is not None and fs != fs_file:
         x = librosa.resample(x, orig_sr=fs_file, target_sr=fs, res_type='kaiser_best')
@@ -52,7 +55,7 @@ def data_loader_npz(filename, fs=None, duration=0.01):
 data_loaders = {'npz': data_loader_npz, 'wav': data_loader_wav, None: None}
 
 
-def load_data(filename, **kwargs):
+def load_data(filename: str, **kwargs):
     extension = os.path.splitext(filename)[1][1:]  # [1:] strips '.'
     data_loader = data_loaders[extension]
     if data_loader is not None:
