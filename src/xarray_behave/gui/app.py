@@ -5,7 +5,6 @@
 import os
 import sys
 import logging
-import time
 from pathlib import Path
 from functools import partial
 import threading
@@ -42,9 +41,9 @@ try:
     from . import das
 except Exception as e:
     logging.exception(e)
-    logging.warning(
-        f'Failed to import the das module.\nIgnore if you do not want to use das.\nOtherwise follow these instructions to install:\nhttps://janclemenslab.org/das/install.html'
-    )
+    logging.warning('Failed to import the das module.\nIgnore if you do not want to use das.\n'
+                    'Otherwise follow these instructions to install:\n'
+                    'https://janclemenslab.org/das/install.html')
 
 from .formbuilder import YamlDialog
 
@@ -130,7 +129,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(self.cb)
 
     def closeEvent(self, event):
-        # stuff_to_delete = ['ds', 'vr', 'x','y','y_other', 'event_times', 'slice_view', 'spec_view', 'movie_view', 'envelope']
         stuff_to_delete = list(self.__dict__.keys())
         for stuff in stuff_to_delete:
             try:
@@ -167,7 +165,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
                                     f"{self.ds.attrs['datename']}{suffix}")
         except KeyError:
-            savefilename = ''
+            savefilename = Path('')
         return str(savefilename)
 
     def save_swaps(self, qt_keycode=None):
@@ -348,7 +346,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for name in self.event_times.names:
             items_to_create['main'].insert(2, {'name': f'include_{name}', 'label': name, 'type': 'bool', 'default': True})
 
-        dialog = YamlDialog(yaml_file=items_to_create, title=f'Export song and annotations for DAS')
+        dialog = YamlDialog(yaml_file=items_to_create, title='Export song and annotations for DAS')
 
         dialog.form.fields['start_seconds'].setRange(0, np.max(self.ds.sampletime))
         dialog.form.fields['end_seconds'].setRange(0, np.max(self.ds.sampletime))
@@ -369,7 +367,7 @@ class MainWindow(QtWidgets.QMainWindow):
             start_seconds = form_data['start_seconds']
             end_seconds = form_data['end_seconds']
 
-            logging.info(f"Exporting for DAS:")
+            logging.info("Exporting for DAS:")
             if form_data['file_type'] == 'WAV':
                 logging.info(f"   song to WAV: {savefilename_trunk + '.wav'}.")
                 self.export_to_wav(savefilename_trunk + '.wav', start_seconds, end_seconds, form_data['scale_audio'])
@@ -383,14 +381,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                end_seconds,
                                which_events,
                                match_to_samples=True)
-            logging.info(f"Done.")
+            logging.info("Done.")
 
     def das_make(self, qt_keycode=None):
         data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption='Select data folder')
         if not data_folder:
             return
 
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_make.yaml", title=f'Assemble dataset for training DAS')
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_make.yaml", title='Assemble dataset for training DAS')
 
         dialog.form.fields['data_folder'].setText(data_folder)
         dialog.form.fields['store_folder'].setText(data_folder + '.npy')
@@ -444,14 +442,8 @@ class MainWindow(QtWidgets.QMainWindow):
             form_data['model_name'] = 'tcn_stft'
             form_data['nb_pre_conv'] = int(0)
             if form_data['frontend'] == 'STFT':
-                # form_data['model_name'] += '_stft'
                 form_data['nb_pre_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
                 form_data['pre_nb_dft'] = int(form_data['pre_nb_dft'])
-            # elif form_data['frontend'] == 'TCN':
-            #     form_data['model_name'] += '_tcn'
-            #     form_data['nb_pre_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
-            #     form_data['pre_nb_filters'] = int(np.sqrt(int(form_data['pre_nb_filters'])))
-            #     form_data['pre_nb_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
             del form_data['frontend']
             form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
             post_opt = form_data['postopt'] == 'Yes'
@@ -489,7 +481,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 logging.info(f"   Saving form fields to {savefilename}.")
                 with open(savefilename, 'w') as stream:
                     yaml.safe_dump(data, stream)
-                logging.info(f"Done.")
+                logging.info("Done.")
 
         def make_cli(arg):
             script_ext = 'cmd' if os.name == 'nt' else 'sh'
@@ -510,7 +502,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     f.write(cmd)
 
                 # TODO: dialog to suggest editing the script (change paths, activate conda env, cluster specific stuff)
-                logging.info(f"Done.")
+                logging.info("Done.")
 
         def load(arg):
             yaml_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select yaml file')
@@ -519,7 +511,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 with open(yaml_filename, 'r') as stream:
                     data = yaml.safe_load(stream)
                 dialog.form.set_form_data(data)  # update form
-                logging.info(f"Done.")
+                logging.info("Done.")
 
         data_dir = QtWidgets.QFileDialog.getExistingDirectory(None, caption="Open Data Folder (*.npy)")
         # TODO: check that this is a valid data_dir!
@@ -685,18 +677,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 params = das.utils.load_params(model_path)
                 if audio.shape[0] < params['nb_hist']:
                     logging.warning(
-                        f"   Aborting. Audio has fewer samples ({audio.shape[0]}) shorter than network chunk size ({params['nb_hist']}). Fix by select longer audio."
+                        f"   Aborting. Audio has fewer samples ({audio.shape[0]}) shorter"
+                        f"    than network chunk size ({params['nb_hist']})."
+                        "    Fix by select longer audio."
                     )
                     return
 
-                # batch size so that at least 10 batches are run - minimizes loss of annotations from batch size "quantization" errors
+                # select batch size so that at least 10 batches are run
+                # minimizes loss of annotations from batch size "quantization" errors
                 batch_size = 32
                 nb_batches = lambda batch_size: int(
                     np.floor((audio.shape[0] - (((batch_size - 1)) + params['nb_hist'])) / (params['stride'] * (batch_size))))
                 while nb_batches(batch_size) < 10 and batch_size > 1:
                     batch_size -= 1
 
-                logging.info(f'   Running inference on audio.')
+                logging.info('   Running inference on audio.')
                 logging.info(f'   Model from {model_path}.')
                 params = das.utils.load_params(model_path)
                 fs_model = params['samplerate_x_Hz']
@@ -824,7 +819,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                 pass
                 except KeyError:
                     logging.info(
-                        f'{filename} no sample rate info in NPZ file. Need to save "samplerate" variable with the audio data. Defaulting to {samplerate}'
+                        f"{filename} no sample rate info in NPZ file."
+                        f"Need to save 'samplerate' variable with the audio data. Defaulting to {samplerate}"
                     )
             elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5') or filename.endswith(
                     '.mat'):
@@ -1032,7 +1028,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 except FileNotFoundError:
                     logging.info(f'Video "{video_filename}" not found. Continuing without.')
                 except:
-                    logging.info(f'Something went wrong when loading the video. Continuing without.')
+                    logging.info('Something went wrong when loading the video. Continuing without.')
 
                 cue_points = []
                 if form_data['load_cues'] == 'yes':
@@ -1086,7 +1082,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if 'song_events' in ds:
                     ds.song_events.load()
                 if not form_data['lazy']:
-                    logging.info(f'   Loading data from ds.')
+                    logging.info('   Loading data from ds.')
                     if 'song' in ds:
                         ds.song.load()  # non-lazy load song for faster updates
                     if 'pose_positions_allo' in ds:
@@ -1114,7 +1110,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 except FileNotFoundError:
                     logging.info(f'Video "{video_filename}" not found. Continuing without.')
                 except:
-                    logging.info(f'Something went wrong when loading the video. Continuing without.')
+                    logging.info('Something went wrong when loading the video. Continuing without.')
 
                 # load cues
                 cue_points = []
@@ -1200,9 +1196,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 logging.info(f'   Saving dataset to {savefilename}.')
                 xb.save(savefilename, self.ds)
-                logging.info(f'Done.')
+                logging.info('Done.')
             else:
-                logging.info(f'Saving aborted.')
+                logging.info('Saving aborted.')
 
 
 class ZarrOverwriteWarning(QtWidgets.QMessageBox):
@@ -1919,7 +1915,7 @@ class PSV(MainWindow):
                 if self.STOP:
                     self.update_xy()
         else:
-            logging.info(f'   No event type selected. Not deleting anything.')
+            logging.info('   No event type selected. Not deleting anything.')
 
     def delete_all_events(self, qt_keycode):
         for event_name in self.event_times.names:
@@ -2102,7 +2098,7 @@ class PSV(MainWindow):
 
     def set_envelope_computation(self, qt_keycode):
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/envelope_computation.yaml",
-                            title=f'Set options for envelope computation')
+                            title='Set options for envelope computation')
 
         dialog.form['thres_min_dist'] = self.thres_min_dist
         dialog.form['thres_env_std'] = self.thres_env_std
@@ -2447,7 +2443,7 @@ class PSV(MainWindow):
                     # scale sound so we do not blow out the speakers
                     try:
                         y = y.astype(np.float) / np.iinfo(y.dtype).max * self.MAX_AUDIO_AMP
-                    except ValueError as e:
+                    except ValueError:
                         # logging.exception(e)
                         y = y / y.max() / 10 * self.MAX_AUDIO_AMP
                     # sd.play(ss.resample_poly(y, 44100, self.fs_song), 44100)
@@ -2461,9 +2457,9 @@ class PSV(MainWindow):
                     # start playback in background
                     simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
             else:
-                logging.info(f'No sound module installed - install python-sounddevice')
+                logging.info('No sound module installed - install python-sounddevice')
         else:
-            logging.info(f'Could not play sound - no sound data in the dataset.')
+            logging.info('Could not play sound - no sound data in the dataset.')
 
     def swap_flies(self, qt_keycode):
         if self.vr is not None:
@@ -2595,8 +2591,6 @@ class PSV(MainWindow):
 
     def update_eventtype_selector(self):
 
-        currentIndex = self.cb.currentIndex()
-
         # delete all existing entries
         while self.cb.count() > 0:
             self.cb.removeItem(0)
@@ -2614,9 +2608,6 @@ class PSV(MainWindow):
         self.cb.addItem("No annotation")
         for event_type in self.eventList:
             self.cb.addItem("Add " + event_type[1])
-
-        # set current index again - reset after deleting all items above
-        # self.cb.setCurrentIndex(min(currentIndex, len(self.eventList)))
 
         # auto-select last in list
         self.cb.setCurrentIndex(len(self.eventList))
