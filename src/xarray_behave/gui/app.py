@@ -559,10 +559,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     stop_event.set()  # stop training
 
                 progress.canceled.connect(custom_cancel)
-                # from . import qt_logger
-                # progress = qt_logger.MyDialog(stop_event=stop_event)
-                # progress.show()
-                # progress.raise_()
 
                 form_data['_qt_progress'] = (queue, stop_event)
                 worker_training = utils.Worker(das.train.train, **form_data)
@@ -654,6 +650,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     model_path,
                     verbose=1,
                     batch_size=32,
+                    save_format=form_data['save_format'],
                     event_thres=form_data['event_thres'],
                     event_dist=form_data['event_dist'],
                     event_dist_min=form_data['event_dist_min'],
