@@ -69,7 +69,8 @@ def find_nearest(array, values):
     """
     if len(values) and len(array):  # only do this if boh inputs are non-empty lists
         values = np.atleast_1d(values)
-        abs_dist = np.abs(np.subtract.outer(array, values))  # this eats a lot of memory - maybe use nearest neighbour interpolation for upsampling?
+        # this eats a lot of memory - maybe use nearest neighbour interpolation for upsampling?
+        abs_dist = np.abs(np.subtract.outer(array, values))
         idx = abs_dist.argmin(0)
         dist = abs_dist.min(0)
         val = array[idx]
@@ -108,34 +109,34 @@ def merge_channels(data, sampling_rate, filter_data: bool = True):
 
 
 def fill_gaps(sine_pred, gap_dur=100):
-    onsets = np.where(np.diff(sine_pred.astype(np.int))==1)[0]
-    offsets = np.where(np.diff(sine_pred.astype(np.int))==-1)[0]
+    onsets = np.where(np.diff(sine_pred.astype(np.int)) == 1)[0]
+    offsets = np.where(np.diff(sine_pred.astype(np.int)) == -1)[0]
     if len(onsets) and len(offsets):
-        onsets = onsets[onsets<offsets[-1]]
-        offsets = offsets[offsets>onsets[0]]
+        onsets = onsets[onsets < offsets[-1]]
+        offsets = offsets[offsets > onsets[0]]
         durations = offsets - onsets
         for idx, (onset, offset, duration) in enumerate(zip(onsets, offsets, durations)):
-            if idx>0 and offsets[idx-1]>onsets[idx]-gap_dur:
-                sine_pred[offsets[idx-1]:onsets[idx]+1] = 1
+            if idx > 0 and offsets[idx - 1] > onsets[idx] - gap_dur:
+                sine_pred[offsets[idx - 1]:onsets[idx] + 1] = 1
     return sine_pred
 
 
 def remove_short(sine_pred, min_len=100):
     # remove too short sine songs
-    onsets = np.where(np.diff(sine_pred.astype(np.int))==1)[0]
-    offsets = np.where(np.diff(sine_pred.astype(np.int))==-1)[0]
+    onsets = np.where(np.diff(sine_pred.astype(np.int)) == 1)[0]
+    offsets = np.where(np.diff(sine_pred.astype(np.int)) == -1)[0]
     if len(onsets) and len(offsets):
-        onsets = onsets[onsets<offsets[-1]]
-        offsets = offsets[offsets>onsets[0]]
+        onsets = onsets[onsets < offsets[-1]]
+        offsets = offsets[offsets > onsets[0]]
         durations = offsets - onsets
         for cnt, (onset, offset, duration) in enumerate(zip(onsets, offsets, durations)):
-            if duration<min_len:
-                sine_pred[onset:offset+1] = 0
+            if duration < min_len:
+                sine_pred[onset:offset + 1] = 0
     return sine_pred
 
 
 def load_swap_indices(filepath):
-    a = np.loadtxt(filepath)  #, dtype=np.uintp)
+    a = np.loadtxt(filepath)  # dtype=np.uintp)
     indices, flies1, flies2 = np.split(a, [1, 2], axis=-1)  # split columns in file into variables
     if indices.ndim == 2:  # is sometimes 2d for some reason
         indices = indices[:, 0]
@@ -179,8 +180,10 @@ def swap_flies(dataset, swap_times, flies1=0, flies2=1):
     return dataset
 
 
-def load_raw_song(filepath_daq: str, song_channels: Optional[Sequence[int]] = None,
-                  return_nonsong_channels: bool = False, lazy: bool = False):
+def load_raw_song(filepath_daq: str,
+                  song_channels: Optional[Sequence[int]] = None,
+                  return_nonsong_channels: bool = False,
+                  lazy: bool = False):
     """[summary]
 
     Args:
@@ -198,7 +201,7 @@ def load_raw_song(filepath_daq: str, song_channels: Optional[Sequence[int]] = No
         song_channels = np.arange(16)
 
     if lazy:
-        f = h5py.File(filepath_daq, mode='r', rdcc_w0=0, rdcc_nbytes=100 * (1024 ** 2), rdcc_nslots=50000)
+        f = h5py.File(filepath_daq, mode='r', rdcc_w0=0, rdcc_nbytes=100 * (1024**2), rdcc_nslots=50000)
         # convert to dask array since this allows lazily evaluated indexing...
         import dask.array as daskarray
         da = daskarray.from_array(f['samples'], chunks=(10000, 1))
@@ -229,28 +232,28 @@ def load_times(filepath_timestamps, filepath_daq):
 
     # time stamps at idx 0 can be a little wonky - so use the information embedded in the image
     if cam_stamps.shape[1] > 2:  # time stamps from flycapture (old point grey API)
-        shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2]/1_000_000  # time of "Shutter OFF"
+        shutter_times = cam_stamps[:, 1] + cam_stamps[:, 2] / 1_000_000  # time of "Shutter OFF"
     elif cam_stamps.shape[1] == 2:  # time stamps from other camera drivers (spinnaker (new point grey/FLIR API) and ximea)
         # cut off empty time stamps
-        last_frame_idx = np.argmax(cam_stamps[:, 1]==0) - 1
+        last_frame_idx = np.argmax(cam_stamps[:, 1] == 0) - 1
         cam_stamps = cam_stamps[:last_frame_idx]
 
         # fix jumps from overflow in timestamp counter for ximea cameras
         frame_intervals = np.diff(cam_stamps[:, 1])
         frame_interval_median = np.median(frame_intervals)
-        idxs = np.where(frame_intervals<-10 * frame_interval_median)[0]
+        idxs = np.where(frame_intervals < -10 * frame_interval_median)[0]
         while len(idxs):
             idx = idxs[0]
-            df_wrong = cam_stamps[idx+1, 1] - cam_stamps[idx, 1]
-            df_inferred = cam_stamps[idx+1, 0] - cam_stamps[idx, 0]
-            cam_stamps[idx+1:, 1] = cam_stamps[idx+1:, 1] - df_wrong + df_inferred
+            df_wrong = cam_stamps[idx + 1, 1] - cam_stamps[idx, 1]
+            df_inferred = cam_stamps[idx + 1, 0] - cam_stamps[idx, 0]
+            cam_stamps[idx + 1:, 1] = cam_stamps[idx + 1:, 1] - df_wrong + df_inferred
 
             frame_intervals = np.diff(cam_stamps[:, 1])
-            idxs = np.where(frame_intervals<-10 * frame_interval_median)[0]
+            idxs = np.where(frame_intervals < -10 * frame_interval_median)[0]
 
         shutter_times = cam_stamps[:, 1]
 
-    last_frame_idx = np.argmax(shutter_times==0) - 1
+    last_frame_idx = np.argmax(shutter_times == 0) - 1
     shutter_times = shutter_times[:last_frame_idx]
 
     # DAQ time stamps
@@ -265,13 +268,16 @@ def load_times(filepath_timestamps, filepath_daq):
         last_valid_idx = len(daq_stamps) - 1  # in case there are no trailing zeros
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:last_valid_idx, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
-
-    nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]))  # seconds - using mode here to be more robust
+    # seconds - using mode here to be more robust
+    nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]))
     nb_seconds_per_interval = nb_seconds_per_interval[0]
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
 
-    ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0], frame_times=shutter_times, sample_numbers=daq_samplenumber[:, 0], auto_monotonize=False)
+    ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0],
+                   frame_times=shutter_times,
+                   sample_numbers=daq_samplenumber[:, 0],
+                   auto_monotonize=False)
     # # different refs:
     #
     # # first sample is 0 seconds
@@ -302,15 +308,18 @@ def load_movietimes(filepath_timestamps, filepath_daq):
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:last_valid_idx, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
 
-    nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]))  # seconds - using mode here to be more robust
+    # seconds - using mode here to be more robust
+    nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]))
     nb_seconds_per_interval = nb_seconds_per_interval[0]
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
 
-
     # ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0], frame_times=shutter_times, sample_numbers=daq_samplenumber[:, 0], auto_monotonize=False)
-    ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0], sample_numbers=daq_samplenumber[:, 0],
-                   frame_samples=df['sample'], frame_numbers=df['movie_frame'], auto_monotonize=False)
+    ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0],
+                   sample_numbers=daq_samplenumber[:, 0],
+                   frame_samples=df['sample'],
+                   frame_numbers=df['movie_frame'],
+                   auto_monotonize=False)
     # # different refs:
     #
     # # first sample is 0 seconds
