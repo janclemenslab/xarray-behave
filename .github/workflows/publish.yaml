@@ -23,6 +23,7 @@ jobs:
       matrix:
         python-version: [3.8, 3.9, '3.10']
         os: [ubuntu-latest, windows-latest, macOS-latest]
+        
         exclude:
         - os: macos-latest
           python-version: 3.7
@@ -44,6 +45,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           mamba-version: "*"
+          miniforge-variant: Mambaforge
           channels: conda-forge,ncb
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
@@ -52,7 +54,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          conda install -y -n base -c conda-forge python=3.8 boa anaconda-client conda-build conda-verify
+          mamba install -y -n base -c conda-forge python=3.11 boa anaconda-client conda-build conda-verify
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
@@ -60,7 +62,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
-          conda install -y -n base -c conda-forge python=3.8 boa anaconda-client conda-build conda-verify
+          mamba install -y -n base -c conda-forge python=3.11 boa anaconda-client conda-build conda-verify
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
@@ -68,7 +70,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token %ANACONDA_TOKEN%
+          conda mambabuild conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token %ANACONDA_TOKEN%
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
 
