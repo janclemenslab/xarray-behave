@@ -208,7 +208,7 @@ class Form(QtWidgets.QDialog):
         chkbx_spec_denoise.stateChanged.connect(updateDenoiseCheckBox)
         layout.addWidget(chkbx_spec_denoise)
 
-        chkbx_spec_mel = QtWidgets.QCheckBox("Mel spectrogram")
+        chkbx_spec_mel = QtWidgets.QCheckBox("Mel spectrogram (not implemented)")
 
         def updateMelCheckBox():
             self.model.spec_mel = chkbx_spec_mel.isChecked()
