@@ -1766,6 +1766,15 @@ class PSV(MainWindow):
         self._update_model()
 
     @property
+    def spec_levels(self):
+        return self._spec_levels
+
+    @spec_levels.setter
+    def spec_levels(self, value: bool):
+        self._spec_levels = value
+        self._update_model()
+
+    @property
     def spec_denoise(self):
         return self._spec_denoise
 
