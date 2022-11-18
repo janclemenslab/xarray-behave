@@ -291,7 +291,7 @@ class TraceView(pg.PlotWidget):
             return
 
         for x in xx:
-            line = EventItem(x, event_type, self.xrange, movable=True, angle=90, pen=pen)
+            line = EventItem(x, event_type, self.xrange, movable=movable, angle=90, pen=pen)
             if text is not None:
                 pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
             line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
@@ -453,7 +453,7 @@ class SpecView(pg.ImageView):
             return
 
         for x in xx:
-            line = EventItem(x, event_type, self.xrange, time_pos=x, movable=True, angle=90, pen=pen)
+            line = EventItem(x, event_type, self.xrange, time_pos=x, movable=movable, angle=90, pen=pen)
             if text is not None:
                 pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
             line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
