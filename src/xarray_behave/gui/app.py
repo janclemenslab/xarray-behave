@@ -1635,6 +1635,7 @@ class PSV(MainWindow):
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
         self.spec_compression_ratio = 0
+        self.spec_mel = False
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=cmap_name)
 
         self.ly = QtWidgets.QVBoxLayout()
@@ -1771,6 +1772,15 @@ class PSV(MainWindow):
     @spec_denoise.setter
     def spec_denoise(self, value: bool):
         self._spec_denoise = value
+        self._update_model()
+
+    @property
+    def spec_mel(self):
+        return self._spec_mel
+
+    @spec_mel.setter
+    def spec_mel(self, value: bool):
+        self._spec_mel = value
         self._update_model()
 
     @property

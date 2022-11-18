@@ -201,12 +201,18 @@ class Form(QtWidgets.QDialog):
                        model=self.model,
                        attr_name='spec_compression_ratio'))
 
-        chkbx = QtWidgets.QCheckBox("Denoise spectrogram")
+        chkbx_spec_denoise = QtWidgets.QCheckBox("Denoise spectrogram")
 
-        def updateCheckBox():
-            self.model.spec_denoise = chkbx.isChecked()
+        def updateDenoiseCheckBox():
+            self.model.spec_denoise = chkbx_spec_denoise.isChecked()
+        chkbx_spec_denoise.stateChanged.connect(updateDenoiseCheckBox)
+        layout.addWidget(chkbx_spec_denoise)
 
-        chkbx.stateChanged.connect(updateCheckBox)
-        layout.addWidget(chkbx)
+        chkbx_spec_mel = QtWidgets.QCheckBox("Mel spectrogram")
+
+        def updateMelCheckBox():
+            self.model.spec_mel = chkbx_spec_mel.isChecked()
+        chkbx_spec_mel.stateChanged.connect(updateMelCheckBox)
+        layout.addWidget(chkbx_spec_mel)
 
         self.setLayout(layout)
