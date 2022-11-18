@@ -72,7 +72,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
-          mamba install -y -n base -c conda-forge python=3.11 boa anaconda-client conda-build conda-verify
+          mamba install -y -n base -c conda-forge boa anaconda-client conda-build conda-verify
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
