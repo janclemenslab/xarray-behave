@@ -25,12 +25,19 @@ jobs:
         #os: [ubuntu-latest, windows-latest, macOS-latest]
         python-version: [3.9]
         os: [windows-latest]
-        
+        include:
+        - os: ubuntu-latest
+          miniforge-variant: Mambaforge
+        - os: macos-latest
+          miniforge-variant: Mambaforge
+        - os: windows-latest
+          miniforge-variant: Miniforge3
         exclude:
         - os: macos-latest
           python-version: 3.7
         - os: windows-latest
           python-version: 3.7
+
     steps:
       - name: configure Pagefile
         if: runner.os == 'Windows'
@@ -47,7 +54,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           mamba-version: "*"
-          miniforge-variant: Mambaforge
+          miniforge-variant: ${{ matrix.miniforge-variant }}
           channels: conda-forge,ncb
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
@@ -56,7 +63,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          mamba install -y -n base -c conda-forge python=3.10 boa anaconda-client conda-build conda-verify
+          conda install -y -n base -c conda-forge mamba
+          mamba install -y -n base -c conda-forge boa anaconda-client conda-build conda-verify
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
