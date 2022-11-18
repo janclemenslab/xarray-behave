@@ -343,10 +343,10 @@ class SpecView(pg.ImageView):
         self.view.setMouseEnabled(x=False, y=False)
 
         # leave enough space so axes are aligned aligned
-        y_axis = self.getView().getAxis('left')
-        y_axis.setWidth(50)
-        y_axis.setLabel('Frequency', units='Hz')
-        y_axis.enableAutoSIPrefix()
+        self.y_axis = self.getView().getAxis('left')
+        self.y_axis.setWidth(50)
+        self.y_axis.setLabel('Frequency', units='Hz')
+        self.y_axis.enableAutoSIPrefix()
 
         self._m = model
         self.callback = callback
@@ -384,8 +384,10 @@ class SpecView(pg.ImageView):
         [self.removeItem(item) for item in self.old_items]  # remove annotations <- slowest part of update_spec!!!
 
     def update_spec(self, x, y):
+        # tuple-ify y for caching
+        mel = self.m.spec_mel
         self.S, f, t = self._calc_spec(tuple(y), self.m.spec_win, self.m.spec_compression_ratio, self.m.fmin,
-                                       self.m.fmax, self.m.spec_denoise)  # tuple-ify for caching
+                                       self.m.fmax, self.m.spec_denoise, mel)
         trange = (self.m.x[-1] - self.m.x[0])
         self.max_pix = 6_000
         self.t_step = max(1, self.S.shape[1] // self.max_pix)
@@ -398,8 +400,7 @@ class SpecView(pg.ImageView):
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
-    @lru_cache(maxsize=4, typed=False)
-    def _calc_spec(self, y, spec_win, spec_compression_ratio, fmin, fmax, spec_denoise: bool):
+    def _calc_spec(self, y, spec_win, spec_compression_ratio, fmin, fmax, spec_denoise: bool, mel: bool):
         y = np.array(y)
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
@@ -409,28 +410,43 @@ class SpecView(pg.ImageView):
         # to accelerate calc
         nfft = spec_win * max(1, 4 // self.t_step)
 
-        f, t, psd = scipy.signal.spectrogram(y,
-                                             self.m.fs_song,
-                                             nperseg=spec_win,
-                                             noverlap=spec_win // 2,
-                                             nfft=nfft,
-                                             mode='magnitude')
+        import librosa
+        import librosa.feature
 
-        # select freq limits
-        f_idx0 = 0
-        if fmin is not None:
-            f_idx0 = np.argmax(f >= self.m.fmin)
-        f_idx1 = -1
-        if fmax is not None:
-            f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
+        if True:  # not mel:
+            psd = librosa.stft(y=y, n_fft=nfft, win_length=spec_win, hop_length=spec_win // 2)
+            t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
+            f = librosa.fft_frequencies(sr=self.m.fs_song, n_fft=nfft)
 
-        S = psd[f_idx0:f_idx1, :]
+            # select freq limits
+            f_idx0 = 0
+            if fmin is not None:
+                f_idx0 = np.argmax(f >= self.m.fmin)
+            f_idx1 = -1
+            if fmax is not None:
+                f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
+
+            S = np.abs(psd[f_idx0:f_idx1, :])
+            f = f[f_idx0:f_idx1]
+        # else:
+        #     import librosa.feature
+        #     fmin = 0 if fmin is None else fmin
+        #     fmin = max(fmin, 1)
+        #     fmax = self.m.fs_song // 2 if fmax is None else fmax
+        #     psd = librosa.feature.melspectrogram(y=y, sr=self.m.fs_song, n_fft=nfft, win_length=spec_win, hop_length=spec_win // 2, fmin=fmin, fmax=fmax)
+        #     # f = np.linspace(fmin, fmax, psd.shape[0])
+        #     f = librosa.mel_frequencies(n_mels=psd.shape[0], fmin=fmin, fmax=fmax, htk=False)
+        #     t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
+        #     # t = np.arange(spec_win // 2, len(y), spec_win // 2)
+        #     S = psd
+
         if spec_denoise:
             noise_floor = np.nanmedian(S, axis=1, keepdims=True)
             S /= noise_floor
+
         S = np.log2(1.0 + 2.0**spec_compression_ratio * S)
         # S = S / np.max(S) * 255  # normalize to 0...255
-        return S, f[f_idx0:f_idx1], t
+        return S, f, t
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
         region = SegmentItem((onset, offset),
