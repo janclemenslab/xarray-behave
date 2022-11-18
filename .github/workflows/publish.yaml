@@ -94,6 +94,12 @@ jobs:
         - os: windows-latest
           python-version: 3.7
     steps:
+      - name: configure Pagefile
+        if: runner.os == 'Windows'
+        uses: al-cheb/configure-pagefile-action@v1.2
+        with:
+          minimum-size: 16GB
+
       - name: Checkout source
         uses: actions/checkout@v2
 
