@@ -25,13 +25,6 @@ jobs:
         #os: [ubuntu-latest, windows-latest, macOS-latest]
         python-version: [3.9]
         os: [windows-latest]
-        include:
-        - os: ubuntu-latest
-          miniforge-variant: Mambaforge
-        - os: macos-latest
-          miniforge-variant: Mambaforge
-        - os: windows-latest
-          miniforge-variant: Miniforge3
         exclude:
         - os: macos-latest
           python-version: 3.7
@@ -54,7 +47,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           mamba-version: "*"
-          miniforge-variant: ${{ matrix.miniforge-variant }}
+          #miniforge-variant: ${{ matrix.miniforge-variant }}
           channels: conda-forge,ncb
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
