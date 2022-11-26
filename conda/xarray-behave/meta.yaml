@@ -31,8 +31,7 @@ requirements:
     - zarr
     - xarray
     - dask
-    - pyside2  # [not arm64]
-    - pyqt  # [arm64]
+    - pyside6
     - pyqtgraph>0.12.2
     - qtpy
     - superqt
