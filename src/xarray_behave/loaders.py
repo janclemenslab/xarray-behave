@@ -225,8 +225,7 @@ def load_raw_song(filepath_daq: str,
         return song
 
 
-def load_times(filepath_timestamps, filepath_daq):
-    """Load daq and cam time stamps, create muxer"""
+def load_timestamps(filepath_timestamps):
     with h5py.File(filepath_timestamps, 'r') as f:
         cam_stamps = f['timeStamps'][:]
 
@@ -255,6 +254,13 @@ def load_times(filepath_timestamps, filepath_daq):
 
     last_frame_idx = np.argmax(shutter_times == 0) - 1
     shutter_times = shutter_times[:last_frame_idx]
+    return shutter_times
+
+
+def load_times(filepath_timestamps, filepath_daq):
+    """Load daq and cam time stamps, create muxer"""
+
+    shutter_times = load_timestamps(filepath_timestamps)
 
     # DAQ time stamps
     with h5py.File(filepath_daq, 'r') as f:
