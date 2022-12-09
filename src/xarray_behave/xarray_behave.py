@@ -117,7 +117,7 @@ def assemble(datename: str = '',
 
         sampling_rate = 10 * target_sampling_rate
         sample_times = np.arange(0, vr.number_of_frames * vr.frame_rate, 1)  # 1s steps
-        sample_numbers = (sample_times * sampling_rate).astype(int)
+        sample_numbers = np.round(sample_times * sampling_rate)
         last_sample_number = len(sample_times)
 
         ss = SampStamp(sample_times, frame_times, sample_numbers=sample_numbers)
