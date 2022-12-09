@@ -98,19 +98,29 @@ def assemble(datename: str = '',
         if sampling_rate is None:
             sampling_rate = audio_sampling_rate
         path_tried = (filepath_daq, filepath_timestamps)
-    elif os.path.exists(filepath_video):  # Video (+tracks) only
-        # if there is only the video, generate fake timestamps for video and samples from fps
+    elif os.path.exists(filepath_video):  # Video (+tracks) w/o DAQ
+        # if there is only the video, generate fake samples from fps
         from videoreader import VideoReader
         vr = VideoReader(filepath_video)
-        frame_times = np.arange(0, vr.number_of_frames, 1) / vr.frame_rate
+
+        if os.path.exists(filepath_timestamps):
+            frame_times = ld.load_timestamps(filepath_timestamps)
+            frame_times -= frame_times[0]
+        else:
+            frame_times = np.arange(0, vr.number_of_frames, 1) / vr.frame_rate
+
         if target_sampling_rate == 0 or target_sampling_rate is None:
             resample_video_data = False
             target_sampling_rate = vr.frame_rate
+
         frame_times[-1] = frame_times[-2]  # for auto-monotonize to not mess everything up
-        sampling_rate = 2 * target_sampling_rate  # vr.frame_rate
-        sample_times = np.arange(0, vr.number_of_frames, 1 / sampling_rate) / vr.frame_rate
+
+        sampling_rate = 10 * target_sampling_rate
+        sample_times = np.arange(0, vr.number_of_frames * vr.frame_rate, 1)  # 1s steps
+        sample_numbers = (sample_times * sampling_rate).astype(int)
         last_sample_number = len(sample_times)
-        ss = SampStamp(sample_times, frame_times)
+
+        ss = SampStamp(sample_times, frame_times, sample_numbers=sample_numbers)
         path_tried = (filepath_video,)
     elif os.path.exists(filepath_daq) and not os.path.exists(filepath_timestamps):  # Audio (+ annotations) only
         # if there is no video and no timestamps - generate fake from samplerate and number of samples
