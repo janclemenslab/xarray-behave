@@ -401,7 +401,7 @@ class SpecView(pg.ImageView):
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
     def _calc_spec(self, y, spec_win, spec_compression_ratio, fmin, fmax, spec_denoise: bool, mel: bool):
-        y = np.array(y)
+        y = np.array(y).astype(float)
         # signal.spectrogram will internally limit spec_win to len(y)
         # and will throw error since noverlap will then be too big
         spec_win = min(len(y), spec_win)
@@ -412,7 +412,6 @@ class SpecView(pg.ImageView):
 
         import librosa
         import librosa.feature
-
         if True:  # not mel:
             psd = librosa.stft(y=y, n_fft=nfft, win_length=spec_win, hop_length=spec_win // 2)
             t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
