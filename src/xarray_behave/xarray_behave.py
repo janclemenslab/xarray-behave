@@ -711,18 +711,30 @@ def assemble_metrics(dataset,
     time = dataset.time.data
     nearest_frame = dataset.nearest_frame.data
 
-    sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
-    frame_rate = dataset.pose_positions.attrs['video_fps']
-
     if use_true_times:
         timestep = dataset.time.data
     else:
         timestep = 1
 
-    thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax', :].values.astype(np.float32)
-    heads = dataset.pose_positions_allo.loc[:, :, 'head', :].values.astype(np.float32)
-    wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing', :].values.astype(np.float32)
-    wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].values.astype(np.float32)
+    if 'pose_positions_allo' in dataset:
+        thoraces = dataset.pose_positions_allo.loc[:, :, 'thorax', :].values.astype(np.float32)
+        heads = dataset.pose_positions_allo.loc[:, :, 'head', :].values.astype(np.float32)
+        wing_left = dataset.pose_positions_allo.loc[:, :, 'left_wing', :].values.astype(np.float32)
+        wing_right = dataset.pose_positions_allo.loc[:, :, 'right_wing', :].values.astype(np.float32)
+        sampling_rate = dataset.pose_positions.attrs['sampling_rate_Hz']
+        frame_rate = dataset.pose_positions.attrs['video_fps']
+    elif 'body_positions' in dataset:
+        logging.warning('No pose tracking data in dataset. Trying standard tracking data to compute metrics. Metrics may be wrong/incomplete.')
+        thoraces = dataset.body_positions.loc[:, :, 'center', :].values.astype(np.float32)
+        heads = dataset.body_positions.loc[:, :, 'head', :].values.astype(np.float32)
+        wing_left = np.zeros_like(thoraces)
+        wing_right = np.zeros_like(thoraces)
+        wing_left[:] = np.nan
+        wing_right[:] = np.nan
+        sampling_rate = dataset.body_positions.attrs['sampling_rate_Hz']
+        frame_rate = dataset.body_positions.attrs['video_fps']
+    else:
+        raise ValueError('No tracking data in dataset.')
 
     if smooth_positions:
         # Smoothing window should span 2 frames to get smooth acceleration traces.
