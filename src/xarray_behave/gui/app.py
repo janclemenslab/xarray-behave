@@ -722,10 +722,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     suffix = '_proposals'
 
                 # events['seconds'] is in samples/fs - translate to time stamps via sample time
+                detected_event_names = []
                 if 'sequence' in events:
                     detected_event_names = np.unique(events['sequence'])
-                else:
-                    detected_event_names = []
 
                 if len(detected_event_names) > 0 and detected_event_names[0] is not None:
                     logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
@@ -743,16 +742,16 @@ class MainWindow(QtWidgets.QMainWindow):
                             event_name = str(name_or_index)
                         self.event_times.add_time(event_name + str(suffix), seconds, seconds, category='event')
 
-                if 'sequence' in segments:
+                detected_segment_names = []
+                if 'sequence' in segments:  # and len(segments['sequence']):  # and segments['sequence'] is not None:
+                    # segments['sequence'] = [s for s in segments['sequence'] if s is not None]
                     detected_segment_names = np.unique(segments['sequence'])
                     # if these are indices, get corresponding names
                     if len(detected_segment_names) and type(detected_segment_names[0]) is not str and type(
                             detected_segment_names[0]) is not np.str_:
                         detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
-                else:
-                    detected_segment_names = []
 
-                if len(detected_segment_names) > 0 and detected_segment_names[0] is not None:
+                if len(detected_segment_names) > 0:  # and detected_segment_names[0] is not None:
 
                     logging.info(
                         f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
