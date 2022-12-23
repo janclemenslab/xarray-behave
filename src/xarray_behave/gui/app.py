@@ -843,6 +843,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 samplerate = 10_000
                 dialog.form['samplerate'] = samplerate
             else:
+                samplerate = float(samplerate)
                 dialog.form['samplerate'] = samplerate
                 dialog.form['spec_freq_max'] = samplerate / 2
 
