@@ -32,7 +32,7 @@ requirements:
     - numba>=0.56
     - xarray
     - dask
-    - pyside6 # [not win]
+    - pyside2 # [not win]
     - pyside6 # [win and py>39]
     - pyside2 # [win and py==39]
     - pyqtgraph>0.12.2
