@@ -327,9 +327,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def export_for_das(self, qt_keycode=None):
         try:
-            file_trunk = os.path.splitext(self.ds.attrs['datename'])[0]
-
+            if len(self.ds.attrs['datename']):
+                file_trunk = os.path.splitext(self.ds.attrs['datename'])[0]
+            else:
+                file_trunk = self.ds.attrs['filename']
             savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], file_trunk)
+            breakpoint()
         except KeyError:
             savefilename = ''
 
