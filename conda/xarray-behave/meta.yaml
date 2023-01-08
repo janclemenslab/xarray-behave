@@ -16,9 +16,10 @@ requirements:
   host:
     - python {{ python }}
     - pip
+    - numpy<1.24
   run:
     - python {{ python }}
-    - defopt=6.3
+    - defopt
     - flammkuchen
     - h5py
     - librosa>0.8
