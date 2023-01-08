@@ -71,9 +71,9 @@ main:
   type: stacked
 
   default: "STFT"
-  options: "No,STFT"  #,TCN"
+  options: "None,STFT"  #,TCN"
 
-  "No":
+  "None":
 
   "STFT":
   - name: pre_nb_dft
