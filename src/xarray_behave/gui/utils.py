@@ -17,7 +17,7 @@ def make_colors(nb_colors: int) -> Iterable:
     if nb_colors > 0:
         # cmap = colorcet.cm['glasbey_light']
         # cmap = colorcet.cm['glasbey_bw_minc_20_minl_50']
-        cmap = colorcet.cm['glasbey_bw_minc_20_minl_30']
+        cmap = colorcet.cm["glasbey_bw_minc_20_minl_30"]
         # ignore first (red)
         colors = (cmap(np.arange(1, nb_colors + 1)) * 255)[:, :3].astype(np.uint8)
     return colors
@@ -78,14 +78,12 @@ class VideoReaderNP(VideoReader):
 
 
 class ImageViewVR(pg.ImageView):
-
     def quickMinMax(self, data):
         """Dummy min/max for numpy videoreader. The original function tries to read the full video!"""
         return 0, 255
 
 
 class FastImageWidget(pg.GraphicsLayoutWidget):
-
     def __init__(self, *args, useOpenGL=True, **kwargs):
         """[summary]
 
@@ -187,10 +185,9 @@ def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
     idxs = np.searchsorted(array, values, side="left")
 
     # find indexes where previous index is closer
-    prev_idx_is_less = (
-        (idxs == len(array)) |
-        (np.fabs(values - array[np.maximum(idxs - 1, 0)]) < np.fabs(values - array[np.minimum(idxs,
-                                                                                              len(array) - 1)])))
+    prev_idx_is_less = (idxs == len(array)) | (
+        np.fabs(values - array[np.maximum(idxs - 1, 0)]) < np.fabs(values - array[np.minimum(idxs, len(array) - 1)])
+    )
     idxs[prev_idx_is_less] -= 1
     return idxs
 
@@ -216,9 +213,9 @@ class Worker(QtCore.QRunnable):
 
     @QtCore.Slot()
     def run(self):
-        '''
+        """
         Initialise the runner function with passed args, kwargs.
-        '''
+        """
         self.fn(*self.args, **self.kwargs)
 
 
@@ -233,7 +230,6 @@ class InvokeEvent(QtCore.QEvent):
 
 
 class Invoker(QtCore.QObject):
-
     def event(self, event):
         event.fn(*event.args, **event.kwargs)
 
@@ -252,7 +248,6 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
     # Subclass Delegate to increase item height
     class Delegate(QtWidgets.QStyledItemDelegate):
-
         def sizeHint(self, option, index):
             size = super().sizeHint(option, index)
             size.setHeight(20)

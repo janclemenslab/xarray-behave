@@ -29,6 +29,7 @@ want to add a new type of supported form field.
 # modified from https://sleap.ai/_modules/sleap/gui/formbuilder.html
 import yaml
 from typing import Any, Dict, List, Optional, Union, Text
+
 try:
     import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
@@ -37,23 +38,23 @@ from qtpy import QtWidgets, QtCore, QtGui
 
 
 class YamlDialog(QtWidgets.QDialog):
-    def __init__(self, yaml_file, parent=None, title=None,
-                 main_callback=None, callbacks={}):
+    def __init__(self, yaml_file, parent=None, title=None, main_callback=None, callbacks={}):
         super().__init__(parent=parent)
         self.setWindowTitle(title)
         self.form = YamlFormWidget(yaml_file)
         if main_callback is None:
+
             def main_callback():
                 """Accepts and closes dialog."""
                 self.accept()
                 self.close()
+
         self.form.mainAction.connect(main_callback)
 
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
 
         self.scroll_area.setWidget(self.form)
-
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.scroll_area)
@@ -101,17 +102,15 @@ class YamlFormWidget(QtWidgets.QGroupBox):
         self.which_form = which_form
 
         self.form_layout = FormBuilderLayout(
-            items_to_create[self.which_form], field_options_lists=field_options_lists,
+            items_to_create[self.which_form],
+            field_options_lists=field_options_lists,
         )
 
         self.setLayout(self.form_layout)
 
         if items_to_create[self.which_form]:
             for item in items_to_create[self.which_form]:
-                if (
-                    item["type"] == "button"
-                    and item.get("default", "") == "main action"
-                ):
+                if item["type"] == "button" and item.get("default", "") == "main action":
                     self.buttons[item["name"]].clicked.connect(self.trigger_main_action)
 
         self.form_layout.valueChanged.connect(self.valueChanged)
@@ -179,9 +178,7 @@ class FormBuilderModalDialog(QtWidgets.QDialog):
             form_widget = YamlFormWidget.from_name(form_name)
 
         if not form_widget:
-            raise ValueError(
-                "FormBuilderModalDialog must have either form widget or name."
-            )
+            raise ValueError("FormBuilderModalDialog must have either form widget or name.")
 
         self._results = None
         self.form_widget = form_widget
@@ -293,8 +290,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         data = {
             w.objectName(): self.get_widget_value(w)
             for w in widgets
-            if len(w.objectName())
-            and type(w) not in (QtWidgets.QLabel, QtWidgets.QPushButton)
+            if len(w.objectName()) and type(w) not in (QtWidgets.QLabel, QtWidgets.QPushButton)
         }
 
         stacked_data = [w.get_data() for w in widgets if type(w) == StackBuilderWidget]
@@ -355,10 +351,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         """
         widgets = self.fields.values()
         found = [
-            w
-            for w in widgets
-            if w.objectName() == field_name
-            and type(w) not in (QtWidgets.QLabel, QtWidgets.QPushButton)
+            w for w in widgets if w.objectName() == field_name and type(w) not in (QtWidgets.QLabel, QtWidgets.QPushButton)
         ]
         stacks = [w for w in widgets if type(w) == StackBuilderWidget]
         for stack in stacks:
@@ -457,7 +450,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             field.setRange(min, max)
             field.setSingleStep(0.25)
 
-            decimals = item.get('decimals', 2)
+            decimals = item.get("decimals", 2)
             field.setDecimals(decimals)
 
             field.setValue(item["default"])
@@ -480,13 +473,11 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             spin_type = item["type"].split("_")[-1]
             none_string = "auto" if item["type"].startswith("auto") else "none"
             none_label = item.get("none_label", None)
-            decimals = item.get('decimals', 2)
+            decimals = item.get("decimals", 2)
 
-            field = OptionalSpinWidget(
-                type=spin_type, none_string=none_string, none_label=none_label, decimals=decimals
-            )
+            field = OptionalSpinWidget(type=spin_type, none_string=none_string, none_label=none_label, decimals=decimals)
             if "range" in item.keys():
-                caster = int if spin_type=="int" else float
+                caster = int if spin_type == "int" else float
                 min, max = list(map(caster, item["range"].split(",")))
                 field.setRange(min, max)
             elif item["default"] is not None and item["default"] > 100:
@@ -518,15 +509,14 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
                 add_blank_option = True
 
             field = TextOrListWidget(
-                result_as_idx=result_as_optional_idx, add_blank_option=add_blank_option,
+                result_as_idx=result_as_optional_idx,
+                add_blank_option=add_blank_option,
             )
 
             if item["name"] in self.field_options_lists:
                 field.set_options(self.field_options_lists[item["name"]])
             elif "options" in item:
-                field.set_options(
-                    item["options"].split(","), select_item=item.get("default", "")
-                )
+                field.set_options(item["options"].split(","), select_item=item.get("default", ""))
 
             field.valueChanged.connect(lambda: self.valueChanged.emit())
 
@@ -549,9 +539,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
 
         # stacked: show menu and form panel corresponding to menu selection
         elif item["type"] == "stacked":
-            field = StackBuilderWidget(
-                item, field_options_lists=self.field_options_lists
-            )
+            field = StackBuilderWidget(item, field_options_lists=self.field_options_lists)
             field.valueChanged.connect(lambda: self.valueChanged.emit())
 
         # If we don't recognize the type, just show a text box
@@ -584,9 +572,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         if item["type"].split("_")[0] == "file":
             self.addRow("", self._make_file_button(item, field))
 
-    def _make_file_button(
-        self, item: Dict, field: QtWidgets.QWidget
-    ) -> QtWidgets.QPushButton:
+    def _make_file_button(self, item: Dict, field: QtWidgets.QWidget) -> QtWidgets.QPushButton:
         """Creates the button for a file_* field-type."""
         file_button = QtWidgets.QPushButton("Select " + item["label"])
 
@@ -594,9 +580,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             # Define function for button to trigger
             def select_file(*args, x=field):
                 filter = item.get("filter", "Any File (*.*)")
-                filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-                    None, caption="Open File", filter=filter
-                )
+                filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, caption="Open File", filter=filter)
                 if len(filename):
                     x.setText(filename)
                 self.valueChanged.emit()
@@ -650,9 +634,7 @@ class StackBuilderWidget(QtWidgets.QWidget):
 
         for page in self.option_list:
             # add page
-            self.page_layouts[page] = FormBuilderLayout(
-                stack_data[page], field_options_lists=self.field_options_lists
-            )
+            self.page_layouts[page] = FormBuilderLayout(stack_data[page], field_options_lists=self.field_options_lists)
 
             self.page_layouts[page].valueChanged.connect(self.valueChanged)
 
@@ -754,9 +736,7 @@ class OptionalSpinWidget(QtWidgets.QWidget):
         layout = QtWidgets.QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.spin_widget = (
-            QtWidgets.QDoubleSpinBox() if type == "double" else QtWidgets.QSpinBox()
-        )
+        self.spin_widget = QtWidgets.QDoubleSpinBox() if type == "double" else QtWidgets.QSpinBox()
 
         if type == "double" and decimals is not None:
             self.spin_widget.setDecimals(decimals)
@@ -932,7 +912,8 @@ class TextOrListWidget(QtWidgets.QWidget):
 
         self.text_widget = QtWidgets.QLineEdit()
         self.list_widget = FieldComboWidget(
-            result_as_idx=result_as_idx, add_blank_option=add_blank_option,
+            result_as_idx=result_as_idx,
+            add_blank_option=add_blank_option,
         )
 
         layout.addWidget(self.text_widget)

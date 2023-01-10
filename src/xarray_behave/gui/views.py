@@ -19,8 +19,7 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
-class Model():
-
+class Model:
     def __init__(self, ds):
         self.ds = ds
 
@@ -34,16 +33,17 @@ class Model():
 
 
 class SegmentItem(pg.LinearRegionItem):
-
-    def __init__(self,
-                 bounds: Tuple[float, float],
-                 event_index: int,
-                 xrange,
-                 time_bounds: Tuple[float, float] = None,
-                 movable=True,
-                 pen=None,
-                 brush=None,
-                 **kwargs):
+    def __init__(
+        self,
+        bounds: Tuple[float, float],
+        event_index: int,
+        xrange,
+        time_bounds: Tuple[float, float] = None,
+        movable=True,
+        pen=None,
+        brush=None,
+        **kwargs,
+    ):
         """[summary]
 
         Args:
@@ -68,7 +68,6 @@ class SegmentItem(pg.LinearRegionItem):
 
 
 class EventItem(pg.InfiniteLine):
-
     def __init__(self, position: float, event_index: int, xrange, time_pos=None, movable=True, pen=None, **kwargs):
         """[summary]
 
@@ -106,22 +105,22 @@ class Draggable(pg.GraphItem):
         self.callback = callback
 
     def setData(self, **kwds):
-        self.text = kwds.pop('text', [])
+        self.text = kwds.pop("text", [])
         self.data = kwds
-        if 'pos' in self.data:
-            if self.data['pos'] is None:
+        if "pos" in self.data:
+            if self.data["pos"] is None:
                 self.data = {}
             else:
-                npts = self.data['pos'].shape[0]
-                self.data['data'] = np.empty(npts, dtype=[('index', int)])
-                self.data['data']['index'] = np.arange(npts)
+                npts = self.data["pos"].shape[0]
+                self.data["data"] = np.empty(npts, dtype=[("index", int)])
+                self.data["data"]["index"] = np.arange(npts)
         self.setTexts(self.text)
 
-        if 'acceptDrags' in kwds:
-            self.acceptDrags = kwds['acceptDrags']
+        if "acceptDrags" in kwds:
+            self.acceptDrags = kwds["acceptDrags"]
 
-        if 'focalFly' in kwds:
-            self.focalFly = kwds['focalFly']
+        if "focalFly" in kwds:
+            self.focalFly = kwds["focalFly"]
         else:
             self.focalFly = None
 
@@ -139,7 +138,7 @@ class Draggable(pg.GraphItem):
     def updateGraph(self):
         pg.GraphItem.setData(self, **self.data)
         for i, item in enumerate(self.textItems):
-            item.setPos(*self.data['pos'][i])
+            item.setPos(*self.data["pos"][i])
 
     def mouseDragEvent(self, ev):
         if ev.button() != QtCore.Qt.LeftButton or not self.acceptDrags:
@@ -159,17 +158,17 @@ class Draggable(pg.GraphItem):
             if ev.modifiers() == QtCore.Qt.ControlModifier and self.focalFly is not None:
                 inds = [pt.data()[0] for pt in pts]
                 if self.focalFly not in inds:
-                    logger.info(f'   Did not drag focal fly {self.focalFly} - dragged {inds}. Ignoring.')
+                    logger.info(f"   Did not drag focal fly {self.focalFly} - dragged {inds}. Ignoring.")
                     ev.ignore()
                     return
                 else:
-                    logger.info(f'   Dragged focal fly {self.focalFly} - dragged {inds}. Moving.')
+                    logger.info(f"   Dragged focal fly {self.focalFly} - dragged {inds}. Moving.")
                     self.dragPoint = pts[inds.index(self.focalFly)]
                     ind = self.dragPoint.data()[0]
             else:
                 self.dragPoint = pts[0]
                 ind = self.dragPoint.data()[0]
-            self.dragOffset = self.data['pos'][ind] - pos
+            self.dragOffset = self.data["pos"][ind] - pos
         elif ev.isFinish():
             # when draggin is done, update the model
             ind = self.dragPoint.data()[0]
@@ -185,7 +184,7 @@ class Draggable(pg.GraphItem):
         # update data and fraph in view - that way we get faster visual feedback
         # w/o having to update the whole frame/view again
         ind = self.dragPoint.data()[0]
-        self.data['pos'][ind] = ev.pos() + self.dragOffset
+        self.data["pos"][ind] = ev.pos() + self.dragOffset
         self.updateGraph()
         ev.accept()
 
@@ -193,7 +192,6 @@ class Draggable(pg.GraphItem):
 # the viewer is getting data from the Model (ds) but does not change it
 # (so make ds-ref in View read-only via @property)
 class TraceView(pg.PlotWidget):
-
     def __init__(self, model, callback, ylim=None):
         # additionally make names of trace and event arrays in ds args?
         super().__init__()
@@ -204,20 +202,22 @@ class TraceView(pg.PlotWidget):
         self.enableAutoRange(False, False)
         self.setDefaultPadding(0.0)
         # leave enought space so axes are aligned aligned
-        y_axis = self.getAxis('left')
+        y_axis = self.getAxis("left")
         y_axis.setWidth(50)
 
         self._m = model
         self.callback = callback
         self.getPlotItem().mouseClickEvent = self._click
 
-        self.threshold_line = pg.InfiniteLine(movable=True,
-                                              angle=0,
-                                              pos=0,
-                                              pen=pg.mkPen(color='r', width=2, alpha=0.25),
-                                              bounds=[0, None],
-                                              label='Threshold',
-                                              labelOpts={'position': 0.9})
+        self.threshold_line = pg.InfiniteLine(
+            movable=True,
+            angle=0,
+            pos=0,
+            pen=pg.mkPen(color="r", width=2, alpha=0.25),
+            bounds=[0, None],
+            label="Threshold",
+            labelOpts={"position": 0.9},
+        )
 
         self.annotation_items = []
 
@@ -247,17 +247,17 @@ class TraceView(pg.PlotWidget):
 
         # draw background channels
         if self.m.nb_channels is not None and self.m.show_all_channels and self.m.y_other is not None:
-            y_other = self.m.y_other[::int(self.m.step * 2), :]
-            x_other = self.m.x[::int(self.m.step * 2)]
+            y_other = self.m.y_other[:: int(self.m.step * 2), :]
+            x_other = self.m.x[:: int(self.m.step * 2)]
             for chan in range(self.m.nb_channels - 1):
                 item = pg.PlotCurveItem(x_other, y_other[:, chan], pen=pg.mkPen(color=[127, 127, 127]))
                 self.addItem(item)
 
         # plot active channel
-        x = self.m.x[::self.m.step]
-        item = pg.PlotCurveItem(x=x,
-                                y=np.array(self.m.y[::self.m.step], dtype=np.float),
-                                pen=pg.mkPen(color=[220, 220, 220], width=1))
+        x = self.m.x[:: self.m.step]
+        item = pg.PlotCurveItem(
+            x=x, y=np.array(self.m.y[:: self.m.step], dtype=np.float), pen=pg.mkPen(color=[220, 220, 220], width=1)
+        )
         self.addItem(item)
         # self.autoRange(padding=0)
         if self._m.ylim is None:
@@ -267,13 +267,13 @@ class TraceView(pg.PlotWidget):
             self.setXRange(np.min(x), np.max(x))
 
         # time of current frame in trace
-        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90, pen=pg.mkPen(color='r', width=1))
+        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
         self.addItem(pos_line)
 
         # draw actice envelope and threshold
         if self.m.threshold_mode:
             self.addItem(self.threshold_line)
-            env_line = pg.PlotCurveItem(x=x, y=self.m.envelope[::self.m.step], pen=pg.mkPen(color=[196, 98, 98], width=1))
+            env_line = pg.PlotCurveItem(x=x, y=self.m.envelope[:: self.m.step], pen=pg.mkPen(color=[196, 98, 98], width=1))
             self.addItem(env_line)
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
@@ -311,7 +311,6 @@ class TraceView(pg.PlotWidget):
 
 
 class TrackView(TraceView):
-
     def update_trace(self):
         self.clear()
 
@@ -323,16 +322,14 @@ class TrackView(TraceView):
         self.autoRange(padding=0)
 
         # time of current frame in trace
-        pos_line = pg.InfiniteLine(self.m.x_tracks[int(self.m.span / self.m.fs_ratio / 2)],
-                                   movable=False,
-                                   angle=90,
-                                   pen=pg.mkPen(color='r', width=1))
+        pos_line = pg.InfiniteLine(
+            self.m.x_tracks[int(self.m.span / self.m.fs_ratio / 2)], movable=False, angle=90, pen=pg.mkPen(color="r", width=1)
+        )
         self.addItem(pos_line)
 
 
 class SpecView(pg.ImageView):
-
-    def __init__(self, model, callback, colormap='turbo'):
+    def __init__(self, model, callback, colormap="turbo"):
         super().__init__(view=pg.PlotItem())
         self.ui.histogram.hide()
         self.ui.roiBtn.hide()
@@ -343,9 +340,9 @@ class SpecView(pg.ImageView):
         self.view.setMouseEnabled(x=False, y=False)
 
         # leave enough space so axes are aligned aligned
-        self.y_axis = self.getView().getAxis('left')
+        self.y_axis = self.getView().getAxis("left")
         self.y_axis.setWidth(50)
-        self.y_axis.setLabel('Frequency', units='Hz')
+        self.y_axis.setLabel("Frequency", units="Hz")
         self.y_axis.enableAutoSIPrefix()
 
         self._m = model
@@ -354,7 +351,7 @@ class SpecView(pg.ImageView):
         self.t_step = 1
         self.max_pix = 6_000
 
-        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(color='r', width=1))
+        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
         self.addItem(self.pos_line)
 
         cmap = pg.colormap.getFromMatplotlib(colormap)
@@ -369,7 +366,7 @@ class SpecView(pg.ImageView):
     @property
     def xrange(self):
         try:  # to prevent failure on init
-            return (0, self.S.shape[1])  #np.array(self.view.viewRange()[0])
+            return (0, self.S.shape[1])  # np.array(self.view.viewRange()[0])
         except AttributeError:
             return None
 
@@ -386,17 +383,20 @@ class SpecView(pg.ImageView):
     def update_spec(self, x, y):
         # tuple-ify y for caching
         mel = self.m.spec_mel
-        self.S, f, t = self._calc_spec(tuple(y), self.m.spec_win, self.m.spec_compression_ratio, self.m.fmin,
-                                       self.m.fmax, self.m.spec_denoise, mel)
-        trange = (self.m.x[-1] - self.m.x[0])
+        self.S, f, t = self._calc_spec(
+            tuple(y), self.m.spec_win, self.m.spec_compression_ratio, self.m.fmin, self.m.fmax, self.m.spec_denoise, mel
+        )
+        trange = self.m.x[-1] - self.m.x[0]
         self.max_pix = 6_000
         self.t_step = max(1, self.S.shape[1] // self.max_pix)
-        self.setImage(self.S.T[::self.t_step],
-                      autoRange=False,
-                      scale=[trange / len(t) * self.t_step, (f[-1] - f[0]) / len(f)],
-                      autoLevels=None in self.m.spec_levels,
-                      levels=None if None in self.m.spec_levels else self.m.spec_levels,
-                      pos=[self.m.x[0], f[0]])
+        self.setImage(
+            self.S.T[:: self.t_step],
+            autoRange=False,
+            scale=[trange / len(t) * self.t_step, (f[-1] - f[0]) / len(f)],
+            autoLevels=None in self.m.spec_levels,
+            levels=None if None in self.m.spec_levels else self.m.spec_levels,
+            pos=[self.m.x[0], f[0]],
+        )
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
         self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
 
@@ -412,6 +412,7 @@ class SpecView(pg.ImageView):
 
         import librosa
         import librosa.feature
+
         if True:  # not mel:
             psd = librosa.stft(y=y, n_fft=nfft, win_length=spec_win, hop_length=spec_win // 2)
             t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
@@ -443,18 +444,14 @@ class SpecView(pg.ImageView):
             noise_floor = np.nanmedian(S, axis=1, keepdims=True)
             S /= noise_floor
 
-        S = np.log2(1.0 + 2.0**spec_compression_ratio * S)
+        S = np.log2(1.0 + 2.0 ** spec_compression_ratio * S)
         # S = S / np.max(S) * 255  # normalize to 0...255
         return S, f, t
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
-        region = SegmentItem((onset, offset),
-                             region_typeindex,
-                             self.xrange,
-                             time_bounds=(onset, offset),
-                             brush=brush,
-                             pen=pen,
-                             movable=movable)
+        region = SegmentItem(
+            (onset, offset), region_typeindex, self.xrange, time_bounds=(onset, offset), brush=brush, pen=pen, movable=movable
+        )
         if text is not None:
             pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
 
@@ -489,7 +486,6 @@ class SpecView(pg.ImageView):
 
 
 class MovieView(utils.FastImageWidget):
-
     def __init__(self, model, callback):
         super().__init__()
         self._m = model
@@ -520,8 +516,8 @@ class MovieView(utils.FastImageWidget):
                 self.fly_pens.append(pg.mkBrush(*self.m.fly_colors[dot_fly], alpha))
 
         # build skeletons
-        if 'pose_positions' in self._m.ds:
-            skeleton = self._m.ds.pose_positions.attrs['skeleton']
+        if "pose_positions" in self._m.ds:
+            skeleton = self._m.ds.pose_positions.attrs["skeleton"]
         else:
             skeleton = np.zeros((0, 2), dtype=np.uint)
         # skeleton = np.array([[0, 1], [1, 8], [8, 11],  # body axis
@@ -536,7 +532,9 @@ class MovieView(utils.FastImageWidget):
     def m(self):  # read only access to the model
         return self._m
 
-    def update_frame(self,):
+    def update_frame(
+        self,
+    ):
         frame = self.m.vr[self.m.framenumber]
 
         if self.m.frame_fliplr:
@@ -547,7 +545,7 @@ class MovieView(utils.FastImageWidget):
 
         if frame is not None:  # frame is None when at end of video
             # # FIXME the annotations potentially waste time annotating outside of the cropped frame
-            if 'pose_positions_allo' in self.m.ds:
+            if "pose_positions_allo" in self.m.ds:
                 if self.m.show_poses:
                     frame = self.annotate_poses(frame)
                     self.fly_poses.setVisible(True)
@@ -555,7 +553,7 @@ class MovieView(utils.FastImageWidget):
                     self.fly_poses.setData(pos=None)
                     self.fly_poses.setVisible(False)
 
-            if 'pose_positions_allo' in self.m.ds or 'body_positions' in self.m.ds:
+            if "pose_positions_allo" in self.m.ds or "body_positions" in self.m.ds:
                 if self.m.show_dot:
                     frame = self.annotate_dot(frame)
                 else:
@@ -573,49 +571,49 @@ class MovieView(utils.FastImageWidget):
 
     def annotate_dot(self, frame):
         # mark each fly with uniquely colored dots
-        if 'pose_positions_allo' in self.m.ds:
+        if "pose_positions_allo" in self.m.ds:
             pos = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, self.m.pose_center_index])
             cols = self.m.fly_colors
-        elif 'body_positions' in self.m.ds:
+        elif "body_positions" in self.m.ds:
             pos = np.array(self.m.ds.body_positions.data[self.m.index_other, :, self.m.track_center_index])
             cols = self.m.fly_colors
 
-        self.fly_positions.setData(pos=pos[:, ::-1],
-                                   symbolBrush=self.brushes,
-                                   pen=None,
-                                   size=10,
-                                   acceptDrags=not self.m.move_poses,
-                                   focalFly=self.m.focal_fly)
+        self.fly_positions.setData(
+            pos=pos[:, ::-1],
+            symbolBrush=self.brushes,
+            pen=None,
+            size=10,
+            acceptDrags=not self.m.move_poses,
+            focalFly=self.m.focal_fly,
+        )
 
         # mark *focal* and *other* fly with circle
         for this_fly, color in zip((self.m.focal_fly, self.m.other_fly), cols):
-            if 'pose_positions_allo' in self.m.ds:
+            if "pose_positions_allo" in self.m.ds:
                 fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, this_fly, self.m.pose_center_index]
-            elif 'body_positions' in self.m.ds:
+            elif "body_positions" in self.m.ds:
                 fly_pos = self.m.ds.body_positions.data[self.m.index_other, this_fly, self.m.track_center_index]
 
             fly_pos = np.array(fly_pos).astype(np.uintp)  # in case this is a dask.array
             # only plot circle if fly is within the frame (also prevents overflow errors
             # for tracking errors that lead to VERY large position values)
             if fly_pos[0] <= frame.shape[0] and fly_pos[1] <= frame.shape[1]:
-                xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, method='bresenham')
+                xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, method="bresenham")
                 frame[xx, yy, :] = color
         return frame
 
     def annotate_poses(self, frame):
         poses = np.array(self.m.ds.pose_positions_allo.data[self.m.index_other, :, :])
         poses = poses.reshape(-1, 2)  # flatten
-        self.fly_poses.setData(pos=poses[:, ::-1],
-                               adj=self.skeletons,
-                               symbolBrush=self.pose_brushes,
-                               size=6,
-                               acceptDrags=self.m.move_poses)
+        self.fly_poses.setData(
+            pos=poses[:, ::-1], adj=self.skeletons, symbolBrush=self.pose_brushes, size=6, acceptDrags=self.m.move_poses
+        )
         return frame
 
     def crop_frame(self, frame):
-        if 'pose_positions_allo' in self.m.ds:
+        if "pose_positions_allo" in self.m.ds:
             fly_pos = self.m.ds.pose_positions_allo.data[self.m.index_other, self.m.focal_fly, self.m.pose_center_index]
-        elif 'body_positions' in self.m.ds:
+        elif "body_positions" in self.m.ds:
             fly_pos = self.m.ds.body_positions.data[self.m.index_other, self.m.focal_fly, self.m.track_center_index]
         fly_pos = np.array(fly_pos).astype(np.uintp)  # in case this is a dask.array
         # makes sure crop does not exceed frame bounds

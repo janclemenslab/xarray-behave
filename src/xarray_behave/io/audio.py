@@ -30,16 +30,18 @@ def split_song_and_nonsong(data, song_channels=None, return_nonsong_channels=Fal
 @io.register_provider
 class Ethodrome(io.BaseProvider):
 
-    KIND = 'audio'
-    NAME = 'ethodrome h5'
-    SUFFIXES = ['_daq.h5']
+    KIND = "audio"
+    NAME = "ethodrome h5"
+    SUFFIXES = ["_daq.h5"]
 
-    def load(self,
-             filename: Optional[str],
-             song_channels: Optional[Sequence[int]] = None,
-             return_nonsong_channels: bool = False,
-             lazy: bool = False,
-             **kwargs):
+    def load(
+        self,
+        filename: Optional[str],
+        song_channels: Optional[Sequence[int]] = None,
+        return_nonsong_channels: bool = False,
+        lazy: bool = False,
+        **kwargs
+    ):
         """[summary]
 
         Args:
@@ -62,24 +64,25 @@ class Ethodrome(io.BaseProvider):
         non_song = None
         samplerate = None
         if lazy:
-            f = h5py.File(filename, mode='r', rdcc_w0=0, rdcc_nbytes=100 * (1024**2), rdcc_nslots=50000)
+            f = h5py.File(filename, mode="r", rdcc_w0=0, rdcc_nbytes=100 * (1024 ** 2), rdcc_nslots=50000)
             # convert to dask array since this allows lazily evaluated indexing...
             import dask.array as daskarray
-            da = daskarray.from_array(f['samples'], chunks=(10000, 1))
-            nb_channels = f['samples'].shape[1]
+
+            da = daskarray.from_array(f["samples"], chunks=(10000, 1))
+            nb_channels = f["samples"].shape[1]
             song_channels = song_channels[song_channels < nb_channels]
             song = da[:, song_channels]
             if return_nonsong_channels:
                 non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
                 non_song = da[:, non_song_channels]
         else:
-            with h5py.File(filename, 'r') as f:
-                nb_channels = f['samples'].shape[1]
+            with h5py.File(filename, "r") as f:
+                nb_channels = f["samples"].shape[1]
                 song_channels = song_channels[song_channels < nb_channels]
-                song = f['samples'][:, song_channels]
+                song = f["samples"][:, song_channels]
                 if return_nonsong_channels:
                     non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
-                    non_song = f['samples'][:, non_song_channels]
+                    non_song = f["samples"][:, non_song_channels]
 
         return song, non_song, samplerate
 
@@ -87,29 +90,31 @@ class Ethodrome(io.BaseProvider):
 @io.register_provider
 class Npz(io.BaseProvider):
 
-    KIND = 'audio'
-    NAME = 'npz'
-    SUFFIXES = ['.npz']
+    KIND = "audio"
+    NAME = "npz"
+    SUFFIXES = [".npz"]
 
-    def load(self,
-             filename: Optional[str],
-             song_channels: Optional[Sequence[int]] = None,
-             return_nonsong_channels: bool = False,
-             lazy: bool = False,
-             audio_dataset: Optional[str] = None,
-             **kwargs):
+    def load(
+        self,
+        filename: Optional[str],
+        song_channels: Optional[Sequence[int]] = None,
+        return_nonsong_channels: bool = False,
+        lazy: bool = False,
+        audio_dataset: Optional[str] = None,
+        **kwargs
+    ):
 
         if filename is None:
             filename = self.path
         if audio_dataset is None:
-            audio_dataset = 'data'
+            audio_dataset = "data"
 
         with np.load(filename) as file:
             try:
-                sampling_rate = float(file['samplerate'])
+                sampling_rate = float(file["samplerate"])
             except KeyError:
                 try:
-                    sampling_rate = float(file['samplerate_Hz'])
+                    sampling_rate = float(file["samplerate_Hz"])
                 except KeyError:
                     sampling_rate = None
             data = file[audio_dataset]
@@ -128,16 +133,18 @@ class Npz(io.BaseProvider):
 @io.register_provider
 class Npy(io.BaseProvider):
 
-    KIND = 'audio'
-    NAME = 'npy'
-    SUFFIXES = ['.npy']
+    KIND = "audio"
+    NAME = "npy"
+    SUFFIXES = [".npy"]
 
-    def load(self,
-             filename: Optional[str],
-             song_channels: Optional[Sequence[int]] = None,
-             return_nonsong_channels: bool = False,
-             lazy: bool = False,
-             **kwargs):
+    def load(
+        self,
+        filename: Optional[str],
+        song_channels: Optional[Sequence[int]] = None,
+        return_nonsong_channels: bool = False,
+        lazy: bool = False,
+        **kwargs
+    ):
 
         if filename is None:
             filename = self.path
@@ -152,21 +159,24 @@ class Npy(io.BaseProvider):
 @io.register_provider
 class AudioFile(io.BaseProvider):
 
-    KIND = 'audio'
-    NAME = 'generic audio file'
-    SUFFIXES = ['.wav', '.aif', '.mp3', '.flac']
+    KIND = "audio"
+    NAME = "generic audio file"
+    SUFFIXES = [".wav", ".aif", ".mp3", ".flac"]
 
-    def load(self,
-             filename: Optional[str],
-             song_channels: Optional[Sequence[int]] = None,
-             return_nonsong_channels: bool = False,
-             lazy: bool = False,
-             **kwargs):
+    def load(
+        self,
+        filename: Optional[str],
+        song_channels: Optional[Sequence[int]] = None,
+        return_nonsong_channels: bool = False,
+        lazy: bool = False,
+        **kwargs
+    ):
 
         if filename is None:
             filename = self.path
 
         import librosa
+
         data, sampling_rate = librosa.load(filename, sr=None, mono=False)
         data = data.T
         data = data[:, np.newaxis] if data.ndim == 1 else data  # adds singleton dim for single-channel wavs
@@ -178,33 +188,36 @@ class AudioFile(io.BaseProvider):
 @io.register_provider
 class H5file(io.BaseProvider):
 
-    KIND = 'audio'
-    NAME = 'h5'
-    SUFFIXES = ['.h5', '.hdf5', '.hdfs']
+    KIND = "audio"
+    NAME = "h5"
+    SUFFIXES = [".h5", ".hdf5", ".hdfs"]
 
-    def load(self,
-             filename: Optional[str],
-             song_channels: Optional[Sequence[int]] = None,
-             return_nonsong_channels: bool = False,
-             lazy: bool = False,
-             audio_dataset: Optional[str] = None,
-             **kwargs):
+    def load(
+        self,
+        filename: Optional[str],
+        song_channels: Optional[Sequence[int]] = None,
+        return_nonsong_channels: bool = False,
+        lazy: bool = False,
+        audio_dataset: Optional[str] = None,
+        **kwargs
+    ):
 
         if filename is None:
             filename = self.path
         if audio_dataset is None:
-            audio_dataset = 'data'
+            audio_dataset = "data"
 
         import h5py
+
         sampling_rate = None
-        with h5py.File(filename, mode='r') as file:
+        with h5py.File(filename, mode="r") as file:
             data = file[audio_dataset][:]
             try:
-                sampling_rate = file.attrs['samplerate']
+                sampling_rate = file.attrs["samplerate"]
             except:
                 pass
             try:
-                sampling_rate = file['samplerate'][0]
+                sampling_rate = file["samplerate"][0]
             except:
                 pass
 

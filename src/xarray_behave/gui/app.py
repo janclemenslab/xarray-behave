@@ -27,13 +27,14 @@ from qtpy import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 
 import xarray_behave
-from .. import (xarray_behave as xb, loaders as ld, annot, event_utils)
+from .. import xarray_behave as xb, loaders as ld, annot, event_utils
 
-from . import (utils, views, table)
+from . import utils, views, table
 
 try:
     import numba
-    pg.setConfigOption('useNumba', True)
+
+    pg.setConfigOption("useNumba", True)
 except ImportError:
     pass
 
@@ -41,19 +42,20 @@ try:
     from . import das
 except Exception as e:
     logging.exception(e)
-    logging.warning('Failed to import the das module.\nIgnore if you do not want to use das.\n'
-                    'Otherwise follow these instructions to install:\n'
-                    'https://janclemenslab.org/das/install.html')
+    logging.warning(
+        "Failed to import the das module.\nIgnore if you do not want to use das.\n"
+        "Otherwise follow these instructions to install:\n"
+        "https://janclemenslab.org/das/install.html"
+    )
 
 from .formbuilder import YamlDialog
 
-sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
+sys.setrecursionlimit(10 ** 6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir: str = xarray_behave.__path__[0]
 
 
 class ChkBxFileDialog(QtWidgets.QFileDialog):
-
-    def __init__(self, caption: str = '', checkbox_titles: List[str] = [""], filter: str = "*", directory: str = ""):
+    def __init__(self, caption: str = "", checkbox_titles: List[str] = [""], filter: str = "*", directory: str = ""):
         super().__init__(caption=caption, filter=filter, directory=directory)
         self.setSupportedSchemes(["file"])
         self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog)
@@ -79,14 +81,12 @@ class ChkBxFileDialog(QtWidgets.QFileDialog):
 
 
 class DataSource:
-
     def __init__(self, type: str, name: str):
         self.type = type
         self.name = name
 
 
 class MainWindow(QtWidgets.QMainWindow):
-
     def __init__(self, parent=None, title="Deep Audio Segmenter"):
         super().__init__(parent)
 
@@ -95,11 +95,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
             self.app = QtGui.QApplication([])
-        self.app.setWindowIcon(QtGui.QIcon(package_dir + '/gui/icon.png'))
+        self.app.setWindowIcon(QtGui.QIcon(package_dir + "/gui/icon.png"))
 
         self.resize(400, 200)
         self.setWindowTitle(title)
-        self.setWindowIcon(QtGui.QIcon(package_dir + '/gui/icon.png'))
+        self.setWindowIcon(QtGui.QIcon(package_dir + "/gui/icon.png"))
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
 
         # build menu
@@ -138,6 +138,7 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception as e:
                 print(e)
         import gc
+
         gc.collect()
         event.accept()
 
@@ -159,40 +160,42 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _get_filename_from_ds(self, suffix: str):
         try:
-            if 'filebase' in self.ds.attrs:
+            if "filebase" in self.ds.attrs:
                 savefilename = Path(f"{self.ds.attrs['filebase']}{suffix}")
             else:
-                savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'],
-                                    f"{self.ds.attrs['datename']}{suffix}")
+                savefilename = Path(
+                    self.ds.attrs["root"],
+                    self.ds.attrs["res_path"],
+                    self.ds.attrs["datename"],
+                    f"{self.ds.attrs['datename']}{suffix}",
+                )
         except KeyError:
-            savefilename = Path('')
+            savefilename = Path("")
         return str(savefilename)
 
     def save_swaps(self, qt_keycode=None):
         savefilename = self._get_filename_from_ds(suffix="_idswaps.txt")
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self,
-                                                                'Save swaps to',
-                                                                str(savefilename),
-                                                                filter="txt files (*.txt);;all files (*)")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save swaps to", str(savefilename), filter="txt files (*.txt);;all files (*)"
+        )
         if len(savefilename):
-            logging.info(f'   Saving list of swap indices to {savefilename}.')
+            logging.info(f"   Saving list of swap indices to {savefilename}.")
             os.makedirs(os.path.dirname(savefilename), exist_ok=True)
-            np.savetxt(savefilename, self.swap_events, fmt='%f %d %d', header='index fly1 fly2')
-            logging.info('Done.')
+            np.savetxt(savefilename, self.swap_events, fmt="%f %d %d", header="index fly1 fly2")
+            logging.info("Done.")
 
     def save_definitions(self, qt_keycode=None):
         savefilename = self._get_filename_from_ds(suffix="_definitions.csv")
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self,
-                                                                caption='Save definitions to',
-                                                                dir=str(savefilename),
-                                                                filter="CSV files (*_definitions.csv);;all files (*)")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, caption="Save definitions to", dir=str(savefilename), filter="CSV files (*_definitions.csv);;all files (*)"
+        )
         if len(savefilename):
             # get defs from annot and save them to csv
-            logging.info(f'   Saving definitions to {savefilename}.')
+            logging.info(f"   Saving definitions to {savefilename}.")
             defs = [[key, val] for key, val in annot.Events(self.event_times).categories.items()]
             os.makedirs(os.path.dirname(savefilename), exist_ok=True)
             np.savetxt(savefilename, defs, delimiter=",", fmt="%s")
-            logging.info('Done.')
+            logging.info("Done.")
 
     def save_annotations(self, qt_keycode=None):
         """Save annotations to csv.
@@ -201,30 +204,34 @@ class MainWindow(QtWidgets.QMainWindow):
         savefilename = self._get_filename_from_ds(suffix="_annotations.csv")
 
         # TODO: Add explanatory text to ChkBxFileDialog
-        dialog = ChkBxFileDialog(caption="Save annotations to",
-                                 checkbox_titles=['Save definitions to separate file', 'Preserve empty'],
-                                 directory=savefilename)
+        dialog = ChkBxFileDialog(
+            caption="Save annotations to",
+            checkbox_titles=["Save definitions to separate file", "Preserve empty"],
+            directory=savefilename,
+        )
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
             savefilename = dialog.selectedUrls()[0].toLocalFile()
         else:
-            savefilename = ''
+            savefilename = ""
 
         if len(savefilename):
-            logging.info(f'   Saving annotations to {savefilename}.')
-            self.export_to_csv(savefilename, preserve_empty=dialog.checked('Preserve empty'))
-            logging.info('Done.')
+            logging.info(f"   Saving annotations to {savefilename}.")
+            self.export_to_csv(savefilename, preserve_empty=dialog.checked("Preserve empty"))
+            logging.info("Done.")
 
-        if dialog.checked('Save definitions to separate file'):
+        if dialog.checked("Save definitions to separate file"):
             self.save_definitions()
 
-    def export_to_csv(self,
-                      savefilename: str = None,
-                      start_seconds: float = 0,
-                      end_seconds: float = np.inf,
-                      which_events: Optional[List[str]] = None,
-                      match_to_samples: bool = False,
-                      preserve_empty: bool = True,
-                      qt_keycode=None):
+    def export_to_csv(
+        self,
+        savefilename: str = None,
+        start_seconds: float = 0,
+        end_seconds: float = np.inf,
+        which_events: Optional[List[str]] = None,
+        match_to_samples: bool = False,
+        preserve_empty: bool = True,
+        qt_keycode=None,
+    ):
         """[summary]
 
         Args:
@@ -257,15 +264,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 event_times[name] = event_times.filter_range(name, start_seconds, end_seconds) - start_seconds
 
         df = event_times.to_df(preserve_empty=preserve_empty)
-        df = df.sort_values(by='start_seconds', ascending=True, ignore_index=True)
+        df = df.sort_values(by="start_seconds", ascending=True, ignore_index=True)
         os.makedirs(os.path.dirname(savefilename), exist_ok=True)
         df.to_csv(savefilename, index=False)
 
-    def export_to_wav(self,
-                      savefilename: Optional[str] = None,
-                      start_seconds: float = 0,
-                      end_seconds: Optional[float] = None,
-                      scale: float = 1.0):
+    def export_to_wav(
+        self,
+        savefilename: Optional[str] = None,
+        start_seconds: float = 0,
+        end_seconds: Optional[float] = None,
+        scale: float = 1.0,
+    ):
         """[summary]
 
         Args:
@@ -288,19 +297,21 @@ class MainWindow(QtWidgets.QMainWindow):
         song = (song * scale).astype(original_dtype)
 
         # can only save float32 (or int) to WAV - other float formats will lead to corrupt files
-        if song.dtype == 'float64' or song.dtype == 'float16':
+        if song.dtype == "float64" or song.dtype == "float16":
             song = song.astype(np.float32)
-        if song.dtype == 'int64':
+        if song.dtype == "int64":
             song = song.astype(np.int32)
 
         os.makedirs(os.path.dirname(savefilename), exist_ok=True)
         scipy.io.wavfile.write(savefilename, int(self.fs_song), song)
 
-    def export_to_npz(self,
-                      savefilename: Optional[str] = None,
-                      start_seconds: float = 0,
-                      end_seconds: Optional[float] = None,
-                      scale: float = 1.0):
+    def export_to_npz(
+        self,
+        savefilename: Optional[str] = None,
+        start_seconds: float = 0,
+        end_seconds: Optional[float] = None,
+        scale: float = 1.0,
+    ):
         """[summary]
 
         Args:
@@ -327,16 +338,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def export_for_das(self, qt_keycode=None):
         try:
-            if len(self.ds.attrs['datename']):
-                file_trunk = os.path.splitext(self.ds.attrs['datename'])[0]
+            if len(self.ds.attrs["datename"]):
+                file_trunk = os.path.splitext(self.ds.attrs["datename"])[0]
             else:
-                file_trunk = self.ds.attrs['filename']
-            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['res_path'], self.ds.attrs['datename'], file_trunk)
+                file_trunk = self.ds.attrs["filename"]
+            savefilename = Path(self.ds.attrs["root"], self.ds.attrs["res_path"], self.ds.attrs["datename"], file_trunk)
             breakpoint()
         except KeyError:
-            savefilename = ''
+            savefilename = ""
 
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Export to', str(savefilename), filter="all files (*)")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export to", str(savefilename), filter="all files (*)")
         if not savefilename:
             return
 
@@ -347,14 +358,14 @@ class MainWindow(QtWidgets.QMainWindow):
             items_to_create = yaml.load(form_yaml, Loader=yaml.SafeLoader)
 
         for name in self.event_times.names:
-            items_to_create['main'].insert(2, {'name': f'include_{name}', 'label': name, 'type': 'bool', 'default': True})
+            items_to_create["main"].insert(2, {"name": f"include_{name}", "label": name, "type": "bool", "default": True})
 
-        dialog = YamlDialog(yaml_file=items_to_create, title='Export song and annotations for DAS')
+        dialog = YamlDialog(yaml_file=items_to_create, title="Export song and annotations for DAS")
 
-        dialog.form.fields['start_seconds'].setRange(0, np.max(self.ds.sampletime))
-        dialog.form.fields['end_seconds'].setRange(0, np.max(self.ds.sampletime))
-        dialog.form.fields['end_seconds'].setValue(np.max(self.ds.sampletime))
-        dialog.form.fields['end_seconds'].setToNone()
+        dialog.form.fields["start_seconds"].setRange(0, np.max(self.ds.sampletime))
+        dialog.form.fields["end_seconds"].setRange(0, np.max(self.ds.sampletime))
+        dialog.form.fields["end_seconds"].setValue(np.max(self.ds.sampletime))
+        dialog.form.fields["end_seconds"].setToNone()
 
         dialog.show()
         result = dialog.exec_()
@@ -364,37 +375,35 @@ class MainWindow(QtWidgets.QMainWindow):
 
             which_events = []
             for key, val in form_data.items():
-                if key.startswith('include_') and val:
-                    which_events.append(key[len('include_'):])
+                if key.startswith("include_") and val:
+                    which_events.append(key[len("include_") :])
 
-            start_seconds = form_data['start_seconds']
-            end_seconds = form_data['end_seconds']
+            start_seconds = form_data["start_seconds"]
+            end_seconds = form_data["end_seconds"]
 
             logging.info("Exporting for DAS:")
-            if form_data['file_type'] == 'WAV':
+            if form_data["file_type"] == "WAV":
                 logging.info(f"   song to WAV: {savefilename_trunk + '.wav'}.")
-                self.export_to_wav(savefilename_trunk + '.wav', start_seconds, end_seconds, form_data['scale_audio'])
-            elif form_data['file_type'] == 'NPZ':
+                self.export_to_wav(savefilename_trunk + ".wav", start_seconds, end_seconds, form_data["scale_audio"])
+            elif form_data["file_type"] == "NPZ":
                 logging.info(f"   song to NPZ: {savefilename_trunk + '.npz'}.")
-                self.export_to_npz(savefilename_trunk + '.npz', start_seconds, end_seconds, form_data['scale_audio'])
+                self.export_to_npz(savefilename_trunk + ".npz", start_seconds, end_seconds, form_data["scale_audio"])
 
             logging.info(f"   annotations to CSV: {savefilename_trunk + '.csv'}.")
-            self.export_to_csv(savefilename_trunk + '_annotations.csv',
-                               start_seconds,
-                               end_seconds,
-                               which_events,
-                               match_to_samples=True)
+            self.export_to_csv(
+                savefilename_trunk + "_annotations.csv", start_seconds, end_seconds, which_events, match_to_samples=True
+            )
             logging.info("Done.")
 
     def das_make(self, qt_keycode=None):
-        data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption='Select data folder')
+        data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption="Select data folder")
         if not data_folder:
             return
 
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_make.yaml", title='Assemble dataset for training DAS')
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_make.yaml", title="Assemble dataset for training DAS")
 
-        dialog.form.fields['data_folder'].setText(data_folder)
-        dialog.form.fields['store_folder'].setText(data_folder + '.npy')
+        dialog.form.fields["data_folder"].setText(data_folder)
+        dialog.form.fields["store_folder"].setText(data_folder + ".npy")
 
         dialog.show()
         result = dialog.exec_()
@@ -403,34 +412,35 @@ class MainWindow(QtWidgets.QMainWindow):
             form_data = dialog.form.get_form_data()
 
             # post process splits
-            parts = ['train', 'val', 'test']
+            parts = ["train", "val", "test"]
             file_splits = dict()
             data_splits = dict()
             for part in parts:
-                if form_data[part + '_split'] == 'files':
-                    file_splits[part] = form_data[part + '_split_fraction']
+                if form_data[part + "_split"] == "files":
+                    file_splits[part] = form_data[part + "_split_fraction"]
                 else:
-                    data_splits[part] = form_data[part + '_split_fraction']
+                    data_splits[part] = form_data[part + "_split_fraction"]
 
-            if 'block_size' not in form_data:
-                form_data['block_size'] = None
+            if "block_size" not in form_data:
+                form_data["block_size"] = None
 
-            das.make(data_folder=form_data['data_folder'],
-                     store_folder=form_data['store_folder'],
-                     file_splits=file_splits,
-                     data_splits=data_splits,
-                     make_single_class_datasets=form_data['make_single_class_datasets'],
-                     split_in_two=form_data['stratify'] == 'Two-split',
-                     block_stratify=form_data['stratify'] == 'Block stratify',
-                     block_size=form_data['block_size'],
-                     event_std_seconds=form_data['event_std_seconds'],
-                     gap_seconds=form_data['gap_seconds'],
-                     make_onset_offset_events=form_data['make_onset_offset_events'],
-                     seed=form_data['seed_splits'])
-            logging.info('Done.')
+            das.make(
+                data_folder=form_data["data_folder"],
+                store_folder=form_data["store_folder"],
+                file_splits=file_splits,
+                data_splits=data_splits,
+                make_single_class_datasets=form_data["make_single_class_datasets"],
+                split_in_two=form_data["stratify"] == "Two-split",
+                block_stratify=form_data["stratify"] == "Block stratify",
+                block_size=form_data["block_size"],
+                event_std_seconds=form_data["event_std_seconds"],
+                gap_seconds=form_data["gap_seconds"],
+                make_onset_offset_events=form_data["make_onset_offset_events"],
+                seed=form_data["seed_splits"],
+            )
+            logging.info("Done.")
 
     def das_train(self, qt_keycode):
-
         def _filter_form_data(form_data: Dict[str, Any], is_cli: bool = False) -> Dict[str, Any]:
             """[summary]
 
@@ -442,76 +452,74 @@ class MainWindow(QtWidgets.QMainWindow):
                 Dict[Any]: [description]
             """
 
-            form_data['model_name'] = 'tcn_stft'
-            form_data['nb_pre_conv'] = int(0)
-            if form_data['frontend'] == 'STFT':
-                form_data['nb_pre_conv'] = int(np.sqrt(int(form_data['pre_nb_conv'])))
-                form_data['pre_nb_dft'] = int(form_data['pre_nb_dft'])
-            del form_data['frontend']
-            form_data['reduce_lr'] = form_data['reduce_lr_patience'] is not None
-            post_opt = form_data['postopt'] == 'Yes'
-            form_data = {k: v for k, v in form_data.items() if v not in ['Yes', 'No', None]}
-            form_data['post_opt'] = post_opt
+            form_data["model_name"] = "tcn_stft"
+            form_data["nb_pre_conv"] = int(0)
+            if form_data["frontend"] == "STFT":
+                form_data["nb_pre_conv"] = int(np.sqrt(int(form_data["pre_nb_conv"])))
+                form_data["pre_nb_dft"] = int(form_data["pre_nb_dft"])
+            del form_data["frontend"]
+            form_data["reduce_lr"] = form_data["reduce_lr_patience"] is not None
+            post_opt = form_data["postopt"] == "Yes"
+            form_data = {k: v for k, v in form_data.items() if v not in ["Yes", "No", None]}
+            form_data["post_opt"] = post_opt
 
-            if not len(form_data['y_suffix']):
-                del form_data['y_suffix']
-            if not len(form_data['save_prefix']):
-                del form_data['save_prefix']
+            if not len(form_data["y_suffix"]):
+                del form_data["y_suffix"]
+            if not len(form_data["save_prefix"]):
+                del form_data["save_prefix"]
 
-            for field in ['seed', 'fraction_data', 'reduce_lr_patience']:
+            for field in ["seed", "fraction_data", "reduce_lr_patience"]:
                 if field in form_data and form_data[field] is None:
                     del form_data[field]
-            form_data['use_separable'] = [item.lower() == 'true' for item in form_data['use_separable']]
+            form_data["use_separable"] = [item.lower() == "true" for item in form_data["use_separable"]]
             if is_cli:
-                form_data['use_separable'] = ' '.join([str(item) for item in form_data['use_separable']])
-                for field in ['balance', 'ignore_boundaries', 'reduce_lr', 'tensorboard', 'post_opt']:
+                form_data["use_separable"] = " ".join([str(item) for item in form_data["use_separable"]])
+                for field in ["balance", "ignore_boundaries", "reduce_lr", "tensorboard", "post_opt"]:
                     if field in form_data:
                         if form_data[field] is False:  # rename and pre-prend "no_"
                             del form_data[field]
-                            form_data['no_' + field] = ''
+                            form_data["no_" + field] = ""
                         else:  # empyt value
-                            form_data[field] = ''
+                            form_data[field] = ""
 
             return form_data
 
         def save(arg):
-            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self,
-                                                                    'Save configuration to',
-                                                                    '',
-                                                                    filter="yaml files (*.yaml);;all files (*)")
+            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Save configuration to", "", filter="yaml files (*.yaml);;all files (*)"
+            )
             if len(savefilename):
                 data = dialog.form.get_form_data()
                 logging.info(f"   Saving form fields to {savefilename}.")
-                with open(savefilename, 'w') as stream:
+                with open(savefilename, "w") as stream:
                     yaml.safe_dump(data, stream)
                 logging.info("Done.")
 
         def make_cli(arg):
-            script_ext = 'cmd' if os.name == 'nt' else 'sh'
-            savefilename = 'train.' + script_ext
-            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self,
-                                                                    'Script name',
-                                                                    savefilename,
-                                                                    filter=f"script (*.{script_ext};;all files (*)")
+            script_ext = "cmd" if os.name == "nt" else "sh"
+            savefilename = "train." + script_ext
+            savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Script name", savefilename, filter=f"script (*.{script_ext};;all files (*)"
+            )
             if len(savefilename):
                 form_data = dialog.form.get_form_data()
                 form_data = _filter_form_data(form_data, is_cli=True)
 
-                cmd = 'python3 -m das.train'
+                cmd = "python3 -m das.train"
                 # FIXME formatting
                 for key, val in form_data.items():
                     cmd += f" --{key.replace('_','-')} {val}"
-                with open(savefilename, 'w') as f:
+                with open(savefilename, "w") as f:
                     f.write(cmd)
 
                 # TODO: dialog to suggest editing the script (change paths, activate conda env, cluster specific stuff)
                 logging.info("Done.")
 
         def load(arg):
-            yaml_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select yaml file')
+            yaml_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select yaml file")
             if len(yaml_filename):
                 logging.info(f"   Updating form fields with information from {yaml_filename}.")
-                with open(yaml_filename, 'r') as stream:
+                with open(yaml_filename, "r") as stream:
                     data = yaml.safe_load(stream)
                 dialog.form.set_form_data(data)  # update form
                 logging.info("Done.")
@@ -520,17 +528,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # TODO: check that this is a valid data_dir!
         dialog = YamlDialog(
             yaml_file=package_dir + "/gui/forms/das_train.yaml",
-            title='Train network',
+            title="Train network",
             # main_callback=train,
-            callbacks={
-                'save': save,
-                'load': load,
-                'make_cli': make_cli
-            })
-        dialog.form.fields['data_dir'].setText(data_dir)
-        dialog.form.fields['save_dir'].setText(os.path.splitext(data_dir)[0] + '.res')
-        y_suffices = list(set([p.stem.strip('y_') for p in pathlib.Path(data_dir).glob('**/y_*.npy')]))
-        dialog.form.fields['y_suffix'].set_options(y_suffices)
+            callbacks={"save": save, "load": load, "make_cli": make_cli},
+        )
+        dialog.form.fields["data_dir"].setText(data_dir)
+        dialog.form.fields["save_dir"].setText(os.path.splitext(data_dir)[0] + ".res")
+        y_suffices = list(set([p.stem.strip("y_") for p in pathlib.Path(data_dir).glob("**/y_*.npy")]))
+        dialog.form.fields["y_suffix"].set_options(y_suffices)
 
         dialog.show()
         result = dialog.exec_()
@@ -541,19 +546,20 @@ class MainWindow(QtWidgets.QMainWindow):
             got_das = False
             try:
                 import das.train
+
                 got_das = True
             except ImportError:
-                logging.exception('Need to install das. Alternatively, make scripts and run training elsewhere.')
+                logging.exception("Need to install das. Alternatively, make scripts and run training elsewhere.")
 
             if got_das:
                 # start in independent process, otherwise GUI will freeze during training
-                form_data['log_messages'] = True
+                form_data["log_messages"] = True
 
                 queue = multiprocessing.Queue()  # for progress updates from the callback for display in the GUI
                 stop_event = threading.Event()  # checked in the keras callback for stopping training from the GUI
 
-                progress = QtWidgets.QProgressDialog("Initializing training", "Stop training", 0, form_data['nb_epoch'], None)
-                progress.setWindowTitle('DAS training')
+                progress = QtWidgets.QProgressDialog("Initializing training", "Stop training", 0, form_data["nb_epoch"], None)
+                progress.setWindowTitle("DAS training")
                 progress.setWindowModality(QtCore.Qt.NonModal)
 
                 # Custom cancel-button callback the sets the stop_event to stop training."""
@@ -563,7 +569,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 progress.canceled.connect(custom_cancel)
 
-                form_data['_qt_progress'] = (queue, stop_event)
+                form_data["_qt_progress"] = (queue, stop_event)
                 worker_training = utils.Worker(das.train.train, **form_data)
 
                 pool = QtCore.QThreadPool.globalInstance()
@@ -587,65 +593,65 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QApplication.processEvents()
 
     def das_predict(self, qt_keycode):
-        logging.info('Predicting song using DAS:')
+        logging.info("Predicting song using DAS:")
 
-        if hasattr(self, 'ds') and 'song_raw' not in self.ds:
-            logging.error('   Missing `song_raw`. skipping.')
+        if hasattr(self, "ds") and "song_raw" not in self.ds:
+            logging.error("   Missing `song_raw`. skipping.")
 
         try:
             import das.predict
             import das.utils
         except ImportError as e:
             logging.exception(e)
-            logging.info('   Failed to import das. Install via `pip install das`.')
+            logging.info("   Failed to import das. Install via `pip install das`.")
             return
 
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_predict.yaml", title='Predict labels using DAS')
+        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_predict.yaml", title="Predict labels using DAS")
 
         # get model path and populate form
         model_path, _ = QtWidgets.QFileDialog.getOpenFileName(None, caption="Open model file (*_model.h5)")
         if len(model_path):
-            dialog.form['model_path'] = model_path
+            dialog.form["model_path"] = model_path
         else:
-            logging.warning('No model selected.')
+            logging.warning("No model selected.")
             return
 
         # populate values for postprocessing from params if they exist
-        model_path = model_path.rsplit('_', 1)[0]  # split off suffix (_model.h5 or params.yaml)
+        model_path = model_path.rsplit("_", 1)[0]  # split off suffix (_model.h5 or params.yaml)
         params = das.utils.load_params(model_path)
-        if 'post_opt' in params and isinstance(params['post_opt'], dict):
-            dialog.form['segment_fillgap'] = params['post_opt']['gap_dur']
-            dialog.form['segment_minlen'] = params['post_opt']['min_len']
+        if "post_opt" in params and isinstance(params["post_opt"], dict):
+            dialog.form["segment_fillgap"] = params["post_opt"]["gap_dur"]
+            dialog.form["segment_minlen"] = params["post_opt"]["min_len"]
 
         # if no file loaded, ask to select file or folder
-        if not hasattr(self, 'ds'):
-            dialog.form['file'] = "Select file or folder"
+        if not hasattr(self, "ds"):
+            dialog.form["file"] = "Select file or folder"
 
         dialog.show()
         result = dialog.exec_()
 
         if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
-            model_path = form_data['model_path']
+            model_path = form_data["model_path"]
             if model_path == " ":
                 logging.warning("No model for prediction selected.")
                 return
             else:
-                model_path = model_path.rsplit('_', 1)[0]  # split off suffix
+                model_path = model_path.rsplit("_", 1)[0]  # split off suffix
 
             # set these to 0 to avoid post processing - none will use values from params file
-            if form_data['segment_fillgap'] is None:
-                form_data['segment_fillgap'] = 0
-            if form_data['segment_minlen'] is None:
-                form_data['segment_minlen'] = 0
+            if form_data["segment_fillgap"] is None:
+                form_data["segment_fillgap"] = 0
+            if form_data["segment_minlen"] is None:
+                form_data["segment_minlen"] = 0
 
-            if form_data['file'] != "Current file":
-                if form_data['folder'] != " ":
-                    file_path = form_data['folder']
-                elif form_data['file'] != " ":
-                    file_path = form_data['file']
+            if form_data["file"] != "Current file":
+                if form_data["folder"] != " ":
+                    file_path = form_data["folder"]
+                elif form_data["file"] != " ":
+                    file_path = form_data["file"]
                 else:
-                    logging.warning('No audio data. Either open a file or select a folder or file in the predict dialog.')
+                    logging.warning("No audio data. Either open a file or select a folder or file in the predict dialog.")
                     return
 
                 das.predict.cli_predict(
@@ -653,21 +659,21 @@ class MainWindow(QtWidgets.QMainWindow):
                     model_path,
                     verbose=1,
                     batch_size=32,
-                    save_format=form_data['save_format'],
-                    event_thres=form_data['event_thres'],
-                    event_dist=form_data['event_dist'],
-                    event_dist_min=form_data['event_dist_min'],
-                    event_dist_max=form_data['event_dist_max'],
-                    segment_thres=form_data['event_thres'],
-                    segment_fillgap=form_data['segment_fillgap'],
-                    segment_minlen=form_data['segment_minlen'],
+                    save_format=form_data["save_format"],
+                    event_thres=form_data["event_thres"],
+                    event_dist=form_data["event_dist"],
+                    event_dist_min=form_data["event_dist_min"],
+                    event_dist_max=form_data["event_dist_max"],
+                    segment_thres=form_data["event_thres"],
+                    segment_fillgap=form_data["segment_fillgap"],
+                    segment_minlen=form_data["segment_minlen"],
                 )
                 return
-            elif hasattr(self, 'ds') and form_data['file'] == "Current file":
-                start_seconds = form_data['start_seconds']
+            elif hasattr(self, "ds") and form_data["file"] == "Current file":
+                start_seconds = form_data["start_seconds"]
                 start_index = utils.find_nearest_idx(self.ds.sampletime.values, start_seconds)
 
-                end_seconds = form_data['end_seconds']
+                end_seconds = form_data["end_seconds"]
                 end_index = end_seconds
                 if end_seconds is not None:
                     end_index = utils.find_nearest_idx(self.ds.sampletime.values, end_seconds)
@@ -675,7 +681,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 audio = self.ds.song_raw.data[start_index:end_index]
 
                 params = das.utils.load_params(model_path)
-                if audio.shape[0] < params['nb_hist']:
+                if audio.shape[0] < params["nb_hist"]:
                     logging.warning(
                         f"   Aborting. Audio has fewer samples ({audio.shape[0]}) shorter"
                         f"    than network chunk size ({params['nb_hist']})."
@@ -687,17 +693,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 # minimizes loss of annotations from batch size "quantization" errors
                 batch_size = 32
                 nb_batches = lambda batch_size: int(
-                    np.floor((audio.shape[0] - (((batch_size - 1)) + params['nb_hist'])) / (params['stride'] * (batch_size))))
+                    np.floor((audio.shape[0] - (((batch_size - 1)) + params["nb_hist"])) / (params["stride"] * (batch_size)))
+                )
                 while nb_batches(batch_size) < 10 and batch_size > 1:
                     batch_size -= 1
 
-                logging.info('   Running inference on audio.')
-                logging.info(f'   Model from {model_path}.')
+                logging.info("   Running inference on audio.")
+                logging.info(f"   Model from {model_path}.")
                 params = das.utils.load_params(model_path)
-                fs_model = params['samplerate_x_Hz']
-                fs_audio = self.ds.song_raw.attrs['sampling_rate_Hz']
+                fs_model = params["samplerate_x_Hz"]
+                fs_audio = self.ds.song_raw.attrs["sampling_rate_Hz"]
 
-                if form_data['resample_audio'] and fs_audio and fs_audio != fs_model:
+                if form_data["resample_audio"] and fs_audio and fs_audio != fs_model:
                     logging.info(f"   Resampling. Audio rate is {fs_audio}Hz but model was trained on data with {fs_model}Hz.")
                     audio = das.utils.resample(audio, fs_audio, fs_model)
 
@@ -706,13 +713,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     model_path,
                     verbose=1,
                     batch_size=batch_size,
-                    event_thres=form_data['event_thres'],
-                    event_dist=form_data['event_dist'],
-                    event_dist_min=form_data['event_dist_min'],
-                    event_dist_max=form_data['event_dist_max'],
-                    segment_thres=form_data['event_thres'],
-                    segment_fillgap=form_data['segment_fillgap'],
-                    segment_minlen=form_data['segment_minlen'],
+                    event_thres=form_data["event_thres"],
+                    event_dist=form_data["event_dist"],
+                    event_dist_min=form_data["event_dist_min"],
+                    event_dist_max=form_data["event_dist_max"],
+                    segment_thres=form_data["event_thres"],
+                    segment_fillgap=form_data["segment_fillgap"],
+                    segment_minlen=form_data["segment_minlen"],
                 )
 
                 # Process detected song
@@ -720,46 +727,50 @@ class MainWindow(QtWidgets.QMainWindow):
                     logging.warning("Found no song.")
                     return
 
-                suffix = ''
-                if form_data['proof_reading_mode']:
-                    suffix = '_proposals'
+                suffix = ""
+                if form_data["proof_reading_mode"]:
+                    suffix = "_proposals"
 
                 # events['seconds'] is in samples/fs - translate to time stamps via sample time
                 detected_event_names = []
-                if 'sequence' in events:
-                    detected_event_names = np.unique(events['sequence'])
+                if "sequence" in events:
+                    detected_event_names = np.unique(events["sequence"])
 
                 if len(detected_event_names) > 0 and detected_event_names[0] is not None:
                     logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
-                    event_samples = (np.array(events['seconds']) * self.fs_song + start_index).astype(np.uintp)
+                    event_samples = (np.array(events["seconds"]) * self.fs_song + start_index).astype(np.uintp)
 
                     # make sure all detected events are within bounds
                     event_samples = event_samples[event_samples >= 0]
                     event_samples = event_samples[event_samples < self.ds.sampletime.shape[0]]
 
                     event_seconds = self.ds.sampletime[event_samples]
-                    for name_or_index, seconds in zip(events['sequence'], event_seconds):
+                    for name_or_index, seconds in zip(events["sequence"], event_seconds):
                         if type(name_or_index) is int:
-                            event_name = str(events['names'][name_or_index])
+                            event_name = str(events["names"][name_or_index])
                         else:
                             event_name = str(name_or_index)
-                        self.event_times.add_time(event_name + str(suffix), seconds, seconds, category='event')
+                        self.event_times.add_time(event_name + str(suffix), seconds, seconds, category="event")
 
                 detected_segment_names = []
-                if 'sequence' in segments:  # and len(segments['sequence']):  # and segments['sequence'] is not None:
+                if "sequence" in segments:  # and len(segments['sequence']):  # and segments['sequence'] is not None:
                     # segments['sequence'] = [s for s in segments['sequence'] if s is not None]
-                    detected_segment_names = np.unique(segments['sequence'])
+                    detected_segment_names = np.unique(segments["sequence"])
                     # if these are indices, get corresponding names
-                    if len(detected_segment_names) and type(detected_segment_names[0]) is not str and type(
-                            detected_segment_names[0]) is not np.str_:
-                        detected_segment_names = [segments['names'][ii] for ii in detected_segment_names]
+                    if (
+                        len(detected_segment_names)
+                        and type(detected_segment_names[0]) is not str
+                        and type(detected_segment_names[0]) is not np.str_
+                    ):
+                        detected_segment_names = [segments["names"][ii] for ii in detected_segment_names]
 
                 if len(detected_segment_names) > 0:  # and detected_segment_names[0] is not None:
 
                     logging.info(
-                        f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
-                    onsets_samples = (np.array(segments['onsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
-                    offsets_samples = (np.array(segments['offsets_seconds']) * self.fs_song + start_index).astype(np.uintp)
+                        f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'."
+                    )
+                    onsets_samples = (np.array(segments["onsets_seconds"]) * self.fs_song + start_index).astype(np.uintp)
+                    offsets_samples = (np.array(segments["offsets_seconds"]) * self.fs_song + start_index).astype(np.uintp)
 
                     # make sure all detected segments are within bounds
                     onsets_samples = onsets_samples[onsets_samples >= 0]
@@ -769,51 +780,54 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     onsets_seconds = self.ds.sampletime[onsets_samples]
                     offsets_seconds = self.ds.sampletime[offsets_samples]
-                    for name_or_index, onset_seconds, offset_seconds in zip(segments['sequence'], onsets_seconds,
-                                                                            offsets_seconds):
+                    for name_or_index, onset_seconds, offset_seconds in zip(
+                        segments["sequence"], onsets_seconds, offsets_seconds
+                    ):
                         if type(name_or_index) is not str and type(detected_segment_names[0]) is not np.str_:
-                            segment_name = segments['names'][name_or_index]
+                            segment_name = segments["names"][name_or_index]
                         else:
                             segment_name = str(name_or_index)
 
-                        self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category='segment')
+                        self.event_times.add_time(segment_name + str(suffix), onset_seconds, offset_seconds, category="segment")
 
                 self.nb_eventtypes = len(self.event_times)
                 self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
                 self.update_eventtype_selector()
-        logging.info('Done.')
+        logging.info("Done.")
 
     @classmethod
-    def from_file(cls,
-                  filename=None,
-                  app=None,
-                  qt_keycode=None,
-                  events_string='',
-                  spec_freq_min=None,
-                  spec_freq_max=None,
-                  target_samplingrate=None,
-                  skip_dialog: bool = False,
-                  is_das: bool = False):
+    def from_file(
+        cls,
+        filename=None,
+        app=None,
+        qt_keycode=None,
+        events_string="",
+        spec_freq_min=None,
+        spec_freq_max=None,
+        target_samplingrate=None,
+        skip_dialog: bool = False,
+        is_das: bool = False,
+    ):
         if not filename:
             # enable multiple filters: *.h5, *.npy, *.npz, *.wav, *.*
             file_filter = "Any file (*.*);;WAV files (*.wav);;HDF5 files (*.h5 *.hdf5);;NPY files (*.npy);;NPZ files (*.npz)"
-            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select file', filter=file_filter)
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select file", filter=file_filter)
         if filename:
             # infer loader from file name and set default in form
             # infer samplerate (catch error) and set default in form
             samplerate = None  # Hz
-            datasets = ['']
+            datasets = [""]
 
-            if filename.endswith('.npz'):
+            if filename.endswith(".npz"):
                 try:
                     # TODO list variable for form
                     with np.load(filename) as file:
                         datasets = list(file.keys())
                         try:
-                            samplerate = file['samplerate']
+                            samplerate = file["samplerate"]
                         except KeyError:
                             try:
-                                samplerate = file['samplerate_Hz']
+                                samplerate = file["samplerate_Hz"]
                             except KeyError:
                                 pass
                 except KeyError:
@@ -821,52 +835,57 @@ class MainWindow(QtWidgets.QMainWindow):
                         f"{filename} no sample rate info in NPZ file."
                         f"Need to save 'samplerate' variable with the audio data. Defaulting to {samplerate}"
                     )
-            elif filename.endswith('.h5') or filename.endswith('.hdfs') or filename.endswith('.hdf5') or filename.endswith(
-                    '.mat'):
+            elif (
+                filename.endswith(".h5")
+                or filename.endswith(".hdfs")
+                or filename.endswith(".hdf5")
+                or filename.endswith(".mat")
+            ):
                 # infer data set (for hdf5) and populate form
                 try:
                     # list all data sets in file and add to list
-                    with h5py.File(filename, 'r') as f:
+                    with h5py.File(filename, "r") as f:
                         datasets = utils.allkeys(f, keys=[])
-                        datasets.remove('/')  # remove root
+                        datasets.remove("/")  # remove root
                 except:
                     pass
             else:
                 try:  # to load as audio file
                     import librosa
+
                     samplerate = librosa.get_samplerate(filename)
                 except:
                     pass
 
-            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_file.yaml", title=f'Load {filename}')
+            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_file.yaml", title=f"Load {filename}")
 
-            dialog.form['target_samplingrate'] = 1_000
+            dialog.form["target_samplingrate"] = 1_000
             if samplerate is None:
                 samplerate = 10_000
-                dialog.form['samplerate'] = samplerate
+                dialog.form["samplerate"] = samplerate
             else:
                 samplerate = float(samplerate)
-                dialog.form['samplerate'] = samplerate
-                dialog.form['spec_freq_max'] = samplerate / 2
+                dialog.form["samplerate"] = samplerate
+                dialog.form["spec_freq_max"] = samplerate / 2
 
-            dialog.form.fields['data_set'].set_options(datasets)  # add datasets
-            dialog.form.fields['data_set'].setValue(datasets[0])  # select first
+            dialog.form.fields["data_set"].set_options(datasets)  # add datasets
+            dialog.form.fields["data_set"].setValue(datasets[0])  # select first
 
             # set default filenames based on data file
-            annotation_path = os.path.splitext(filename)[0] + '_annotations.csv'
-            dialog.form.fields['annotation_path'].setText(annotation_path)  # select first
-            definition_path = os.path.splitext(filename)[0] + '_definitions.csv'
-            dialog.form.fields['definition_path'].setText(definition_path)  # select first
+            annotation_path = os.path.splitext(filename)[0] + "_annotations.csv"
+            dialog.form.fields["annotation_path"].setText(annotation_path)  # select first
+            definition_path = os.path.splitext(filename)[0] + "_definitions.csv"
+            dialog.form.fields["definition_path"].setText(definition_path)  # select first
 
             # initialize form data with cli args
             if spec_freq_min is not None:
-                dialog.form['spec_freq_min'] = spec_freq_min
+                dialog.form["spec_freq_min"] = spec_freq_min
             if spec_freq_max is not None:
-                dialog.form['spec_freq_max'] = spec_freq_max
+                dialog.form["spec_freq_max"] = spec_freq_max
             if target_samplingrate is not None:
-                dialog.form['target_samplingrate'] = target_samplingrate
+                dialog.form["target_samplingrate"] = target_samplingrate
             if len(events_string):
-                dialog.form['events_string'] = events_string
+                dialog.form["events_string"] = events_string
 
             if not skip_dialog:
                 dialog.show()
@@ -884,63 +903,68 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 ds = xb.assemble(
                     filepath_daq=filename,
-                    filepath_annotations=form_data['annotation_path'],
-                    filepath_definitions=form_data['definition_path'],
-                    audio_sampling_rate=form_data['samplerate'],
-                    target_sampling_rate=form_data['target_samplingrate'],
-                    audio_dataset=form_data['data_set'],
+                    filepath_annotations=form_data["annotation_path"],
+                    filepath_definitions=form_data["definition_path"],
+                    audio_sampling_rate=form_data["samplerate"],
+                    target_sampling_rate=form_data["target_samplingrate"],
+                    audio_dataset=form_data["data_set"],
                 )
 
-                if form_data['filter_song'] == 'yes':
-                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
+                if form_data["filter_song"] == "yes":
+                    ds = cls.filter_song(ds, form_data["f_low"], form_data["f_high"])
 
                 cue_points = []
-                if form_data['load_cues'] == 'yes':
-                    cue_points = cls.load_cuepoints(form_data['cues_file'])
+                if form_data["load_cues"] == "yes":
+                    cue_points = cls.load_cuepoints(form_data["cues_file"])
 
-                ds.attrs['filename'] = filename
-                ds.attrs['filebase'] = os.path.splitext(filename)[0]
-                ds.attrs['datename'] = ''
-                ds.attrs['res_path'] = ''
-                ds.attrs['dat_path'] = ''
-                return PSV(ds,
-                           title=filename,
-                           cue_points=cue_points,
-                           fmin=dialog.form['spec_freq_min'],
-                           fmax=dialog.form['spec_freq_max'],
-                           data_source=DataSource('file', filename))
+                ds.attrs["filename"] = filename
+                ds.attrs["filebase"] = os.path.splitext(filename)[0]
+                ds.attrs["datename"] = ""
+                ds.attrs["res_path"] = ""
+                ds.attrs["dat_path"] = ""
+                return PSV(
+                    ds,
+                    title=filename,
+                    cue_points=cue_points,
+                    fmin=dialog.form["spec_freq_min"],
+                    fmax=dialog.form["spec_freq_max"],
+                    data_source=DataSource("file", filename),
+                )
 
     @classmethod
-    def from_dir(cls,
-                 dirname=None,
-                 app=None,
-                 qt_keycode=None,
-                 events_string='',
-                 spec_freq_min=None,
-                 spec_freq_max=None,
-                 target_samplingrate=None,
-                 box_size=None,
-                 pixel_size_mm=None,
-                 skip_dialog: bool = False,
-                 is_das: bool = False):
+    def from_dir(
+        cls,
+        dirname=None,
+        app=None,
+        qt_keycode=None,
+        events_string="",
+        spec_freq_min=None,
+        spec_freq_max=None,
+        target_samplingrate=None,
+        box_size=None,
+        pixel_size_mm=None,
+        skip_dialog: bool = False,
+        is_das: bool = False,
+    ):
 
         if not dirname:
-            dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption='Select data directory')
+            dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption="Select data directory")
         if dirname:
-            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_dir.yaml",
-                                title=f'Dataset from data directory {dirname}')
+            dialog = YamlDialog(
+                yaml_file=package_dir + "/gui/forms/from_dir.yaml", title=f"Dataset from data directory {dirname}"
+            )
 
             # initialize form data with cli args
-            dialog.form['pixel_size_mm'] = pixel_size_mm  # and un-disable
-            dialog.form['spec_freq_min'] = spec_freq_min
-            dialog.form['spec_freq_max'] = spec_freq_max
+            dialog.form["pixel_size_mm"] = pixel_size_mm  # and un-disable
+            dialog.form["spec_freq_min"] = spec_freq_min
+            dialog.form["spec_freq_max"] = spec_freq_max
             if box_size is not None:
-                dialog.form['box_size_px'] = box_size
+                dialog.form["box_size_px"] = box_size
             if target_samplingrate is not None:
-                dialog.form['target_samplingrate'] = target_samplingrate
+                dialog.form["target_samplingrate"] = target_samplingrate
             if len(events_string):
-                dialog.form['init_annotations'] = True
-                dialog.form['events_string'] = events_string
+                dialog.form["init_annotations"] = True
+                dialog.form["events_string"] = events_string
 
             if not skip_dialog:
                 dialog.show()
@@ -952,122 +976,129 @@ class MainWindow(QtWidgets.QMainWindow):
                 form_data = dialog.form.get_form_data()
                 logging.info(f"Making new dataset from directory {dirname}.")
 
-                if form_data['target_samplingrate'] == 0 or form_data['target_samplingrate'] is None:
+                if form_data["target_samplingrate"] == 0 or form_data["target_samplingrate"] is None:
                     resample_video_data = False
                 else:
                     resample_video_data = True
 
-                form_data['filter_song'] = form_data['filter_song'] == 'yes'
+                form_data["filter_song"] = form_data["filter_song"] == "yes"
 
-                include_tracks = not form_data['ignore_tracks']
-                include_poses = not form_data['ignore_tracks']
-                lazy_load_song = not form_data['filter_song']  # faster that way
+                include_tracks = not form_data["ignore_tracks"]
+                include_poses = not form_data["ignore_tracks"]
+                lazy_load_song = not form_data["filter_song"]  # faster that way
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
-                annotation_path = None if not len(form_data['annotation_path']) else form_data['annotation_path']
+                annotation_path = None if not len(form_data["annotation_path"]) else form_data["annotation_path"]
 
-                ds = xb.assemble(datename,
-                                 root,
-                                 dat_path,
-                                 res_path='res',
-                                 filepath_annotations=annotation_path,
-                                 fix_fly_indices=form_data['fix_fly_indices'],
-                                 include_song=~form_data['ignore_song'],
-                                 target_sampling_rate=form_data['target_samplingrate'],
-                                 resample_video_data=resample_video_data,
-                                 pixel_size_mm=pixel_size_mm,
-                                 lazy_load_song=lazy_load_song,
-                                 include_tracks=include_tracks,
-                                 include_poses=include_poses)
+                ds = xb.assemble(
+                    datename,
+                    root,
+                    dat_path,
+                    res_path="res",
+                    filepath_annotations=annotation_path,
+                    fix_fly_indices=form_data["fix_fly_indices"],
+                    include_song=~form_data["ignore_song"],
+                    target_sampling_rate=form_data["target_samplingrate"],
+                    resample_video_data=resample_video_data,
+                    pixel_size_mm=pixel_size_mm,
+                    lazy_load_song=lazy_load_song,
+                    include_tracks=include_tracks,
+                    include_poses=include_poses,
+                )
 
-                if form_data['filter_song']:
-                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
+                if form_data["filter_song"]:
+                    ds = cls.filter_song(ds, form_data["f_low"], form_data["f_high"])
 
                 event_names = []
                 event_classes = []
-                if form_data['init_annotations'] and len(form_data['events_string']):
-                    for pair in form_data['events_string'].split(';'):
-                        items = pair.strip().split(',')
+                if form_data["init_annotations"] and len(form_data["events_string"]):
+                    for pair in form_data["events_string"].split(";"):
+                        items = pair.strip().split(",")
                         if len(items) > 0:
                             event_names.append(items[0].strip())
                         if len(items) > 1:
                             event_classes.append(items[1].strip())
                         else:
-                            event_classes.append('segment')
+                            event_classes.append("segment")
 
                 # add event categories if they are missing in the dataset
-                if 'song_events' in ds and 'event_categories' not in ds:
+                if "song_events" in ds and "event_categories" not in ds:
                     event_categories = [
-                        'segment' if 'sine' in evt or 'syllable' in evt else 'event' for evt in ds.event_types.values
+                        "segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values
                     ]
-                    ds = ds.assign_coords({'event_categories': (('event_types'), event_categories)})
+                    ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
 
                 # add missing song types
-                if 'song_events' not in ds or len(ds.event_types) == 0:
+                if "song_events" not in ds or len(ds.event_types) == 0:
                     cats = {event_name: event_class for event_name, event_class in zip(event_names, event_classes)}
-                    ds.attrs['event_times'] = annot.Events(categories=cats)
+                    ds.attrs["event_times"] = annot.Events(categories=cats)
                     # FIXME update ds.song_events!!
 
                 # add video file
                 vr = None
                 try:
-                    if dialog.form['video_filename'] != '':
+                    if dialog.form["video_filename"] != "":
                         try:
-                            video_filename = dialog.form['video_filename']
+                            video_filename = dialog.form["video_filename"]
                             vr = utils.VideoReaderNP(video_filename)
                         except:
                             pass
                     else:
                         try:
-                            video_filename = os.path.join(dirname, datename + '.mp4')
+                            video_filename = os.path.join(dirname, datename + ".mp4")
                             vr = utils.VideoReaderNP(video_filename)
                         except:
-                            video_filename = os.path.join(dirname, datename + '.avi')
+                            video_filename = os.path.join(dirname, datename + ".avi")
                             vr = utils.VideoReaderNP(video_filename)
                     logging.info(vr)
                 except FileNotFoundError:
                     logging.info(f'Video "{video_filename}" not found. Continuing without.')
                 except:
-                    logging.info('Something went wrong when loading the video. Continuing without.')
+                    logging.info("Something went wrong when loading the video. Continuing without.")
 
                 cue_points = []
-                if form_data['load_cues'] == 'yes':
-                    cue_points = cls.load_cuepoints(form_data['cues_file'])
-                return PSV(ds,
-                           title=dirname,
-                           cue_points=cue_points,
-                           vr=vr,
-                           fmin=dialog.form['spec_freq_min'],
-                           fmax=dialog.form['spec_freq_max'],
-                           frame_fliplr=dialog.form['frame_fliplr'],
-                           frame_flipud=dialog.form['frame_flipud'],
-                           box_size=dialog.form['box_size_px'],
-                           data_source=DataSource('dir', dirname))
+                if form_data["load_cues"] == "yes":
+                    cue_points = cls.load_cuepoints(form_data["cues_file"])
+                return PSV(
+                    ds,
+                    title=dirname,
+                    cue_points=cue_points,
+                    vr=vr,
+                    fmin=dialog.form["spec_freq_min"],
+                    fmax=dialog.form["spec_freq_max"],
+                    frame_fliplr=dialog.form["frame_fliplr"],
+                    frame_flipud=dialog.form["frame_flipud"],
+                    box_size=dialog.form["box_size_px"],
+                    data_source=DataSource("dir", dirname),
+                )
 
     @classmethod
-    def from_zarr(cls,
-                  filename=None,
-                  app=None,
-                  qt_keycode=None,
-                  spec_freq_min=None,
-                  spec_freq_max=None,
-                  box_size=None,
-                  skip_dialog: bool = False,
-                  is_das: bool = False):
+    def from_zarr(
+        cls,
+        filename=None,
+        app=None,
+        qt_keycode=None,
+        spec_freq_min=None,
+        spec_freq_max=None,
+        box_size=None,
+        skip_dialog: bool = False,
+        is_das: bool = False,
+    ):
 
         if not filename:
-            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select dataset')
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select dataset")
         if filename:
-            dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/from_zarr.yaml",
-                                title=f'Load dataset from zarr file {filename}')
+            dialog = YamlDialog(
+                yaml_file=package_dir + "/gui/forms/from_zarr.yaml", title=f"Load dataset from zarr file {filename}"
+            )
 
             # initialize form data with cli args
             if spec_freq_min is not None:
-                dialog.form['spec_freq_min'] = spec_freq_min
+                dialog.form["spec_freq_min"] = spec_freq_min
             if spec_freq_max is not None:
-                dialog.form['spec_freq_max'] = spec_freq_max
+                dialog.form["spec_freq_max"] = spec_freq_max
             if box_size is not None:
-                dialog.form['box_size'] = box_size
+                dialog.form["box_size"] = box_size
 
             if not skip_dialog:
                 dialog.show()
@@ -1077,79 +1108,81 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
-                logging.info(f'Loading {filename}.')
+                logging.info(f"Loading {filename}.")
                 ds = xb.load(filename, lazy=True, use_temp=True)
-                if 'song_events' in ds:
+                if "song_events" in ds:
                     ds.song_events.load()
-                if not form_data['lazy']:
-                    logging.info('   Loading data from ds.')
-                    if 'song' in ds:
+                if not form_data["lazy"]:
+                    logging.info("   Loading data from ds.")
+                    if "song" in ds:
                         ds.song.load()  # non-lazy load song for faster updates
-                    if 'pose_positions_allo' in ds:
+                    if "pose_positions_allo" in ds:
                         ds.pose_positions_allo.load()  # non-lazy load song for faster updates
-                    if 'sampletime' in ds:
+                    if "sampletime" in ds:
                         ds.sampletime.load()
-                    if 'song_raw' in ds:  # this will take a long time:
+                    if "song_raw" in ds:  # this will take a long time:
                         ds.song_raw.load()  # non-lazy load song for faster updates
 
-                if form_data['filter_song'] == 'yes':
-                    ds = cls.filter_song(ds, form_data['f_low'], form_data['f_high'])
+                if form_data["filter_song"] == "yes":
+                    ds = cls.filter_song(ds, form_data["f_low"], form_data["f_high"])
 
                 # add event categories if they are missing in the dataset
-                if 'song_events' in ds and 'event_categories' not in ds:
+                if "song_events" in ds and "event_categories" not in ds:
                     event_categories = [
-                        'segment' if 'sine' in evt or 'syllable' in evt else 'event' for evt in ds.event_types.values
+                        "segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values
                     ]
-                    ds = ds.assign_coords({'event_categories': (('event_types'), event_categories)})
+                    ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
                 logging.info(ds)
                 vr = None
                 try:
-                    video_filename = ds.attrs['video_filename']
+                    video_filename = ds.attrs["video_filename"]
                     vr = utils.VideoReaderNP(video_filename)
                     logging.info(vr)
                 except FileNotFoundError:
                     logging.info(f'Video "{video_filename}" not found. Continuing without.')
                 except:
-                    logging.info('Something went wrong when loading the video. Continuing without.')
+                    logging.info("Something went wrong when loading the video. Continuing without.")
 
                 # load cues
                 cue_points = []
-                if form_data['load_cues'] == 'yes':
-                    cue_points = cls.load_cuepoints(form_data['cues_file'])
+                if form_data["load_cues"] == "yes":
+                    cue_points = cls.load_cuepoints(form_data["cues_file"])
 
-                return PSV(ds,
-                           vr=vr,
-                           cue_points=cue_points,
-                           title=filename,
-                           fmin=dialog.form['spec_freq_min'],
-                           fmax=dialog.form['spec_freq_max'],
-                           box_size=dialog.form['box_size'],
-                           data_source=DataSource('zarr', filename))
+                return PSV(
+                    ds,
+                    vr=vr,
+                    cue_points=cue_points,
+                    title=filename,
+                    fmin=dialog.form["spec_freq_min"],
+                    fmax=dialog.form["spec_freq_max"],
+                    box_size=dialog.form["box_size"],
+                    data_source=DataSource("zarr", filename),
+                )
 
     @classmethod
     def filter_song(cls, ds, f_low, f_high):
         # TODO paralellize over channels
         if f_low is None:
             f_low = 1.0
-        if 'song_raw' in ds:  # this will take a long time:
+        if "song_raw" in ds:  # this will take a long time:
             if f_high is None:
-                f_high = ds.song_raw.attrs['sampling_rate_Hz'] / 2 - 1
+                f_high = ds.song_raw.attrs["sampling_rate_Hz"] / 2 - 1
             else:
-                f_high = min(f_high, ds.song_raw.attrs['sampling_rate_Hz'] / 2 - 1)
-            sos_bp = ss.butter(5, [f_low, f_high], 'bandpass', output='sos', fs=ds.song_raw.attrs['sampling_rate_Hz'])
-            logging.info(f'Filtering `song_raw` between {f_low} and {f_high} Hz.')
+                f_high = min(f_high, ds.song_raw.attrs["sampling_rate_Hz"] / 2 - 1)
+            sos_bp = ss.butter(5, [f_low, f_high], "bandpass", output="sos", fs=ds.song_raw.attrs["sampling_rate_Hz"])
+            logging.info(f"Filtering `song_raw` between {f_low} and {f_high} Hz.")
             ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
         return ds
 
     @classmethod
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
-        logging.info('Not implemented yet')
+        logging.info("Not implemented yet")
         pass
 
     @staticmethod
-    def load_cuepoints(filename=None, delimiter=','):
+    def load_cuepoints(filename=None, delimiter=","):
         if filename is None or not len(filename):
-            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption='Select file with cue points')
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select file with cue points")
         cues = []
         try:
             cues = np.loadtxt(fname=filename, delimiter=delimiter)
@@ -1159,68 +1192,68 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def save_dataset(self, qt_keycode=None):
         try:
-            savefilename = Path(self.ds.attrs['root'], self.ds.attrs['dat_path'], self.ds.attrs['datename'],
-                                f"{self.ds.attrs['datename']}.zarr")
+            savefilename = Path(
+                self.ds.attrs["root"], self.ds.attrs["dat_path"], self.ds.attrs["datename"], f"{self.ds.attrs['datename']}.zarr"
+            )
         except KeyError:
             savefilename = ""
 
-        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(self,
-                                                                'Save dataset to',
-                                                                str(savefilename),
-                                                                filter="zarr files (*.zarr);;all files (*)")
+        savefilename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save dataset to", str(savefilename), filter="zarr files (*.zarr);;all files (*)"
+        )
 
         if len(savefilename):
             file_exists = os.path.exists(savefilename)
 
             retval = QtWidgets.QMessageBox.Ignore
-            if self.data_source.type == 'zarr' and file_exists:
+            if self.data_source.type == "zarr" and file_exists:
                 retval = ZarrOverwriteWarning().exec_()
 
             if retval == QtWidgets.QMessageBox.Ignore:
-                if 'song_events' in self.ds:
-                    logging.info('   Updating song events')
+                if "song_events" in self.ds:
+                    logging.info("   Updating song events")
                     # TODO: replace with method in annot.Events
                     self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
 
                 # scale tracks back to original units upon save
-                if hasattr(self, 'original_spatial_units'):
-                    logging.info(f'Converting spatial units back to {self.original_spatial_units} if required.')
+                if hasattr(self, "original_spatial_units"):
+                    logging.info(f"Converting spatial units back to {self.original_spatial_units} if required.")
                     self.ds = xb.convert_spatial_units(self.ds, to_units=self.original_spatial_units)
 
                 # update ds.event_times from event_times dict
                 event_times = annot.Events(self.event_times)
                 ds_event_times = event_times.to_dataset()
-                if 'index' in self.ds.dims and 'event_time' in self.ds.dims:
-                    self.ds = self.ds.drop_dims(['index', 'event_time'])
+                if "index" in self.ds.dims and "event_time" in self.ds.dims:
+                    self.ds = self.ds.drop_dims(["index", "event_time"])
                     self.ds = self.ds.combine_first(ds_event_times)
 
-                logging.info(f'   Saving dataset to {savefilename}.')
+                logging.info(f"   Saving dataset to {savefilename}.")
                 xb.save(savefilename, self.ds)
-                logging.info('Done.')
+                logging.info("Done.")
             else:
-                logging.info('Saving aborted.')
+                logging.info("Saving aborted.")
 
 
 class ZarrOverwriteWarning(QtWidgets.QMessageBox):
-
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setIcon(QtWidgets.QMessageBox.Warning)
-        self.setText('Attempting to overwrite existing zarr file.')
-        self.setInformativeText("This can corrupt the file and lead to data loss. \
+        self.setText("Attempting to overwrite existing zarr file.")
+        self.setInformativeText(
+            "This can corrupt the file and lead to data loss. \
                                  ABORT unless you know what you're doing\
-                                 or save to a file with a different name.")
+                                 or save to a file with a different name."
+        )
         self.setStandardButtons(QtWidgets.QMessageBox.Ignore | QtWidgets.QMessageBox.Abort)
         self.setDefaultButton(QtWidgets.QMessageBox.Abort)
         self.setEscapeButton(QtWidgets.QMessageBox.Abort)
 
 
 class NoEventsRegisteredWarning(QtWidgets.QMessageBox):
-
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setIcon(QtWidgets.QMessageBox.Warning)
-        self.setText('No song types added')
+        self.setText("No song types added")
         self.setInformativeText("To annotate song, you first need to add song types.")
         self.setStandardButtons(QtWidgets.QMessageBox.Ignore)
         self.button = self.addButton(self.tr("Add song types"), QtWidgets.QMessageBox.ActionRole)
@@ -1232,22 +1265,25 @@ class PSV(MainWindow):
 
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(self,
-                 ds,
-                 vr=None,
-                 cue_points=[],
-                 title='xb.ui',
-                 cmap_name: str = 'turbo',
-                 box_size: int = 200,
-                 fmin: Optional[float] = None,
-                 fmax: Optional[float] = None,
-                 data_source: Optional[DataSource] = None,
-                 frame_fliplr: bool = False,
-                 frame_flipud: bool = False):
+    def __init__(
+        self,
+        ds,
+        vr=None,
+        cue_points=[],
+        title="xb.ui",
+        cmap_name: str = "turbo",
+        box_size: int = 200,
+        fmin: Optional[float] = None,
+        fmax: Optional[float] = None,
+        data_source: Optional[DataSource] = None,
+        frame_fliplr: bool = False,
+        frame_flipud: bool = False,
+    ):
         super().__init__(title=title)
         pg.setConfigOptions(useOpenGL=False)  # appears to be faster that way
         try:
             import numba
+
             pg.setConfigOptions(useNumba=True)  # appears to be faster that way
         except ImportError:
             pass
@@ -1260,11 +1296,11 @@ class PSV(MainWindow):
         self.cue_points = cue_points
 
         # detect all event times and segment on/offsets
-        if 'event_times' in ds and 'event_names' in ds and len(ds['event_names']) > 0:
+        if "event_times" in ds and "event_names" in ds and len(ds["event_names"]) > 0:
             self.event_times = annot.Events.from_dataset(ds)
-        elif 'event_times' in ds.attrs:
-            self.event_times = ds.attrs['event_times'].copy()
-        elif 'song_events' in ds:
+        elif "event_times" in ds.attrs:
+            self.event_times = ds.attrs["event_times"].copy()
+        elif "song_events" in ds:
             self.event_times = event_utils.detect_events(ds)  # detect events from ds.song_events traces
         else:
             self.event_times = dict()
@@ -1281,25 +1317,25 @@ class PSV(MainWindow):
         self.spec_levels = [None, None]
 
         self.tmin = 0
-        if 'song' in self.ds:
+        if "song" in self.ds:
             self.tmax = self.ds.song.shape[0]
-        elif 'song_raw' in self.ds:
+        elif "song_raw" in self.ds:
             self.tmax = self.ds.song_raw.shape[0]
-        elif 'body_positions' in self.ds:
+        elif "body_positions" in self.ds:
             self.tmax = len(self.ds.body_positions)
         else:
             self.tmax = len(self.ds.time)
 
         self.crop = True
         try:
-            self.pose_center_index = list(self.ds.poseparts).index('thorax')
+            self.pose_center_index = list(self.ds.poseparts).index("thorax")
         except:
-            if 'poseparts' in self.ds and len(list(self.ds.poseparts)) > 8:
+            if "poseparts" in self.ds and len(list(self.ds.poseparts)) > 8:
                 self.pose_center_index = 8
             else:  # fallback in case poses are a little different
                 self.pose_center_index = 0
 
-        self.show_dot = True if 'body_positions' in self.ds else False
+        self.show_dot = True if "body_positions" in self.ds else False
         self.old_show_dot_state = self.show_dot
         self.dot_size = 2
         self.show_poses = False
@@ -1308,14 +1344,14 @@ class PSV(MainWindow):
 
         self.cue_index = -1  # set this to -1 not to 0 so that upon first increase we will jump to 0, not to 1
 
-        self.nb_flies = np.max(self.ds.flies).values + 1 if 'flies' in self.ds.dims else 1
+        self.nb_flies = np.max(self.ds.flies).values + 1 if "flies" in self.ds.dims else 1
         self.focal_fly = 0
         self.other_fly = 1 if self.nb_flies > 1 else 0
 
-        if 'poseparts' in self.ds:
+        if "poseparts" in self.ds:
             self.bodyparts = self.ds.poseparts.data
             self.nb_bodyparts = len(self.ds.poseparts)
-        elif 'bodyparts' in self.ds:
+        elif "bodyparts" in self.ds:
             self.bodyparts = self.ds.bodyparts.data
             self.nb_bodyparts = len(self.ds.bodyparts)
             self.track_center_index = 1
@@ -1327,15 +1363,15 @@ class PSV(MainWindow):
         self.bodypart_colors = utils.make_colors(self.nb_bodyparts)
 
         # scale tracks back to px - required for display purposes
-        names = ['body_positions', 'pose_positions', 'pose_positions_allo']
+        names = ["body_positions", "pose_positions", "pose_positions_allo"]
         # save original spatial units so we can convert back upon save
         for name in names:
             if name in self.ds:
-                self.original_spatial_units = self.ds[name].attrs['spatial_units']
-        self.ds = xb.convert_spatial_units(self.ds, to_units='pixels')
+                self.original_spatial_units = self.ds[name].attrs["spatial_units"]
+        self.ds = xb.convert_spatial_units(self.ds, to_units="pixels")
 
-        if 'swap_events' in self.ds.attrs:
-            self.swap_events = self.ds.attrs['swap_events']
+        if "swap_events" in self.ds.attrs:
+            self.swap_events = self.ds.attrs["swap_events"]
         else:
             self.swap_events = []
 
@@ -1361,16 +1397,16 @@ class PSV(MainWindow):
         self.thres_min_dist = 0.020  # seconds
         self.thres_env_std = 0.002  # seconds
 
-        if 'song_events' in self.ds:
-            self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
+        if "song_events" in self.ds:
+            self.fs_other = self.ds.song_events.attrs["sampling_rate_Hz"]
         else:
-            self.fs_other = ds.attrs['target_sampling_rate_Hz']
+            self.fs_other = ds.attrs["target_sampling_rate_Hz"]
 
         self.nb_channels = None
-        if 'song' in self.ds:
-            self.fs_song = self.ds.song.attrs['sampling_rate_Hz']
-        if 'song_raw' in self.ds:
-            self.fs_song = self.ds.song_raw.attrs['sampling_rate_Hz']
+        if "song" in self.ds:
+            self.fs_song = self.ds.song.attrs["sampling_rate_Hz"]
+        if "song_raw" in self.ds:
+            self.fs_song = self.ds.song_raw.attrs["sampling_rate_Hz"]
             self.nb_channels = self.ds.song_raw.shape[1]
         else:
             self.fs_song = self.fs_other  # not sure this would work?
@@ -1410,8 +1446,9 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_play, ">> Forward jump", self.jump_forward, "D")
         self._add_keyed_menuitem(view_play, " > Forward one frame", self.single_frame_advance, "Right")
         view_play.addSeparator()
-        self._add_keyed_menuitem(view_play, "Load cue points",
-                                 self.reload_cuepoints)  # text file with comma separated seconds or frames...
+        self._add_keyed_menuitem(
+            view_play, "Load cue points", self.reload_cuepoints
+        )  # text file with comma separated seconds or frames...
         self._add_keyed_menuitem(view_play, "Move to previous cue", self.set_prev_cuepoint, "K")
         self._add_keyed_menuitem(view_play, "Move to next cue", self.set_next_cuepoint, "L")
         view_play.addSeparator()
@@ -1419,145 +1456,141 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, "S")
 
         view_video = self.bar.addMenu("Video")
-        self._add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, 'crop'), "C", checkable=True, checked=self.crop)
-        self._add_keyed_menuitem(view_video,
-                                 "Flip frame left-right",
-                                 partial(self.toggle, 'frame_fliplr'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.frame_fliplr)
-        self._add_keyed_menuitem(view_video,
-                                 "Flip frame up-down",
-                                 partial(self.toggle, 'frame_flipud'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.frame_flipud)
+        self._add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, "crop"), "C", checkable=True, checked=self.crop)
+        self._add_keyed_menuitem(
+            view_video,
+            "Flip frame left-right",
+            partial(self.toggle, "frame_fliplr"),
+            None,
+            checkable=True,
+            checked=self.frame_fliplr,
+        )
+        self._add_keyed_menuitem(
+            view_video,
+            "Flip frame up-down",
+            partial(self.toggle, "frame_flipud"),
+            None,
+            checkable=True,
+            checked=self.frame_flipud,
+        )
         self._add_keyed_menuitem(view_video, "Change focal fly", self.change_focal_fly, "F")
         self._add_keyed_menuitem(view_video, "Change other fly", self.change_other_fly, "Z")
         self._add_keyed_menuitem(view_video, "Swap flies", self.swap_flies, "X")
         view_video.addSeparator()
-        self._add_keyed_menuitem(view_video,
-                                 "Move poses",
-                                 partial(self.toggle, 'move_poses'),
-                                 "B",
-                                 checkable=True,
-                                 checked=self.move_poses)
+        self._add_keyed_menuitem(
+            view_video, "Move poses", partial(self.toggle, "move_poses"), "B", checkable=True, checked=self.move_poses
+        )
         view_video.addSeparator()
-        self._add_keyed_menuitem(view_video,
-                                 "Show fly position",
-                                 partial(self.toggle, 'show_dot'),
-                                 "O",
-                                 checkable=True,
-                                 checked=self.show_dot)
-        self._add_keyed_menuitem(view_video,
-                                 "Show poses",
-                                 partial(self.toggle, 'show_poses'),
-                                 "P",
-                                 checkable=True,
-                                 checked=self.show_poses)
+        self._add_keyed_menuitem(
+            view_video, "Show fly position", partial(self.toggle, "show_dot"), "O", checkable=True, checked=self.show_dot
+        )
+        self._add_keyed_menuitem(
+            view_video, "Show poses", partial(self.toggle, "show_poses"), "P", checkable=True, checked=self.show_poses
+        )
 
         view_audio = self.bar.addMenu("Audio")
         self._add_keyed_menuitem(view_audio, "Play waveform through speakers", self.play_audio, "E")
         view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio,
-                                 "Show all channels",
-                                 partial(self.toggle, 'show_all_channels'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.show_all_channels)
-        self._add_keyed_menuitem(view_audio,
-                                 "Auto-select loudest channel",
-                                 partial(self.toggle, 'select_loudest_channel'),
-                                 "Q",
-                                 checkable=True,
-                                 checked=self.select_loudest_channel)
+        self._add_keyed_menuitem(
+            view_audio,
+            "Show all channels",
+            partial(self.toggle, "show_all_channels"),
+            None,
+            checkable=True,
+            checked=self.show_all_channels,
+        )
+        self._add_keyed_menuitem(
+            view_audio,
+            "Auto-select loudest channel",
+            partial(self.toggle, "select_loudest_channel"),
+            "Q",
+            checkable=True,
+            checked=self.select_loudest_channel,
+        )
         self._add_keyed_menuitem(view_audio, "Select previous channel", self.set_next_channel, "Up")
         self._add_keyed_menuitem(view_audio, "Select next channel", self.set_prev_channel, "Down")
         view_audio.addSeparator()
-        self._add_keyed_menuitem(view_audio,
-                                 "Show spectrogram",
-                                 partial(self.toggle, 'show_spec'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.show_spec)
+        self._add_keyed_menuitem(
+            view_audio, "Show spectrogram", partial(self.toggle, "show_spec"), None, checkable=True, checked=self.show_spec
+        )
         self._add_keyed_menuitem(view_audio, "Increase frequency resolution", self.inc_freq_res, "R")
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.dec_freq_res, "T")
         view_audio.addSeparator()
 
         view_annotations = self.bar.addMenu("Annotations")
         self._add_keyed_menuitem(view_annotations, "Add or edit song types", self.edit_annotation_types)
-        self._add_keyed_menuitem(view_annotations,
-                                 "Show annotations",
-                                 partial(self.toggle, 'show_songevents'),
-                                 "V",
-                                 checkable=True,
-                                 checked=self.show_songevents)
+        self._add_keyed_menuitem(
+            view_annotations,
+            "Show annotations",
+            partial(self.toggle, "show_songevents"),
+            "V",
+            checkable=True,
+            checked=self.show_songevents,
+        )
         view_annotations.addSeparator()
-        self._add_keyed_menuitem(view_annotations,
-                                 "Allow moving annotations",
-                                 partial(self.toggle, 'movable_events'),
-                                 "M",
-                                 checkable=True,
-                                 checked=self.movable_events)
-        self._add_keyed_menuitem(view_annotations,
-                                 "Only edit active song type",
-                                 partial(self.toggle, 'edit_only_current_events'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.edit_only_current_events)
-        self._add_keyed_menuitem(view_annotations,
-                                 "Show segment labels",
-                                 partial(self.toggle, 'show_segment_text'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.show_segment_text)
+        self._add_keyed_menuitem(
+            view_annotations,
+            "Allow moving annotations",
+            partial(self.toggle, "movable_events"),
+            "M",
+            checkable=True,
+            checked=self.movable_events,
+        )
+        self._add_keyed_menuitem(
+            view_annotations,
+            "Only edit active song type",
+            partial(self.toggle, "edit_only_current_events"),
+            None,
+            checkable=True,
+            checked=self.edit_only_current_events,
+        )
+        self._add_keyed_menuitem(
+            view_annotations,
+            "Show segment labels",
+            partial(self.toggle, "show_segment_text"),
+            None,
+            checkable=True,
+            checked=self.show_segment_text,
+        )
         view_annotations.addSeparator()
         self._add_keyed_menuitem(view_annotations, "Delete active song type in view", self.delete_current_events, "U")
         self._add_keyed_menuitem(view_annotations, "Delete all song types in view", self.delete_all_events, "Y")
         view_annotations.addSeparator()
-        self._add_keyed_menuitem(view_annotations,
-                                 "Toggle thresholding mode",
-                                 partial(self.toggle, 'threshold_mode'),
-                                 checkable=True,
-                                 checked=self.threshold_mode)
+        self._add_keyed_menuitem(
+            view_annotations,
+            "Toggle thresholding mode",
+            partial(self.toggle, "threshold_mode"),
+            checkable=True,
+            checked=self.threshold_mode,
+        )
         self._add_keyed_menuitem(view_annotations, "Generate proposal by envelope thresholding", self.threshold, "I")
         self._add_keyed_menuitem(view_annotations, "Adjust thresholding mode", self.set_envelope_computation)
         view_annotations.addSeparator()
-        self._add_keyed_menuitem(view_annotations, "Approve proposals for active song type in view",
-                                 self.approve_active_proposals, "G")
-        self._add_keyed_menuitem(view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals,
-                                 "H")
+        self._add_keyed_menuitem(
+            view_annotations, "Approve proposals for active song type in view", self.approve_active_proposals, "G"
+        )
+        self._add_keyed_menuitem(
+            view_annotations, "Approve proposals for all song types in view", self.approve_all_proposals, "H"
+        )
 
         view_view = self.bar.addMenu("View")
         self._add_keyed_menuitem(view_view, "Video, waveform, and spectrogram display parameters", self.set_spec_freq)
         view_view.addSeparator()
         # TODO? only show these if tracks and/or video
-        self._add_keyed_menuitem(view_view,
-                                 "Show spectrogram",
-                                 partial(self.toggle, 'show_spec'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.show_spec)
-        self._add_keyed_menuitem(view_view,
-                                 "Show waveform",
-                                 partial(self.toggle, 'show_trace'),
-                                 None,
-                                 checkable=True,
-                                 checked=self.show_trace)
-        if 'pose_positions_allo' in self.ds:
-            self._add_keyed_menuitem(view_view,
-                                     "Show tracks",
-                                     partial(self.toggle, 'show_tracks'),
-                                     None,
-                                     checkable=True,
-                                     checked=self.show_tracks)
+        self._add_keyed_menuitem(
+            view_view, "Show spectrogram", partial(self.toggle, "show_spec"), None, checkable=True, checked=self.show_spec
+        )
+        self._add_keyed_menuitem(
+            view_view, "Show waveform", partial(self.toggle, "show_trace"), None, checkable=True, checked=self.show_trace
+        )
+        if "pose_positions_allo" in self.ds:
+            self._add_keyed_menuitem(
+                view_view, "Show tracks", partial(self.toggle, "show_tracks"), None, checkable=True, checked=self.show_tracks
+            )
         if self.vr is not None:
-            self._add_keyed_menuitem(view_view,
-                                     "Show movie",
-                                     partial(self.toggle, 'show_movie'),
-                                     None,
-                                     checkable=True,
-                                     checked=self.show_movie)
+            self._add_keyed_menuitem(
+                view_view, "Show movie", partial(self.toggle, "show_movie"), None, checkable=True, checked=self.show_movie
+            )
 
         self.hl = QtWidgets.QHBoxLayout()
 
@@ -1567,18 +1600,18 @@ class PSV(MainWindow):
         self.cb.currentIndexChanged.connect(self.update_xy)
 
         def ta():
-            if self.cb.currentText() == 'Initialize song types':
+            if self.cb.currentText() == "Initialize song types":
                 self.edit_annotation_types()
 
         self.cb.activated.connect(ta)
 
-        event_sel_label = QtWidgets.QLabel('Song types:')
+        event_sel_label = QtWidgets.QLabel("Song types:")
         event_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
         event_sel_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.hl.addWidget(event_sel_label, stretch=1)
         self.hl.addWidget(self.cb, stretch=4)
 
-        event_edit_button = QtWidgets.QPushButton('Add/Edit')
+        event_edit_button = QtWidgets.QPushButton("Add/Edit")
         event_edit_button.clicked.connect(functools.partial(self.edit_annotation_types, dialog=None))
         self.hl.addWidget(event_edit_button, stretch=1)
 
@@ -1587,24 +1620,24 @@ class PSV(MainWindow):
 
         # CHANNEL selector
         self.cb2 = QtWidgets.QComboBox()
-        if 'song' in self.ds:
+        if "song" in self.ds:
             self.cb2.addItem("Merged channels")
 
-        if 'song_raw' in self.ds:
+        if "song_raw" in self.ds:
             for chan in range(self.ds.song_raw.shape[1]):
                 self.cb2.addItem("Channel " + str(chan))
 
         self.cb2.currentIndexChanged.connect(self.update_xy)
         self.cb2.setCurrentIndex(0)
-        channel_sel_label = QtWidgets.QLabel('Audio channels:')
+        channel_sel_label = QtWidgets.QLabel("Audio channels:")
         channel_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
         self.hl.addWidget(channel_sel_label, stretch=1)
         self.hl.addWidget(self.cb2, stretch=4)
 
         # TRACKS selector
-        if 'pose_positions_allo' in self.ds and self.bodyparts is not None:
+        if "pose_positions_allo" in self.ds and self.bodyparts is not None:
             self.cb3 = utils.CheckableComboBox()
-            items = [f"{b}, {c}" for b in self.bodyparts for c in ['x', 'y']]
+            items = [f"{b}, {c}" for b in self.bodyparts for c in ["x", "y"]]
             self.cb3.addItems(items)
 
             # color events in combobox as in slice_view and spec_view
@@ -1620,7 +1653,7 @@ class PSV(MainWindow):
             for ii, col in zip(range(0, itemList.rowCount()), self.tracks_colors):
                 itemList.item(ii).setForeground(QtGui.QColor(*col))
 
-            track_sel_label = QtWidgets.QLabel('Track parts:')
+            track_sel_label = QtWidgets.QLabel("Track parts:")
             track_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
             self.hl.addWidget(track_sel_label, stretch=1)
             self.hl.addWidget(self.cb3, stretch=4)
@@ -1649,7 +1682,7 @@ class PSV(MainWindow):
         splitter_horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
         splitter.addWidget(splitter_horizontal)
-        if 'pose_positions_allo' in self.ds:
+        if "pose_positions_allo" in self.ds:
             splitter.addWidget(self.tracks_view)
         splitter.addWidget(self.slice_view)
         splitter.addWidget(self.spec_view)
@@ -1683,7 +1716,7 @@ class PSV(MainWindow):
         self.scrollbar.setMinimum(self.tmin)
         self.scrollbar.setMaximum(self.tmax)
         self.scrollbar.setPageStep(max((self.tmax - self.tmin) / 100, self._span / self.fs_song))
-        self.scrollbar.valueChanged.connect(lambda value: setattr(self, 't0', value))
+        self.scrollbar.valueChanged.connect(lambda value: setattr(self, "t0", value))
         scrollbar_layout = QtWidgets.QHBoxLayout()
 
         self.playButton = QtWidgets.QPushButton()
@@ -1696,7 +1729,7 @@ class PSV(MainWindow):
         self.edit_time = QtWidgets.QLineEdit()
         self.edit_time.editingFinished.connect(functools.partial(edit_time_finished, source=self.edit_time))
         scrollbar_layout.addWidget(self.edit_time, stretch=1)
-        edit_time_label = QtWidgets.QLabel('seconds')
+        edit_time_label = QtWidgets.QLabel("seconds")
         edit_time_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
         scrollbar_layout.addWidget(edit_time_label, stretch=1)
 
@@ -1704,7 +1737,7 @@ class PSV(MainWindow):
             self.edit_frame = QtWidgets.QLineEdit()
             self.edit_frame.editingFinished.connect(functools.partial(edit_frame_finished, source=self.edit_frame))
             scrollbar_layout.addWidget(self.edit_frame, stretch=1)
-            edit_frame_label = QtWidgets.QLabel('frame')
+            edit_frame_label = QtWidgets.QLabel("frame")
             edit_frame_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
             scrollbar_layout.addWidget(edit_frame_label, stretch=1)
 
@@ -1831,7 +1864,7 @@ class PSV(MainWindow):
     def t0(self, val: float):
         old_t0 = self._t0
         self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)  # ensure t0 stays within bounds
-        if not np.isclose(self._t0, old_t0, rtol=0.0, atol=1.e-4):
+        if not np.isclose(self._t0, old_t0, rtol=0.0, atol=1.0e-4):
             self.scrollbar.setValue(self.t0)
             self.edit_time.setText(str(self.t0 / self.fs_song))
             if self.vr is not None:
@@ -1842,10 +1875,10 @@ class PSV(MainWindow):
 
     @property
     def framenumber(self):
-        if 'nearest_frame' in self.ds.coords:
+        if "nearest_frame" in self.ds.coords:
             try:  # in case nearest_frame is nan
                 t = self.ds.sampletime.data[int(self.t0)]
-                return int(self.ds.nearest_frame.sel(time=t, method='nearest'))
+                return int(self.ds.nearest_frame.sel(time=t, method="nearest"))
             except:
                 pass
 
@@ -1885,15 +1918,15 @@ class PSV(MainWindow):
 
     @property
     def current_channel_index(self):
-        if self.current_channel_name != 'Merged channels':
-            return int(self.current_channel_name.split(' ')[-1])  # "Channel XX"
+        if self.current_channel_name != "Merged channels":
+            return int(self.current_channel_name.split(" ")[-1])  # "Channel XX"
         else:
             return None
 
     @property
     def index_other(self):
         current_sampletime = self.ds.sampletime.data[int(self.t0)]
-        current_time = self.ds.time.sel(time=current_sampletime, method='nearest')
+        current_time = self.ds.time.sel(time=current_sampletime, method="nearest")
         index_other = np.where(self.ds.time == current_time)[0]
         return int(index_other)
 
@@ -1926,33 +1959,33 @@ class PSV(MainWindow):
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
-            deleted_events = self.event_times.delete_range(self.current_event_name, self.time0 / self.fs_song,
-                                                           self.time1 / self.fs_song)
+            deleted_events = self.event_times.delete_range(
+                self.current_event_name, self.time0 / self.fs_song, self.time1 / self.fs_song
+            )
             nb_deleted_events = len(deleted_events)
             if nb_deleted_events:
-                logging.info(f'   Deleted {nb_deleted_events} annotation(s) of type {self.current_event_name}.')
+                logging.info(f"   Deleted {nb_deleted_events} annotation(s) of type {self.current_event_name}.")
                 if self.STOP:
                     self.update_xy()
         else:
-            logging.info('   No event type selected. Not deleting anything.')
+            logging.info("   No event type selected. Not deleting anything.")
 
     def delete_all_events(self, qt_keycode):
         for event_name in self.event_times.names:
             deleted_events = self.event_times.delete_range(event_name, self.time0 / self.fs_song, self.time1 / self.fs_song)
             nb_deleted_events = len(deleted_events)
             if nb_deleted_events:
-                logging.info(f'   Deleted {nb_deleted_events} annotation(s) of type {event_name}.')
+                logging.info(f"   Deleted {nb_deleted_events} annotation(s) of type {event_name}.")
 
         if self.STOP:
             self.update_xy()
 
     def threshold(self, qt_keycode):
         if self.STOP and self.current_event_name is not None:
-            if self.event_times.categories[self.current_event_name] == 'event':
-                indexes = peakutils.indexes(self.envelope,
-                                            thres=self.slice_view.threshold,
-                                            min_dist=self.thres_min_dist * self.fs_song,
-                                            thres_abs=True)
+            if self.event_times.categories[self.current_event_name] == "event":
+                indexes = peakutils.indexes(
+                    self.envelope, thres=self.slice_view.threshold, min_dist=self.thres_min_dist * self.fs_song, thres_abs=True
+                )
 
                 # add events to current song type
                 for t in self.x[indexes]:
@@ -1964,7 +1997,7 @@ class PSV(MainWindow):
                 new_len = self.event_times[self.current_event_name].shape[0]
                 if new_len != old_len:
                     logging.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
-            if self.event_times.categories[self.current_event_name] == 'segment':
+            if self.event_times.categories[self.current_event_name] == "segment":
                 # get pos and neg crossings
                 x = np.diff((self.envelope > self.slice_view.threshold).astype(np.float))
                 onsets = np.where(x == 1)[0]
@@ -1985,7 +2018,7 @@ class PSV(MainWindow):
         std = self.thres_env_std * self.fs_song
         win = scipy.signal.windows.gaussian(int(std * 6), std)
         win /= np.sum(win)
-        env = np.sqrt(np.convolve(self.y.astype(np.float)**2, win, mode='same'))
+        env = np.sqrt(np.convolve(self.y.astype(np.float) ** 2, win, mode="same"))
         return env
 
     def set_prev_channel(self, qt_keycode):
@@ -2058,7 +2091,7 @@ class PSV(MainWindow):
     def set_prev_cuepoint(self, qt_keycode):
         if len(self.cue_points):
             self.cue_index = max(0, self.cue_index - 1)
-            logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
+            logging.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
             self.t0 = self.cue_points[self.cue_index] * self.fs_song  # jump to PREV cue point
         else:  # no cue points - jump to prev song event
             if self.edit_only_current_events:  # of the currently active type
@@ -2074,7 +2107,7 @@ class PSV(MainWindow):
     def set_next_cuepoint(self, qt_keycode):
         if len(self.cue_points):
             self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
-            logging.debug(f'cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}')
+            logging.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
             self.t0 = self.cue_points[self.cue_index] * self.fs_song  # jump to PREV cue point
         else:  # no cue points - jump to next song event
             if self.edit_only_current_events:  # of the currently active type
@@ -2111,16 +2144,18 @@ class PSV(MainWindow):
 
     def set_spec_freq(self, qt_keycode):
         from . import view_dialog
+
         dialog = view_dialog.Form(parent=self, model=self)
         dialog.show()
         dialog.exec_()
 
     def set_envelope_computation(self, qt_keycode):
-        dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/envelope_computation.yaml",
-                            title='Set options for envelope computation')
+        dialog = YamlDialog(
+            yaml_file=package_dir + "/gui/forms/envelope_computation.yaml", title="Set options for envelope computation"
+        )
 
-        dialog.form['thres_min_dist'] = self.thres_min_dist
-        dialog.form['thres_env_std'] = self.thres_env_std
+        dialog.form["thres_min_dist"] = self.thres_min_dist
+        dialog.form["thres_env_std"] = self.thres_env_std
 
         dialog.show()
         result = dialog.exec_()
@@ -2128,8 +2163,8 @@ class PSV(MainWindow):
         if result == QtWidgets.QDialog.Accepted:
             form_data = dialog.form.get_form_data()
             # fix these to be at least 1/fs audio
-            self.thres_min_dist = max(form_data['thres_min_dist'], 1 / self.fs_song)
-            self.thres_env_std = max(form_data['thres_env_std'], 1 / self.fs_song)
+            self.thres_min_dist = max(form_data["thres_min_dist"], 1 / self.fs_song)
+            self.thres_env_std = max(form_data["thres_env_std"], 1 / self.fs_song)
             logging.info("Setting parameters for envelope computation:")
             logging.info(f"     Minimal distance between events: {self.thres_min_dist} seconds")
             logging.info(f"     Smoothing window for envelope: {self.thres_env_std} seconds")
@@ -2138,18 +2173,18 @@ class PSV(MainWindow):
     def update_xy(self):
         # FIXME: self.time0 and self.time1 are indices into self.ds.sampletime, not time points
         # rename to sampletime_index0/1?
-        self.x = self.ds.sampletime.data[self.time0:self.time1]
+        self.x = self.ds.sampletime.data[self.time0 : self.time1]
         self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
         self.y_other = None
 
-        if 'song' in self.ds and self.current_channel_name == 'Merged channels':
-            self.y = self.ds.song.data[self.time0:self.time1]
-        elif 'song_raw' in self.ds:
+        if "song" in self.ds and self.current_channel_name == "Merged channels":
+            self.y = self.ds.song.data[self.time0 : self.time1]
+        elif "song_raw" in self.ds:
             # load song for current channel
             try:
-                y_all = self.ds.song_raw.data[self.time0:self.time1, :].compute()
+                y_all = self.ds.song_raw.data[self.time0 : self.time1, :].compute()
             except AttributeError:
-                y_all = self.ds.song_raw.data[self.time0:self.time1, :]
+                y_all = self.ds.song_raw.data[self.time0 : self.time1, :]
 
             self.y = y_all[:, self.current_channel_index]
             if self.show_all_channels:
@@ -2174,7 +2209,7 @@ class PSV(MainWindow):
             self.slice_view.clear()
             self.slice_view.hide()
 
-        if 'pose_positions_allo' in self.ds:
+        if "pose_positions_allo" in self.ds:
             if self.show_tracks:
                 # make this part of the callback?
                 sel_parts = self.cb3.currentData()
@@ -2182,14 +2217,15 @@ class PSV(MainWindow):
                 self.track_sel_coords = []
                 for part in sel_parts:
                     self.track_sel_names.append(self.bodyparts.tolist().index(part[:-3]))
-                    self.track_sel_coords.append(0 if part[-1] == 'x' else 1)
+                    self.track_sel_coords.append(0 if part[-1] == "x" else 1)
 
                 i0 = int(self.time0 / self.fs_ratio)
                 i1 = int(self.time1 / self.fs_ratio)
 
                 self.x_tracks = self.ds.time.data[i0:i1]
-                self.y_tracks = self.ds.pose_positions_allo.data[i0:i1, self.focal_fly, self.track_sel_names,
-                                                                 self.track_sel_coords]
+                self.y_tracks = self.ds.pose_positions_allo.data[
+                    i0:i1, self.focal_fly, self.track_sel_names, self.track_sel_coords
+                ]
                 self.tracks_view.update_trace()
                 self.tracks_view.show()
             else:
@@ -2232,33 +2268,21 @@ class PSV(MainWindow):
             else:
                 segment_text = None
 
-            if self.event_times.categories[event_name] == 'segment':
+            if self.event_times.categories[event_name] == "segment":
                 for onset, offset in zip(events_in_view[:, 0], events_in_view[:, 1]):
                     if self.show_trace:
-                        self.slice_view.add_segment(onset,
-                                                    offset,
-                                                    event_index,
-                                                    brush=event_brush,
-                                                    pen=event_pen,
-                                                    movable=movable,
-                                                    text=segment_text)
+                        self.slice_view.add_segment(
+                            onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text
+                        )
                     if self.show_tracks:
-                        self.tracks_view.add_segment(onset,
-                                                     offset,
-                                                     event_index,
-                                                     brush=event_brush,
-                                                     pen=event_pen,
-                                                     movable=movable,
-                                                     text=segment_text)
+                        self.tracks_view.add_segment(
+                            onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text
+                        )
                     if self.show_spec:
-                        self.spec_view.add_segment(onset,
-                                                   offset,
-                                                   event_index,
-                                                   brush=event_brush,
-                                                   pen=event_pen,
-                                                   movable=movable,
-                                                   text=segment_text)
-            elif self.event_times.categories[event_name] == 'event':
+                        self.spec_view.add_segment(
+                            onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text
+                        )
+            elif self.event_times.categories[event_name] == "event":
                 if self.show_trace:
                     self.slice_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
                 if self.show_tracks:
@@ -2274,7 +2298,7 @@ class PSV(MainWindow):
                 RUN = False
                 self.update_xy()
                 self.update_frame()
-                logging.debug('   Stopped playback.')
+                logging.debug("   Stopped playback.")
                 self.app.processEvents()
 
     def on_region_change_finished(self, region):
@@ -2290,7 +2314,7 @@ class PSV(MainWindow):
         # need to figure out event_name of the moved one if moving non-selected event
         self.event_times.move_time(event_name_to_move, region.bounds, new_region)
         logging.info(
-            f'  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.'
+            f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
         )
         self.update_xy()
 
@@ -2304,48 +2328,50 @@ class PSV(MainWindow):
 
         new_position = position.pos()[0]
         self.event_times.move_time(event_name_to_move, position.position, new_position)
-        logging.info(f'  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.')
+        logging.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
         self.update_xy()
 
     def on_position_dragged(self, fly, pos, offset):
         """Called when dragging a fly body position - will change that pos."""
-        if hasattr(self.ds, 'pose_positions_allo'):
+        if hasattr(self.ds, "pose_positions_allo"):
             pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, self.pose_center_index]
             try:
                 pos1 = [pos.y(), pos.x()]
             except:
                 pos1 = pos
-            self.ds.pose_positions_allo.data[self.index_other, fly, :] += (pos1 - pos0)
-            logging.info(f'   Moved fly from {pos0} to {pos1}.')
+            self.ds.pose_positions_allo.data[self.index_other, fly, :] += pos1 - pos0
+            logging.info(f"   Moved fly from {pos0} to {pos1}.")
             self.update_frame()
 
     def on_poses_dragged(self, ind, pos, offset):
         """Called when dragging a fly body position - will change that pos."""
-        if hasattr(self.ds, 'pose_positions_allo'):
+        if hasattr(self.ds, "pose_positions_allo"):
             fly, part = np.unravel_index(ind, (self.nb_flies, self.nb_bodyparts))
             pos0 = self.ds.pose_positions_allo.data[self.index_other, fly, part]
             try:
                 pos1 = [pos.y(), pos.x()]
             except:
                 pos1 = pos
-            self.ds.pose_positions_allo.data[self.index_other, fly, part] += (pos1 - pos0)
-            logging.info(f'   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.')
+            self.ds.pose_positions_allo.data[self.index_other, fly, part] += pos1 - pos0
+            logging.info(f"   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.")
             self.update_frame()
 
     def on_video_clicked(self, mouseX, mouseY, event):
         """Called when clicking the video - will select the focal fly."""
-        if hasattr(self.ds, 'pose_positions_allo'):
+        if hasattr(self.ds, "pose_positions_allo"):
             if event.modifiers() == QtCore.Qt.ControlModifier and self.focal_fly is not None:
                 self.on_position_dragged(self.focal_fly, pos=[mouseY, mouseX], offset=None)
             else:
                 fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.pose_center_index, :]
                 fly_pos = np.array(fly_pos)  # in case this is a dask.array
                 if self.crop:  # transform fly pos to coordinates of the cropped box
-                    box_center = self.ds.pose_positions_allo.data[self.index_other, self.focal_fly,
-                                                                  self.pose_center_index] + self.box_size / 2
+                    box_center = (
+                        self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.pose_center_index]
+                        + self.box_size / 2
+                    )
                     box_center = np.array(box_center)  # in case this is a dask.array
                     fly_pos = fly_pos - box_center
-                fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX]))**2, axis=-1)
+                fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX])) ** 2, axis=-1)
                 fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
                 self.other_fly = np.argmin(fly_dist)
                 logging.debug(f"Selected {self.other_fly}.")
@@ -2371,21 +2397,24 @@ class PSV(MainWindow):
             else:
                 current_event_name = self.current_event_name
 
-            changed_time, old_name, new_name = self.event_times.change_name(time=mouseT,
-                                                                            new_name=current_event_name,
-                                                                            tol=0.05,
-                                                                            min_time=self.time0 / self.fs_song,
-                                                                            max_time=self.time1 / self.fs_song)
+            changed_time, old_name, new_name = self.event_times.change_name(
+                time=mouseT,
+                new_name=current_event_name,
+                tol=0.05,
+                min_time=self.time0 / self.fs_song,
+                max_time=self.time1 / self.fs_song,
+            )
             if changed_time is not None:
-                if self.event_times.categories[self.current_event_name] == 'event':
+                if self.event_times.categories[self.current_event_name] == "event":
                     logging.info(f"  Changed event at {changed_time[0]:1.4f} from {old_name} to {new_name}.")
                 else:
                     logging.info(
-                        f"  Changed segment at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}.")
+                        f"  Changed segment at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}."
+                    )
                 self.update_xy()
         elif mouseButton == 1:  # add event
             if self.current_event_index is not None:
-                if self.event_times.categories[self.current_event_name] == 'segment':
+                if self.event_times.categories[self.current_event_name] == "segment":
                     if self.sinet0 is None:
                         self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
                         self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
@@ -2394,12 +2423,12 @@ class PSV(MainWindow):
                         self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
                         self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
                         self.event_times.add_time(self.current_event_name, self.sinet0, mouseT)
-                        logging.info(f'  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.')
+                        logging.info(f"  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.")
                         self.sinet0 = None
-                if self.event_times.categories[self.current_event_name] == 'event':
+                if self.event_times.categories[self.current_event_name] == "event":
                     self.sinet0 = None
                     self.event_times.add_time(self.current_event_name, mouseT)
-                    logging.info(f'  Added {self.current_event_name} at t={mouseT:1.4f} seconds.')
+                    logging.info(f"  Added {self.current_event_name} at t={mouseT:1.4f} seconds.")
                 self.update_xy()
             else:
                 self.sinet0 = None
@@ -2413,45 +2442,53 @@ class PSV(MainWindow):
             else:
                 current_event_name = self.current_event_name
 
-            deleted_name, deleted_time = self.event_times.delete_time(time=mouseT,
-                                                                      name=current_event_name,
-                                                                      tol=0.05,
-                                                                      min_time=self.time0 / self.fs_song,
-                                                                      max_time=self.time1 / self.fs_song)
+            deleted_name, deleted_time = self.event_times.delete_time(
+                time=mouseT,
+                name=current_event_name,
+                tol=0.05,
+                min_time=self.time0 / self.fs_song,
+                max_time=self.time1 / self.fs_song,
+            )
             if len(deleted_time):
-                logging.info(f'  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.')
+                logging.info(f"  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.")
             self.update_xy()
 
     def play_audio(self, qt_keycode):
         """Play vector as audio using the simpleaudio package."""
 
-        if 'song' in self.ds or 'song_raw' in self.ds:
+        if "song" in self.ds or "song_raw" in self.ds:
             has_sounddevice = False
             has_simpleaudio = False
             try:
                 import sounddevice as sd
+
                 has_sounddevice = True
             except (ImportError, ModuleNotFoundError):
-                logging.info('Could not import python-sounddevice. Maybe you need to install it.\
+                logging.info(
+                    "Could not import python-sounddevice. Maybe you need to install it.\
                               See https://python-sounddevice.readthedocs.io/en/latest/installation.html for instructions.\
                               \
-                              Trying to fall back to simpleaudio, which may be buggy.')
+                              Trying to fall back to simpleaudio, which may be buggy."
+                )
 
             if not has_sounddevice:
                 try:
                     import simpleaudio
+
                     has_simpleaudio = True
 
                 except (ImportError, ModuleNotFoundError):
-                    logging.info('Could not import simpleaudio. Maybe you need to install it.\
-                                See https://simpleaudio.readthedocs.io/en/latest/installation.html for instructions.')
+                    logging.info(
+                        "Could not import simpleaudio. Maybe you need to install it.\
+                                See https://simpleaudio.readthedocs.io/en/latest/installation.html for instructions."
+                    )
                     return
 
             if has_sounddevice or has_simpleaudio:
-                if 'song' in self.ds and self.current_channel_name == 'Merged channels':
-                    y = self.ds.song.data[self.time0:self.time1]
+                if "song" in self.ds and self.current_channel_name == "Merged channels":
+                    y = self.ds.song.data[self.time0 : self.time1]
                 else:
-                    y = self.ds.song_raw.data[self.time0:self.time1, self.current_channel_index]
+                    y = self.ds.song_raw.data[self.time0 : self.time1, self.current_channel_index]
                 y = np.array(y)  # if y is a dask.array (lazy loaded)
 
                 max_amp = self.MAX_AUDIO_AMP
@@ -2476,14 +2513,14 @@ class PSV(MainWindow):
                     # start playback in background
                     simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
             else:
-                logging.info('No sound module installed - install python-sounddevice')
+                logging.info("No sound module installed - install python-sounddevice")
         else:
-            logging.info('Could not play sound - no sound data in the dataset.')
+            logging.info("Could not play sound - no sound data in the dataset.")
 
     def swap_flies(self, qt_keycode):
         if self.vr is not None:
             swap_time = float(self.ds.time[self.index_other])
-            logging.info(f'   Swapping flies {self.focal_fly} & {self.other_fly} at {swap_time} seconds.')
+            logging.info(f"   Swapping flies {self.focal_fly} & {self.other_fly} at {swap_time} seconds.")
 
             # save swap info
             # if already in there remove - swapping a second time would negate first swap
@@ -2507,7 +2544,7 @@ class PSV(MainWindow):
         t0 = self.ds.sampletime.data[self.time0]
         t1 = self.ds.sampletime.data[self.time1]
 
-        proposal_suffix = '_proposals'
+        proposal_suffix = "_proposals"
         logging.info("Approving:")
         for name in self.event_times.names:
             if appprove_only_active_event and name != self.current_event_name:
@@ -2517,11 +2554,13 @@ class PSV(MainWindow):
                 # get event times within range
                 within_range_times = self.event_times.filter_range(name, t0, t1, strict=False)
                 # delete from `songtype_proposals`, add to `songtype`
-                self.event_times.add_name(name=name[:-len(proposal_suffix)],
-                                          category=self.event_times.categories[name],
-                                          times=within_range_times,
-                                          append=True,
-                                          overwrite=False)
+                self.event_times.add_name(
+                    name=name[: -len(proposal_suffix)],
+                    category=self.event_times.categories[name],
+                    times=within_range_times,
+                    append=True,
+                    overwrite=False,
+                )
                 self.event_times.delete_range(name, t0, t1, strict=False)
                 if len(within_range_times):
                     logging.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
@@ -2535,7 +2574,7 @@ class PSV(MainWindow):
 
     def edit_annotation_types(self, qt_keycode=None, dialog=None):
         if dialog is None:
-            if hasattr(self, 'event_times'):
+            if hasattr(self, "event_times"):
                 types = self.event_times.names
                 cats = list(self.event_times.categories.values())
                 table_data = [[typ, cat] for typ, cat in zip(types, cats)]
@@ -2578,10 +2617,10 @@ class PSV(MainWindow):
                     self.event_times.add_name(event_name, event_category)
 
             # update event-related attrs
-            if 'song_events' in self.ds:
-                self.fs_other = self.ds.song_events.attrs['sampling_rate_Hz']
-            elif 'target_sampling_rate_Hz' in self.ds.attrs:
-                self.fs_other = self.ds.attrs['target_sampling_rate_Hz']
+            if "song_events" in self.ds:
+                self.fs_other = self.ds.song_events.attrs["sampling_rate_Hz"]
+            elif "target_sampling_rate_Hz" in self.ds.attrs:
+                self.fs_other = self.ds.attrs["target_sampling_rate_Hz"]
             else:
                 self.fs_other = self.fs_song
 
@@ -2593,7 +2632,7 @@ class PSV(MainWindow):
             self.update_eventtype_dialog()
 
     def update_eventtype_dialog(self):
-        if hasattr(self, 'event_times'):
+        if hasattr(self, "event_times"):
             types = self.event_times.names
             cats = list(self.event_times.categories.values())
             table_data = [[typ, cat] for typ, cat in zip(types, cats)]
@@ -2601,10 +2640,10 @@ class PSV(MainWindow):
             table_data = []
 
         self.dialog = table.Table(table_data, as_dialog=False)
-        self.dialog.save_button = QtWidgets.QPushButton('Apply', self.dialog)
+        self.dialog.save_button = QtWidgets.QPushButton("Apply", self.dialog)
         self.dialog.save_button.clicked.connect(functools.partial(self.edit_annotation_types, dialog=self.dialog))
         self.dialog.button_layout.addWidget(self.dialog.save_button)
-        self.dialog.revert_button = QtWidgets.QPushButton('Revert', self.dialog)
+        self.dialog.revert_button = QtWidgets.QPushButton("Revert", self.dialog)
         self.dialog.revert_button.clicked.connect(self.update_eventtype_dialog)
         self.dialog.button_layout.addWidget(self.dialog.revert_button)
 
@@ -2614,7 +2653,7 @@ class PSV(MainWindow):
         while self.cb.count() > 0:
             self.cb.removeItem(0)
 
-        if hasattr(self, 'event_times'):
+        if hasattr(self, "event_times"):
             self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.event_times.names)]
             self.eventList = sorted(self.eventList)
         else:
@@ -2633,20 +2672,20 @@ class PSV(MainWindow):
 
         # update menus
         # remove associated menu items
-        if not hasattr(self, 'event_items'):
+        if not hasattr(self, "event_items"):
             self.event_items = []
         else:
             for event_item in self.event_items:
                 try:
                     self.view_audio.removeAction(event_item)
                 except ValueError:
-                    logging.warning('item not in actions')  # item not in actions
+                    logging.warning("item not in actions")  # item not in actions
 
         # add new ones (make this function)
         self.event_items = []
         for ii in range(self.cb.count()):
             key = str(ii) if ii < 10 else None
-            key_label = f"({key})" if key is not None else ''
+            key_label = f"({key})" if key is not None else ""
             self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
             menu_item = self._add_keyed_menuitem(self.view_audio, self.cb.itemText(ii), self.change_event_type, key)
             self.event_items.append(menu_item)
@@ -2658,16 +2697,18 @@ class PSV(MainWindow):
             itemList.item(ii).setForeground(QtGui.QColor(*col))
 
 
-def main(source: str = '',
-         *,
-         events_string: str = '',
-         target_samplingrate: Optional[float] = None,
-         spec_freq_min: Optional[float] = None,
-         spec_freq_max: Optional[float] = None,
-         box_size: int = 200,
-         pixel_size_mm: Optional[float] = None,
-         skip_dialog: bool = False,
-         is_das: bool = False):
+def main(
+    source: str = "",
+    *,
+    events_string: str = "",
+    target_samplingrate: Optional[float] = None,
+    spec_freq_min: Optional[float] = None,
+    spec_freq_max: Optional[float] = None,
+    box_size: int = 200,
+    pixel_size_mm: Optional[float] = None,
+    skip_dialog: bool = False,
+    is_das: bool = False,
+):
     """
     Args:
         source (str): Data source to load.
@@ -2700,45 +2741,58 @@ def main(source: str = '',
     if not len(source):
         pass
     elif not os.path.exists(source):
-        logging.info(f'{source} does not exist - skipping.')
-    elif source.lower().endswith('.wav') or source.lower().endswith('.npz') or source.lower().endswith(
-            '.h5') or source.endswith('.hdf5') or source.lower().endswith('.mat'):
-        MainWindow.from_file(filename=source,
-                             events_string=events_string,
-                             target_samplingrate=target_samplingrate,
-                             spec_freq_min=spec_freq_min,
-                             spec_freq_max=spec_freq_max,
-                             skip_dialog=skip_dialog,
-                             is_das=is_das)
-    elif source.endswith('.zarr'):
-        MainWindow.from_zarr(filename=source,
-                             box_size=box_size,
-                             spec_freq_min=spec_freq_min,
-                             spec_freq_max=spec_freq_max,
-                             skip_dialog=skip_dialog,
-                             is_das=is_das)
+        logging.info(f"{source} does not exist - skipping.")
+    elif (
+        source.lower().endswith(".wav")
+        or source.lower().endswith(".npz")
+        or source.lower().endswith(".h5")
+        or source.endswith(".hdf5")
+        or source.lower().endswith(".mat")
+    ):
+        MainWindow.from_file(
+            filename=source,
+            events_string=events_string,
+            target_samplingrate=target_samplingrate,
+            spec_freq_min=spec_freq_min,
+            spec_freq_max=spec_freq_max,
+            skip_dialog=skip_dialog,
+            is_das=is_das,
+        )
+    elif source.endswith(".zarr"):
+        MainWindow.from_zarr(
+            filename=source,
+            box_size=box_size,
+            spec_freq_min=spec_freq_min,
+            spec_freq_max=spec_freq_max,
+            skip_dialog=skip_dialog,
+            is_das=is_das,
+        )
     elif os.path.isdir(source):
-        MainWindow.from_dir(dirname=source,
-                            events_string=events_string,
-                            target_samplingrate=target_samplingrate,
-                            box_size=box_size,
-                            spec_freq_min=spec_freq_min,
-                            spec_freq_max=spec_freq_max,
-                            pixel_size_mm=pixel_size_mm,
-                            skip_dialog=skip_dialog,
-                            is_das=is_das)
+        MainWindow.from_dir(
+            dirname=source,
+            events_string=events_string,
+            target_samplingrate=target_samplingrate,
+            box_size=box_size,
+            spec_freq_min=spec_freq_min,
+            spec_freq_max=spec_freq_max,
+            pixel_size_mm=pixel_size_mm,
+            skip_dialog=skip_dialog,
+            is_das=is_das,
+        )
 
     # # Start Qt event loop unless running in interactive mode or using pyside.
-    if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+    if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec_()
 
 
-def main_das(source: str = '',
-             *,
-             song_types_string: str = '',
-             spec_freq_min: Optional[float] = None,
-             spec_freq_max: Optional[float] = None,
-             skip_dialog: bool = False):
+def main_das(
+    source: str = "",
+    *,
+    song_types_string: str = "",
+    spec_freq_min: Optional[float] = None,
+    spec_freq_max: Optional[float] = None,
+    skip_dialog: bool = False,
+):
     """GUI for annotating song and training and using das networks.
 
     Args:
@@ -2760,16 +2814,19 @@ def main_das(source: str = '',
         spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
     """
-    main(source,
-         events_string=song_types_string,
-         spec_freq_min=spec_freq_min,
-         spec_freq_max=spec_freq_max,
-         skip_dialog=skip_dialog,
-         is_das=True)
+    main(
+        source,
+        events_string=song_types_string,
+        spec_freq_min=spec_freq_min,
+        spec_freq_max=spec_freq_max,
+        skip_dialog=skip_dialog,
+        is_das=True,
+    )
 
 
 def cli():
     import warnings
+
     warnings.filterwarnings("ignore")
     # enforce log level
     try:  # py38+

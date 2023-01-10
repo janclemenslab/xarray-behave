@@ -10,11 +10,12 @@ from typing import Optional, List, Dict, Tuple, Any, Union
 
 
 class Events(UserDict):
-
-    def __init__(self,
-                 data: Optional[Dict[str, List[float]]] = None,
-                 categories: Optional[Dict[str, str]] = None,
-                 add_names_from_categories: bool = True):
+    def __init__(
+        self,
+        data: Optional[Dict[str, List[float]]] = None,
+        categories: Optional[Dict[str, str]] = None,
+        add_names_from_categories: bool = True,
+    ):
         """[summary]
 
         Args:
@@ -41,7 +42,7 @@ class Events(UserDict):
         self._drop_nan()
 
         # preserve cats from input
-        if hasattr(data, 'categories'):
+        if hasattr(data, "categories"):
             for name, cat in data.categories.items():
                 if name in self:  # update only existing keys
                     self.categories[name] = cat
@@ -58,15 +59,18 @@ class Events(UserDict):
     def from_df(cls, df: pd.DataFrame, possible_event_names: Optional[List[str]] = None):
         if possible_event_names is None:
             possible_event_names = []
-        return cls.from_lists(df.name.values, df.start_seconds.values.astype(float), df.stop_seconds.values.astype(float),
-                              possible_event_names)
+        return cls.from_lists(
+            df.name.values, df.start_seconds.values.astype(float), df.stop_seconds.values.astype(float), possible_event_names
+        )
 
     @classmethod
-    def from_lists(cls,
-                   names: List[str],
-                   start_seconds: List[float],
-                   stop_seconds: List[float],
-                   possible_event_names: Optional[List[str]] = None):
+    def from_lists(
+        cls,
+        names: List[str],
+        start_seconds: List[float],
+        stop_seconds: List[float],
+        possible_event_names: Optional[List[str]] = None,
+    ):
         if possible_event_names is None:
             possible_event_names = []
         unique_names = list(set(names))
@@ -80,18 +84,18 @@ class Events(UserDict):
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset):
-        start_seconds = np.array(ds.event_times.sel(event_time='start_seconds').data)
-        stop_seconds = np.array(ds.event_times.sel(event_time='stop_seconds').data)
+        start_seconds = np.array(ds.event_times.sel(event_time="start_seconds").data)
+        stop_seconds = np.array(ds.event_times.sel(event_time="stop_seconds").data)
         names = np.array(ds.event_names.data)
-        if 'possible_event_names' in ds.attrs:
-            possible_event_names = ds.attrs['possible_event_names']
-        elif 'possible_event_names' in ds.event_names.attrs:
-            possible_event_names = ds.event_names.attrs['possible_event_names']
+        if "possible_event_names" in ds.attrs:
+            possible_event_names = ds.attrs["possible_event_names"]
+        elif "possible_event_names" in ds.event_names.attrs:
+            possible_event_names = ds.event_names.attrs["possible_event_names"]
         else:
             possible_event_names = []
 
         out = cls.from_lists(names, start_seconds, stop_seconds, possible_event_names)
-        if 'event_categories' in ds:
+        if "event_categories" in ds:
             cats = {str(cat.event_types.data): str(cat.event_categories.data) for cat in ds.event_categories}
             out = cls(out, categories=cats)
         return out
@@ -104,11 +108,11 @@ class Events(UserDict):
             new_dict ([type]): [description]
         """
         super().update(new_dict)
-        if hasattr(self, 'categories') and hasattr(new_dict, 'categories'):
+        if hasattr(self, "categories") and hasattr(new_dict, "categories"):
             self.categories.update(new_dict.categories)
 
     def _init_df(self):
-        return pd.DataFrame(columns=['name', 'start_seconds', 'stop_seconds'])
+        return pd.DataFrame(columns=["name", "start_seconds", "stop_seconds"])
 
     def _append_row(self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None):
         if stop_seconds is None:
@@ -139,11 +143,13 @@ class Events(UserDict):
         if preserve_empty:  # ensure we keep events without annotations
             for name, cat in zip(self.names, self.categories.values()):
                 if name not in df.name.values:
-                    stop_seconds = np.nan if cat == 'event' else 0  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
+                    stop_seconds = (
+                        np.nan if cat == "event" else 0
+                    )  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
                     df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=stop_seconds)
         # make sure start and stop seconds are numeric
-        df['start_seconds'] = pd.to_numeric(df['start_seconds'], errors='coerce')
-        df['stop_seconds'] = pd.to_numeric(df['stop_seconds'], errors='coerce')
+        df["start_seconds"] = pd.to_numeric(df["start_seconds"], errors="coerce")
+        df["stop_seconds"] = pd.to_numeric(df["stop_seconds"], errors="coerce")
         return df
 
     def to_lists(self, preserve_empty: bool = True):
@@ -171,24 +177,28 @@ class Events(UserDict):
     def to_dataset(self):
         names, start_seconds, stop_seconds = self.to_lists()
 
-        da_names = xr.DataArray(name='event_names', data=np.array(names, dtype='U128'), dims=['index'])
-        da_times = xr.DataArray(name='event_times',
-                                data=np.array([start_seconds, stop_seconds]).T,
-                                dims=['index', 'event_time'],
-                                coords={'event_time': ['start_seconds', 'stop_seconds']})
+        da_names = xr.DataArray(name="event_names", data=np.array(names, dtype="U128"), dims=["index"])
+        da_times = xr.DataArray(
+            name="event_times",
+            data=np.array([start_seconds, stop_seconds]).T,
+            dims=["index", "event_time"],
+            coords={"event_time": ["start_seconds", "stop_seconds"]},
+        )
 
         ds = xr.Dataset({da.name: da for da in [da_names, da_times]})
-        ds.attrs['time_units'] = 'seconds'
-        ds.attrs['possible_event_names'] = self.names  # ensure that we preserve even names w/o events that get lost in to_df
+        ds.attrs["time_units"] = "seconds"
+        ds.attrs["possible_event_names"] = self.names  # ensure that we preserve even names w/o events that get lost in to_df
         return ds
 
-    def add_name(self,
-                 name: str,
-                 category: str = 'segment',
-                 times: Optional[np.array] = None,
-                 overwrite: bool = False,
-                 append: bool = False,
-                 sort_after_append: bool = False):
+    def add_name(
+        self,
+        name: str,
+        category: str = "segment",
+        times: Optional[np.array] = None,
+        overwrite: bool = False,
+        append: bool = False,
+        sort_after_append: bool = False,
+    ):
         """[summary]
 
         Args:
@@ -241,12 +251,9 @@ class Events(UserDict):
             name = None
         return name
 
-    def _get_index_of_nearest(self,
-                              time: float,
-                              name: str,
-                              tol: float = 0,
-                              min_time: Optional[float] = None,
-                              max_time: Optional[float] = None):
+    def _get_index_of_nearest(
+        self, time: float, name: str, tol: float = 0, min_time: Optional[float] = None, max_time: Optional[float] = None
+    ):
         within_range_indices = self.select_range(name, min_time, max_time, strict=False)
         if len(within_range_indices):
             nearest_start = self._find_nearest(self.start_seconds(name)[within_range_indices], time)
@@ -265,14 +272,14 @@ class Events(UserDict):
             index = np.where(self.stop_seconds(name) == nearest_stop)[0][0]
             nearest_is_start = False
 
-        if self.categories[name] == 'segment':
+        if self.categories[name] == "segment":
             if nearest_is_start:
                 matching_stop = self.stop_seconds(name)[index]
                 event_at_time = matching_stop > time
             else:
                 matching_start = self.start_seconds(name)[index]
                 event_at_time = matching_start < time
-        elif self.categories[name] == 'event':
+        elif self.categories[name] == "event":
             if nearest_is_start:
                 event_at_time = np.abs(time - nearest_start) < tol
             else:
@@ -285,12 +292,9 @@ class Events(UserDict):
         else:
             return index
 
-    def change_name(self,
-                    time: float,
-                    new_name: str,
-                    tol: float = 0,
-                    min_time: Optional[float] = None,
-                    max_time: Optional[float] = None) -> Tuple[Optional[List[int]], Optional[str], Optional[str]]:
+    def change_name(
+        self, time: float, new_name: str, tol: float = 0, min_time: Optional[float] = None, max_time: Optional[float] = None
+    ) -> Tuple[Optional[List[int]], Optional[str], Optional[str]]:
         """Change the name of the annotation.
 
         Args:
@@ -320,12 +324,14 @@ class Events(UserDict):
         else:
             return None, None, None
 
-    def add_time(self,
-                 name: str,
-                 start_seconds: float,
-                 stop_seconds: float = None,
-                 add_new_name: bool = True,
-                 category: Optional[str] = None):
+    def add_time(
+        self,
+        name: str,
+        start_seconds: float,
+        stop_seconds: float = None,
+        add_new_name: bool = True,
+        category: Optional[str] = None,
+    ):
         """Add a new segment/event.
 
         Args:
@@ -340,7 +346,7 @@ class Events(UserDict):
 
         if name not in self and add_new_name:
             if category is None:
-                category = 'event' if stop_seconds == start_seconds else 'segment'
+                category = "event" if stop_seconds == start_seconds else "segment"
             self.add_name(name, category=category)
 
         self[name] = np.insert(self[name], len(self[name]), sorted([start_seconds, stop_seconds]), axis=0)
@@ -355,12 +361,14 @@ class Events(UserDict):
         """
         self[name][self[name] == old_time] = new_time
 
-    def delete_time(self,
-                    time: float,
-                    name: Optional[str] = None,
-                    tol: float = 0,
-                    min_time: Optional[float] = None,
-                    max_time: Optional[float] = None):
+    def delete_time(
+        self,
+        time: float,
+        name: Optional[str] = None,
+        tol: float = 0,
+        min_time: Optional[float] = None,
+        max_time: Optional[float] = None,
+    ):
         """[summary]
 
         Args:
@@ -497,7 +505,7 @@ class Events(UserDict):
             if np.any(cmp):
                 nxt.append(self[name][np.argmin(cmp) - 1, 0])
         if len(nxt):
-            return np.max(nxt)  #* self.fs_song
+            return np.max(nxt)  # * self.fs_song
 
     def _find_nearest(self, array: np.array, value: float):
         if not len(array):
@@ -510,18 +518,18 @@ class Events(UserDict):
         categories = dict()
         for name in self.names:
             if len(self[name]) == 0:
-                if not hasattr(self, 'categories') or name not in self.categories:
+                if not hasattr(self, "categories") or name not in self.categories:
                     categories[name] = None
-                elif hasattr(self, 'categories') and name in self.categories:
+                elif hasattr(self, "categories") and name in self.categories:
                     categories[name] = self.categories[name]
             else:
                 first_start = self.start_seconds(name)[0]
                 first_stop = self.stop_seconds(name)[0]
 
                 if (np.isnan(first_start) and np.isnan(first_stop)) or (first_start == first_stop):
-                    category = 'event'
+                    category = "event"
                 else:
-                    category = 'segment'
+                    category = "segment"
 
                 categories[name] = category
 

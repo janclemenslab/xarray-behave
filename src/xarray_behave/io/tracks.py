@@ -17,61 +17,67 @@ import logging
 import xarray as xr
 
 
-class Tracks():
+class Tracks:
     def make(self, filename: Optional[str] = None):
         if filename is None:
             filename = self.path
 
         body_pos, track_names, chamber_names, body_parts, frame_numbers, background = self.load(filename)
 
-        positions = xr.DataArray(data=body_pos,
-                                 dims=['frame_number', 'flies', 'bodyparts', 'coords'],
-                                 coords={'frame_number': frame_numbers,
-                                         'bodyparts': body_parts,
-                                         'flies': track_names,
-                                         'chambers': (('flies'), chamber_names),
-                                         'coords': ['y', 'x']},
-                                 attrs={'description': 'coords are "allocentric" - rel. to the full frame',
-                                        'type': 'tracks',
-                                        'spatial_units': 'pixels',
-                                        'loader': self.NAME,
-                                        'kind': self.KIND,
-                                        'path': filename,})
+        positions = xr.DataArray(
+            data=body_pos,
+            dims=["frame_number", "flies", "bodyparts", "coords"],
+            coords={
+                "frame_number": frame_numbers,
+                "bodyparts": body_parts,
+                "flies": track_names,
+                "chambers": (("flies"), chamber_names),
+                "coords": ["y", "x"],
+            },
+            attrs={
+                "description": 'coords are "allocentric" - rel. to the full frame',
+                "type": "tracks",
+                "spatial_units": "pixels",
+                "loader": self.NAME,
+                "kind": self.KIND,
+                "path": filename,
+            },
+        )
         if background is not None:
-            positions.attrs['background'] = background
+            positions.attrs["background"] = background
         return positions
 
 
 @io.register_provider
 class Ethotracker(Tracks, io.BaseProvider):
 
-    KIND = 'tracks'
-    NAME = 'ethotracker'
-    SUFFIXES = ['_tracks.h5', '_tracks_fixed.h5']
+    KIND = "tracks"
+    NAME = "ethotracker"
+    SUFFIXES = ["_tracks.h5", "_tracks_fixed.h5"]
 
     def load(self, filename: Optional[str] = None):
         """Load tracker data"""
         if filename is None:
             filename = self.path
 
-        with h5py.File(filename, 'r') as f:
-            if 'data' in f.keys():  # in old-style or unfixed tracks, everything is in the 'data' group
+        with h5py.File(filename, "r") as f:
+            if "data" in f.keys():  # in old-style or unfixed tracks, everything is in the 'data' group
                 data = flammkuchen.load(filename)
-                chbb = data['chambers_bounding_box'][:]
-                heads = data['lines'][:, :, :, 0, :]   # nframe, nb_chamber, fly id, coordinates
-                tails = data['lines'][:, :, :, 1, :]   # nframe, nb_chamber, fly id, coordinates
-                centers = data['centers'][:, :, :, :]   # nframe, nb_chamber, fly id, coordinates
-                background = data['background'][:]
-                first_tracked_frame = data['start_frame']
-                last_tracked_frame = data['frame_count']
+                chbb = data["chambers_bounding_box"][:]
+                heads = data["lines"][:, :, :, 0, :]  # nframe, nb_chamber, fly id, coordinates
+                tails = data["lines"][:, :, :, 1, :]  # nframe, nb_chamber, fly id, coordinates
+                centers = data["centers"][:, :, :, :]  # nframe, nb_chamber, fly id, coordinates
+                background = data["background"][:]
+                first_tracked_frame = data["start_frame"]
+                last_tracked_frame = data["frame_count"]
             else:
-                chbb = f['chambers_bounding_box'][:]
-                heads = f['lines'][:, :, :, 0, :]   # nframe, nb_chamber, fly id, coordinates
-                tails = f['lines'][:, :, :, 1, :]   # nframe, nb_chamber, fly id, coordinates
-                centers = f['centers'][:, :, :, :]   # nframe, nb_chamber, fly id, coordinates
-                background = f['background'][:]
-                first_tracked_frame = f.attrs['start_frame']
-                last_tracked_frame = f.attrs['frame_count']
+                chbb = f["chambers_bounding_box"][:]
+                heads = f["lines"][:, :, :, 0, :]  # nframe, nb_chamber, fly id, coordinates
+                tails = f["lines"][:, :, :, 1, :]  # nframe, nb_chamber, fly id, coordinates
+                centers = f["centers"][:, :, :, :]  # nframe, nb_chamber, fly id, coordinates
+                background = f["background"][:]
+                first_tracked_frame = f.attrs["start_frame"]
+                last_tracked_frame = f.attrs["frame_count"]
         # swap x/y
         heads = heads[..., ::-1]
         tails = tails[..., ::-1]
@@ -81,7 +87,7 @@ class Ethotracker(Tracks, io.BaseProvider):
         tails = tails + chbb[1:, 0, np.newaxis, ...]
         centers = centers + chbb[1:, 0, np.newaxis, ...]
 
-        body_parts = ['head', 'center', 'tail']
+        body_parts = ["head", "center", "tail"]
 
         nb_chambers = heads.shape[1]
         nb_flies = heads.shape[2]
@@ -102,9 +108,9 @@ class Ethotracker(Tracks, io.BaseProvider):
 @io.register_provider
 class CSV_tracks(Tracks, io.BaseProvider):
 
-    KIND = 'tracks'
-    NAME = 'generic csv'
-    SUFFIXES = ['_tracks.csv']
+    KIND = "tracks"
+    NAME = "generic csv"
+    SUFFIXES = ["_tracks.csv"]
 
     def load(self, filename: Optional[str] = None):
         """Load tracker data from CSV file.
@@ -130,12 +136,12 @@ class CSV_tracks(Tracks, io.BaseProvider):
 
         if filename is None:
             filename = self.path
-        logging.warning('Loading tracks from CSV.')
+        logging.warning("Loading tracks from CSV.")
         df = pd.read_csv(filename, header=[0, 1, 2], index_col=0)
-        track_names = df.columns.levels[df.columns.names.index('track')].to_list()
-        track_parts = df.columns.levels[df.columns.names.index('part')].to_list()
-        track_coord = df.columns.levels[df.columns.names.index('coord')].to_list()
-        coord_order = [track_coord.index('y'), track_coord.index('x')]
+        track_names = df.columns.levels[df.columns.names.index("track")].to_list()
+        track_parts = df.columns.levels[df.columns.names.index("part")].to_list()
+        track_coord = df.columns.levels[df.columns.names.index("coord")].to_list()
+        coord_order = [track_coord.index("y"), track_coord.index("x")]
         x = np.reshape(df.values, (-1, len(track_names), len(track_parts), len(track_coord)))
         x = x[..., coord_order]
         frame_numbers = df.index.to_numpy().astype(np.intp)

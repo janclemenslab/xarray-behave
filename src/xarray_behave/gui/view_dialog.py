@@ -22,15 +22,16 @@ QSlider::handle:horizontal {
 
 
 class TextSlider(QtWidgets.QWidget):
-
-    def __init__(self,
-                 min_value: float,
-                 max_value: float,
-                 description: str,
-                 model,
-                 attr_name: str,
-                 default_value: float = 0.0,
-                 checkable: bool = True):
+    def __init__(
+        self,
+        min_value: float,
+        max_value: float,
+        description: str,
+        model,
+        attr_name: str,
+        default_value: float = 0.0,
+        checkable: bool = True,
+    ):
         super().__init__()
 
         self.max_value = max_value
@@ -73,7 +74,7 @@ class TextSlider(QtWidgets.QWidget):
         self.sld.setOrientation(QtCore.Qt.Horizontal)
         self.sld.setRange(self.min_value, self.max_value)
         self.sld.setDecimals(self.decimals)
-        self.sld.setSingleStep(10.0**(-self.decimals))
+        self.sld.setSingleStep(10.0 ** (-self.decimals))
         if isinstance(self.value, list):
             self.sld.setValue([self.min_value, self.max_value])
         self.sld.valueChanged.connect(self.updateValue)
@@ -119,28 +120,22 @@ class TextSlider(QtWidgets.QWidget):
 
     def update_model(self):
         if isinstance(self.attr_name, list):
-            [
-                self.model.__setattr__(a, v)
-                for a, v in zip(self.attr_name, self.value)
-            ]
+            [self.model.__setattr__(a, v) for a, v in zip(self.attr_name, self.value)]
         else:
             self.model.__setattr__(self.attr_name, self.value)
 
 
 class QHSeperationLine(QtWidgets.QFrame):
-
     def __init__(self):
         super().__init__()
         self.setMinimumWidth(1)
         self.setFixedHeight(20)
         self.setFrameShape(QtWidgets.QFrame.HLine)
         self.setFrameShadow(QtWidgets.QFrame.Sunken)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                           QtWidgets.QSizePolicy.Minimum)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
 
 
 class Form(QtWidgets.QDialog):
-
     def __init__(self, parent=None, model=None):
         super(Form, self).__init__(parent)
         self.setWindowTitle("Spectrogram view params")
@@ -152,59 +147,75 @@ class Form(QtWidgets.QDialog):
         y_max = np.max(self.model.y)
 
         if self.model.vr:
-            layout.addWidget(QtWidgets.QLabel('<b>Video</b>'))
+            layout.addWidget(QtWidgets.QLabel("<b>Video</b>"))
 
             layout.addWidget(
-                TextSlider(min_value=2,
-                           max_value=max(self.model.vr.frame_shape) // 2,
-                           default_value=None,
-                           description='Video crop',
-                           model=self.model,
-                           checkable=False,
-                           attr_name='box_size'))
+                TextSlider(
+                    min_value=2,
+                    max_value=max(self.model.vr.frame_shape) // 2,
+                    default_value=None,
+                    description="Video crop",
+                    model=self.model,
+                    checkable=False,
+                    attr_name="box_size",
+                )
+            )
             layout.addWidget(QHSeperationLine())
 
-        layout.addWidget(QtWidgets.QLabel('<b>Waveform</b>'))
+        layout.addWidget(QtWidgets.QLabel("<b>Waveform</b>"))
         layout.addWidget(
-            TextSlider(min_value=0,
-                       max_value=y_max * 2,
-                       default_value=y_max,
-                       description='Waveform vertical limits',
-                       model=self.model,
-                       attr_name='ylim'))
+            TextSlider(
+                min_value=0,
+                max_value=y_max * 2,
+                default_value=y_max,
+                description="Waveform vertical limits",
+                model=self.model,
+                attr_name="ylim",
+            )
+        )
         layout.addWidget(QHSeperationLine())
 
-        layout.addWidget(QtWidgets.QLabel('<b>Spectrogram</b>'))
+        layout.addWidget(QtWidgets.QLabel("<b>Spectrogram</b>"))
         layout.addWidget(
-            TextSlider(min_value=0.0,
-                       max_value=self.model.fs_song / 2,
-                       default_value=[0, self.model.fs_song / 2],
-                       description='Spectrogram frequency limits [Hz]',
-                       model=self.model,
-                       attr_name=['fmin', 'fmax']))
+            TextSlider(
+                min_value=0.0,
+                max_value=self.model.fs_song / 2,
+                default_value=[0, self.model.fs_song / 2],
+                description="Spectrogram frequency limits [Hz]",
+                model=self.model,
+                attr_name=["fmin", "fmax"],
+            )
+        )
 
         s_max = np.nanmax(self.model.spec_view.S)
         layout.addWidget(
-            TextSlider(min_value=0,
-                       max_value=s_max * 2,
-                       default_value=[None, None],
-                       description='Spectrogram color limits',
-                       model=self.model,
-                       attr_name='spec_levels'))
+            TextSlider(
+                min_value=0,
+                max_value=s_max * 2,
+                default_value=[None, None],
+                description="Spectrogram color limits",
+                model=self.model,
+                attr_name="spec_levels",
+            )
+        )
 
         layout.addWidget(
-            TextSlider(min_value=0,
-                       max_value=64,
-                       description='Spectrogram color compression',
-                       default_value=0.0,
-                       checkable=False,
-                       model=self.model,
-                       attr_name='spec_compression_ratio'))
+            TextSlider(
+                min_value=0,
+                max_value=64,
+                description="Spectrogram color compression",
+                default_value=0.0,
+                checkable=False,
+                model=self.model,
+                attr_name="spec_compression_ratio",
+            )
+        )
 
         chkbx_spec_denoise = QtWidgets.QCheckBox("Denoise spectrogram")
 
         def updateDenoiseCheckBox():
             self.model.spec_denoise = chkbx_spec_denoise.isChecked()
+
         chkbx_spec_denoise.stateChanged.connect(updateDenoiseCheckBox)
         layout.addWidget(chkbx_spec_denoise)
 
@@ -212,6 +223,7 @@ class Form(QtWidgets.QDialog):
 
         def updateMelCheckBox():
             self.model.spec_mel = chkbx_spec_mel.isChecked()
+
         chkbx_spec_mel.stateChanged.connect(updateMelCheckBox)
         layout.addWidget(chkbx_spec_mel)
 

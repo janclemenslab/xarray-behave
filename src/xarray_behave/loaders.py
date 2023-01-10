@@ -26,8 +26,8 @@ def rotate_point(point: Tuple[float, float], degrees: float, origin: Tuple[float
     x, y = point
     radians = degrees / 180 * np.pi
     offset_x, offset_y = origin
-    adjusted_x = (x - offset_x)
-    adjusted_y = (y - offset_y)
+    adjusted_x = x - offset_x
+    adjusted_y = y - offset_y
     cos_rad = math.cos(radians)
     sin_rad = math.sin(radians)
     qx = offset_x + cos_rad * adjusted_x + sin_rad * adjusted_y
@@ -95,8 +95,8 @@ def merge_channels(data, sampling_rate, filter_data: bool = True):
     mask = ~np.isfinite(data)  # remove all nan/inf data
     data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
     # band-pass filter out noise on each channel
-    b, a = scipy.signal.butter(6, (25, 1500), btype='bandpass', fs=sampling_rate)
-    data = scipy.signal.filtfilt(b, a, data, axis=0, method='pad')
+    b, a = scipy.signal.butter(6, (25, 1500), btype="bandpass", fs=sampling_rate)
+    data = scipy.signal.filtfilt(b, a, data, axis=0, method="pad")
     # find loudest channel in 101-sample windows
     if filter_data:
         sng_max = maximum_filter1d(np.abs(data), size=101, axis=0)
@@ -117,7 +117,7 @@ def fill_gaps(sine_pred, gap_dur=100):
         durations = offsets - onsets
         for idx, (onset, offset, duration) in enumerate(zip(onsets, offsets, durations)):
             if idx > 0 and offsets[idx - 1] > onsets[idx] - gap_dur:
-                sine_pred[offsets[idx - 1]:onsets[idx] + 1] = 1
+                sine_pred[offsets[idx - 1] : onsets[idx] + 1] = 1
     return sine_pred
 
 
@@ -131,7 +131,7 @@ def remove_short(sine_pred, min_len=100):
         durations = offsets - onsets
         for cnt, (onset, offset, duration) in enumerate(zip(onsets, offsets, durations)):
             if duration < min_len:
-                sine_pred[onset:offset + 1] = 0
+                sine_pred[onset : offset + 1] = 0
     return sine_pred
 
 
@@ -158,7 +158,7 @@ def swap_flies(dataset, swap_times, flies1=0, flies2=1):
     Returns:
         dataset with swapped indices ()
     """
-    if 'time' not in dataset:
+    if "time" not in dataset:
         return
 
     for cnt, swap_time in enumerate(swap_times):
@@ -170,20 +170,21 @@ def swap_flies(dataset, swap_times, flies1=0, flies2=1):
         nearest_time = dataset.time.sel(time=swap_time, method="nearest")
 
         index = int(np.where(dataset.time == nearest_time)[0])
-        if 'pose_positions_allo' in dataset:
-            dataset.pose_positions_allo.values[index:, [fly2, fly1], ...] = dataset.pose_positions_allo.values[index:, [fly1, fly2], ...]
-        if 'pose_positions' in dataset:
+        if "pose_positions_allo" in dataset:
+            dataset.pose_positions_allo.values[index:, [fly2, fly1], ...] = dataset.pose_positions_allo.values[
+                index:, [fly1, fly2], ...
+            ]
+        if "pose_positions" in dataset:
             dataset.pose_positions.values[index:, [fly2, fly1], ...] = dataset.pose_positions.values[index:, [fly1, fly2], ...]
-        if 'body_positions' in dataset:
+        if "body_positions" in dataset:
             dataset.body_positions.values[index:, [fly2, fly1], ...] = dataset.body_positions.values[index:, [fly1, fly2], ...]
 
     return dataset
 
 
-def load_raw_song(filepath_daq: str,
-                  song_channels: Optional[Sequence[int]] = None,
-                  return_nonsong_channels: bool = False,
-                  lazy: bool = False):
+def load_raw_song(
+    filepath_daq: str, song_channels: Optional[Sequence[int]] = None, return_nonsong_channels: bool = False, lazy: bool = False
+):
     """[summary]
 
     Args:
@@ -201,23 +202,24 @@ def load_raw_song(filepath_daq: str,
         song_channels = np.arange(16)
 
     if lazy:
-        f = h5py.File(filepath_daq, mode='r', rdcc_w0=0, rdcc_nbytes=100 * (1024**2), rdcc_nslots=50000)
+        f = h5py.File(filepath_daq, mode="r", rdcc_w0=0, rdcc_nbytes=100 * (1024 ** 2), rdcc_nslots=50000)
         # convert to dask array since this allows lazily evaluated indexing...
         import dask.array as daskarray
-        da = daskarray.from_array(f['samples'], chunks=(10000, 1))
-        nb_channels = f['samples'].shape[1]
+
+        da = daskarray.from_array(f["samples"], chunks=(10000, 1))
+        nb_channels = f["samples"].shape[1]
         song_channels = song_channels[song_channels < nb_channels]
         song = da[:, song_channels]
         if return_nonsong_channels:
             non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
             non_song = da[:, non_song_channels]
     else:
-        with h5py.File(filepath_daq, 'r') as f:
-            nb_channels = f['samples'].shape[1]
-            song = f['samples'][:, song_channels]
+        with h5py.File(filepath_daq, "r") as f:
+            nb_channels = f["samples"].shape[1]
+            song = f["samples"][:, song_channels]
             if return_nonsong_channels:
                 non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
-                non_song = f['samples'][:, non_song_channels]
+                non_song = f["samples"][:, non_song_channels]
 
     if return_nonsong_channels:
         return song, non_song
@@ -226,8 +228,8 @@ def load_raw_song(filepath_daq: str,
 
 
 def load_timestamps(filepath_timestamps):
-    with h5py.File(filepath_timestamps, 'r') as f:
-        cam_stamps = f['timeStamps'][:]
+    with h5py.File(filepath_timestamps, "r") as f:
+        cam_stamps = f["timeStamps"][:]
 
     # time stamps at idx 0 can be a little wonky - so use the information embedded in the image
     if cam_stamps.shape[1] > 2:  # time stamps from flycapture (old point grey API)
@@ -245,7 +247,7 @@ def load_timestamps(filepath_timestamps):
             idx = idxs[0]
             df_wrong = cam_stamps[idx + 1, 1] - cam_stamps[idx, 1]
             df_inferred = cam_stamps[idx + 1, 0] - cam_stamps[idx, 0]
-            cam_stamps[idx + 1:, 1] = cam_stamps[idx + 1:, 1] - df_wrong + df_inferred
+            cam_stamps[idx + 1 :, 1] = cam_stamps[idx + 1 :, 1] - df_wrong + df_inferred
 
             frame_intervals = np.diff(cam_stamps[:, 1])
             idxs = np.where(frame_intervals < -10 * frame_interval_median)[0]
@@ -263,9 +265,9 @@ def load_times(filepath_timestamps, filepath_daq):
     shutter_times = load_timestamps(filepath_timestamps)
 
     # DAQ time stamps
-    with h5py.File(filepath_daq, 'r') as f:
-        daq_stamps = f['systemtime'][:]
-        daq_sampleinterval = f['samplenumber'][:]
+    with h5py.File(filepath_daq, "r") as f:
+        daq_stamps = f["systemtime"][:]
+        daq_sampleinterval = f["samplenumber"][:]
 
     # remove trailing zeros - may be left over if recording didn't finish properly
     if 0 in daq_stamps:
@@ -280,10 +282,12 @@ def load_times(filepath_timestamps, filepath_daq):
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
 
-    ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0],
-                   frame_times=shutter_times,
-                   sample_numbers=daq_samplenumber[:, 0],
-                   auto_monotonize=False)
+    ss = SampStamp(
+        sample_times=daq_stamps[:last_valid_idx, 0],
+        frame_times=shutter_times,
+        sample_numbers=daq_samplenumber[:, 0],
+        auto_monotonize=False,
+    )
     # # different refs:
     #
     # # first sample is 0 seconds
@@ -302,9 +306,9 @@ def load_movietimes(filepath_timestamps, filepath_daq):
     df = pd.read_csv(filepath_timestamps)
 
     # DAQ time stamps
-    with h5py.File(filepath_daq, 'r') as f:
-        daq_stamps = f['systemtime'][:]
-        daq_sampleinterval = f['samplenumber'][:]
+    with h5py.File(filepath_daq, "r") as f:
+        daq_stamps = f["systemtime"][:]
+        daq_sampleinterval = f["samplenumber"][:]
 
     # remove trailing zeros - may be left over if recording didn't finish properly
     if 0 in daq_stamps:
@@ -321,11 +325,13 @@ def load_movietimes(filepath_timestamps, filepath_daq):
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz
 
     # ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0], frame_times=shutter_times, sample_numbers=daq_samplenumber[:, 0], auto_monotonize=False)
-    ss = SampStamp(sample_times=daq_stamps[:last_valid_idx, 0],
-                   sample_numbers=daq_samplenumber[:, 0],
-                   frame_samples=df['sample'],
-                   frame_numbers=df['movie_frame'],
-                   auto_monotonize=False)
+    ss = SampStamp(
+        sample_times=daq_stamps[:last_valid_idx, 0],
+        sample_numbers=daq_samplenumber[:, 0],
+        frame_samples=df["sample"],
+        frame_numbers=df["movie_frame"],
+        auto_monotonize=False,
+    )
     # # different refs:
     #
     # # first sample is 0 seconds
@@ -342,7 +348,7 @@ def load_movietimes(filepath_timestamps, filepath_daq):
 def fix_keys(d):
     d_new = dict()
     # HACK zarr (or xarray) cuts off long string keys in event-types
-    fix_dict = {'aggression_manu': 'aggression_manual', 'vibration_manua': 'vibration_manual'}
+    fix_dict = {"aggression_manu": "aggression_manual", "vibration_manua": "vibration_manual"}
     # make this a function!!
     for eventtype in d.keys():
         # convert all from b'..' to str
