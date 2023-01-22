@@ -58,9 +58,9 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
-          conda install -y -n base -c conda-forge boa anaconda-client conda-build conda-verify
-          conda config --set anaconda_upload yes
-          conda config --set always_yes yes --set changeps1 no
+          conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify
+#          conda config --set anaconda_upload yes
+#          conda config --set always_yes yes --set changeps1 no
 
       - name: Build gui and upload to anaconda (win)
         if: runner.os == 'Windows'
