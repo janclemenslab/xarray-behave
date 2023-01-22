@@ -49,7 +49,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          mamba install -y -n base -c conda-forge boa anaconda-client conda-build conda-verify conda-libmamba-solver
+          mamba install -y -n base -c conda-forge anaconda-client conda-build conda-verify conda-libmamba-solver
           conda config --set solver libmamba
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
@@ -59,8 +59,8 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify
-#          conda config --set anaconda_upload yes
-#          conda config --set always_yes yes --set changeps1 no
+          conda config --set anaconda_upload yes
+          conda config --set always_yes yes --set changeps1 no
 
       - name: Build gui and upload to anaconda (win)
         if: runner.os == 'Windows'
