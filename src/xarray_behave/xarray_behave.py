@@ -875,7 +875,7 @@ def assemble_metrics(
         rel_velocities_lateral, rel_velocities_forward = mt.project_velocity(
             rel_velocities_x, rel_velocities_y, np.radians(angles)
         )
-        rel_velocities_mag = np.sqrt(rel_velocities_forward ** 2 + rel_velocities_lateral ** 2)
+        rel_velocities_mag = np.sqrt(rel_velocities_forward**2 + rel_velocities_lateral**2)
 
         list_relative = [dis, rel_angles, rel_orientation, rel_velocities_mag, rel_velocities_forward, rel_velocities_lateral]
 

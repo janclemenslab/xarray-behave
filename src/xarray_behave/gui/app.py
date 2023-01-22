@@ -50,7 +50,7 @@ except Exception as e:
 
 from .formbuilder import YamlDialog
 
-sys.setrecursionlimit(10 ** 6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
+sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir: str = xarray_behave.__path__[0]
 
 
@@ -343,7 +343,6 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 file_trunk = self.ds.attrs["filename"]
             savefilename = Path(self.ds.attrs["root"], self.ds.attrs["res_path"], self.ds.attrs["datename"], file_trunk)
-            breakpoint()
         except KeyError:
             savefilename = ""
 

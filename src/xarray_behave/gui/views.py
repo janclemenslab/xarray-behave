@@ -444,7 +444,7 @@ class SpecView(pg.ImageView):
             noise_floor = np.nanmedian(S, axis=1, keepdims=True)
             S /= noise_floor
 
-        S = np.log2(1.0 + 2.0 ** spec_compression_ratio * S)
+        S = np.log2(1.0 + 2.0**spec_compression_ratio * S)
         # S = S / np.max(S) * 255  # normalize to 0...255
         return S, f, t
 

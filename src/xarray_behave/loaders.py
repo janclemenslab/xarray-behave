@@ -202,7 +202,7 @@ def load_raw_song(
         song_channels = np.arange(16)
 
     if lazy:
-        f = h5py.File(filepath_daq, mode="r", rdcc_w0=0, rdcc_nbytes=100 * (1024 ** 2), rdcc_nslots=50000)
+        f = h5py.File(filepath_daq, mode="r", rdcc_w0=0, rdcc_nbytes=100 * (1024**2), rdcc_nslots=50000)
         # convert to dask array since this allows lazily evaluated indexing...
         import dask.array as daskarray
 
