@@ -58,6 +58,7 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify
+          conda config --set solver libmamba
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
 
