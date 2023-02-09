@@ -290,9 +290,26 @@ class Sleap(Poses, io.BaseProvider):
 
             tracks = f["tracks"][:]  # flies, (x/y), bodypart, frame
 
+        # indices and coordinate logic for sleap tracks. This could be cleaned/simplified later
+        nb_flies = tracks.shape[0]
+        thorax_idx = np.argwhere(pose_parts==b'thorax')[0][0]
+        head_idx = np.argwhere(pose_parts==b'head')[0][0]
+        x_idx = 0
+        y_idx = 1
+
         poses_allo = tracks.transpose([3, 0, 2, 1])  # -> [frames, flies, bodypart, x/y]
         poses_allo = poses_allo[..., ::-1]  # swap x/y
+        # CENTER egocentric poses around thorax
         poses_ego = poses_allo.copy()
+        poses_ego = poses_ego - poses_ego[:,:,[thorax_idx],:]
+        # ROTATE egocentric poses such that the angle between head and thorax is 0 degrees (straight upwards)
+        head_thorax_angle = (
+            270 +
+            np.arctan2(poses_ego[:,:,head_idx,x_idx], poses_ego[:,:,head_idx,y_idx]) * 180 / np.pi
+        )
+        for cnt, (a, p_ego) in enumerate(zip(head_thorax_angle, poses_ego)):
+            for fly in range(nb_flies):
+                poses_ego[cnt, fly, ...] = rotate_pose(p_ego[fly], -a[fly])
         pose_parts = [pose_part.decode() for pose_part in pose_parts]  # from byte to str
 
         first_pose_frame = 0
