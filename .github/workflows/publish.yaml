@@ -45,7 +45,7 @@ jobs:
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
           auto-activate-base: true
-          activate-environment: ""
+          activate-environment: "base"
 
       - name: Install build dependencies (win)
         if: runner.os == 'Windows'
