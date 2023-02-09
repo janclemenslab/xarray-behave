@@ -22,14 +22,8 @@ jobs:
       fail-fast: False
       matrix:
         python-version: [3.9] #, '3.10']
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest]  #, windows-latest, macOS-latest]
     steps:
-      #- name: configure Pagefile
-      #  if: runner.os == 'Windows'
-      #  uses: al-cheb/configure-pagefile-action@v1.2
-      #  with:
-      #    minimum-size: 16GB
-
       - name: Checkout source
         uses: actions/checkout@v2
 
@@ -62,17 +56,11 @@ jobs:
           conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify conda-libmamba-solver
           conda config --set solver libmamba --set anaconda_upload yes --set always_yes yes --set changeps1 no
 
-      - name: Build gui and upload to anaconda (win)
-        if: runner.os == 'Windows'
-        shell: cmd /C CALL {0}
+      - name: Conda settings
         run: |
-          conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token %ANACONDA_TOKEN%
-        env:
-          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+          conda config --set solver libmamba --set anaconda_upload yes --set always_yes yes --set changeps1 no
 
-      - name: Build gui and upload to anaconda (*x)
-        if: runner.os != 'Windows'
-        shell: bash -l {0}
+      - name: Build gui and upload to anaconda
         run: |
           conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
