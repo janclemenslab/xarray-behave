@@ -14,40 +14,19 @@ on:
         description: 'manual run'
 
 jobs:
-
-  publish_to_anaconda:
-    name: Publish to Anaconda.org
+  publish:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: False
       matrix:
-        python-version: [3.9] #, '3.10']
-        os: [ubuntu-latest]  #, windows-latest, macOS-latest]
+        python-version: [3.9, '3.10']
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v2
-      - name: Cache conda
-        uses: actions/cache@v1
-        env:
-          # Increase this value to reset cache if environment_build.yml has not changed
-          CACHE_NUMBER: 0
-        with:
-          path: ~/conda_pkgs_dir
-          key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('build_env.yml') }}
-      - name: Setup Mamba
-        uses: conda-incubator/setup-miniconda@v2
-        # https://github.com/conda-incubator/setup-miniconda
-        with:
-          python-version: ${{ matrix.python-version }}
-          # mamba-version: "*"
-          channels: conda-forge,ncb,anaconda,nvidia
-          use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
-          use-mamba: true
-          activate-environment: anaconda-client-env
-          environment-file: build_env.yml
-          condarc-file: condarc.yml
-
-      - name: Build gui and upload to anaconda
-        run: conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
-        env:
-          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+    - uses: actions/checkout@v1
+    - name: publish-to-conda
+      uses: janclemenslab/conda-build-publish-action@v1
+      with:
+        subDir: 'conda/das'
+        AnacondaToken: ${{ secrets.ANACONDA_TOKEN }}
+        AnacondaUser: ncb
+        pyver: ${{ matrix.python-version }}
