@@ -21,9 +21,8 @@ jobs:
     strategy:
       fail-fast: False
       matrix:
-        python-version: [3.9]  #, '3.10']
-        os: [windows-latest]
-        # os: [ubuntu-latest, windows-latest, macOS-latest]
+        python-version: [3.9, '3.10']
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
       #- name: configure Pagefile
       #  if: runner.os == 'Windows'
