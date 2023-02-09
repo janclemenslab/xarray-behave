@@ -57,7 +57,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
-          conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify
+          conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify conda-libmamba-solver
           conda config --set solver libmamba
           conda config --set anaconda_upload yes
           conda config --set always_yes yes --set changeps1 no
@@ -74,6 +74,6 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
-          conda mambabuild conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+          conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
