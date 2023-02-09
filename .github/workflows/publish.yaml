@@ -48,7 +48,6 @@ jobs:
           condarc-file: condarc.yml
 
       - name: Build gui and upload to anaconda
-        run: |
-          conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+        run: conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
