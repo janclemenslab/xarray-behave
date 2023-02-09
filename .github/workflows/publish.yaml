@@ -26,39 +26,26 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v2
-
+      - name: Cache conda
+        uses: actions/cache@v1
+        env:
+          # Increase this value to reset cache if environment_build.yml has not changed
+          CACHE_NUMBER: 0
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('build_env.yml') }}
       - name: Setup Mamba
         uses: conda-incubator/setup-miniconda@v2
         # https://github.com/conda-incubator/setup-miniconda
         with:
-          python-version: 3.9  # ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
           mamba-version: "*"
-          miniforge-variant: Mambaforge
-          channels: conda-forge,ncb,defaults
-          channel-priority: true
+          channels: conda-forge,ncb,anaconda
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
-          auto-activate-base: true
-          activate-environment: "test"
-          auto-update-conda: true
-
-      - name: Install build dependencies (win)
-        if: runner.os == 'Windows'
-        shell: cmd /C CALL {0}
-        run: |
-          mamba install -y -n base -c conda-forge anaconda-client conda-build conda-verify conda-libmamba-solver
-          conda config --set solver libmamba --set anaconda_upload yes --set always_yes yes --set changeps1 no
-
-      - name: Install build dependencies (*x)
-        if: runner.os != 'Windows'
-        shell: bash -l {0}
-        run: |
-          conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify conda-libmamba-solver
-          conda config --set solver libmamba --set anaconda_upload yes --set always_yes yes --set changeps1 no
-
-      - name: Conda settings
-        run: |
-          conda config --set solver libmamba --set anaconda_upload yes --set always_yes yes --set changeps1 no
+          activate-environment: anaconda-client-env
+          environment-file: build_env.yml
+          condarc-file: condarc.yml
 
       - name: Build gui and upload to anaconda
         run: |
