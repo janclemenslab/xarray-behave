@@ -46,7 +46,8 @@ jobs:
           use-mamba: true
           auto-activate-base: true
           activate-environment: "base"
-
+          auto-update-conda: true
+          
       - name: Install build dependencies (win)
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
