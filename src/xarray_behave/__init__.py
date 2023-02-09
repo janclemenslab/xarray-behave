@@ -1,5 +1,5 @@
 """xarray tools for behavioral data."""
-__version__ = "0.33.19"
+__version__ = "0.33.20"
 
 from .xarray_behave import assemble, assemble_metrics, load, save
 import os
