@@ -5,6 +5,8 @@ channels:
   - ncb
   - defaults
 dependencies:
+  - conda
+  - mamba
   - anaconda-client
   - boa
   - conda-build
