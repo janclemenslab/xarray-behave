@@ -38,39 +38,34 @@ jobs:
         # https://github.com/conda-incubator/setup-miniconda
         with:
           python-version: 3.9  # ${{ matrix.python-version }}
-          # mamba-version: "*"
+          mamba-version: "*"
           miniforge-variant: Mambaforge
           channels: conda-forge,ncb,defaults
           channel-priority: true
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
           auto-activate-base: true
-          activate-environment: ""
+          activate-environment: "test"
+          auto-update-conda: true
 
       - name: Install build dependencies (win)
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
           mamba install -y -n base -c conda-forge anaconda-client conda-build conda-verify conda-libmamba-solver
-          conda config --set solver libmamba
-          conda config --set anaconda_upload yes
-          conda config --set always_yes yes --set changeps1 no
+          conda config --set solver libmamba --set anaconda_upload yes --set always_yes yes --set changeps1 no
 
       - name: Install build dependencies (*x)
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
           conda install -y -n base -c conda-forge anaconda-client conda-build conda-verify conda-libmamba-solver
-          conda config --set solver libmamba
-          conda config --set anaconda_upload yes
-          conda config --set always_yes yes --set changeps1 no
+          conda config --set solver libmamba --set anaconda_upload yes --set always_yes yes --set changeps1 no
 
       - name: Build gui and upload to anaconda (win)
         if: runner.os == 'Windows'
         shell: cmd /C CALL {0}
         run: |
-          conda list
-          conda info
           conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token %ANACONDA_TOKEN%
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
@@ -79,8 +74,6 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash -l {0}
         run: |
-          conda list
-          conda info
           conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
