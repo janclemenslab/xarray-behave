@@ -19,8 +19,8 @@ jobs:
     strategy:
       fail-fast: False
       matrix:
-        python-version: [3.9, '3.10']
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        python-version: [3.9]  # , '3.10']
+        os: [ubuntu-latest]  # , windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v1
     - name: publish-to-conda
