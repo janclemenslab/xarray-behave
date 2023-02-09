@@ -45,7 +45,7 @@ jobs:
           use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
           use-mamba: true
           auto-activate-base: true
-          activate-environment: "base"
+          #activate-environment: "base"
           auto-update-conda: true
           
       - name: Install build dependencies (win)
