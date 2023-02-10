@@ -26,7 +26,7 @@ jobs:
     - name: publish-to-conda
       uses: janclemenslab/conda-build-publish-action@v1.2
       with:
-        subDir: 'conda/xarray-behave'
-        AnacondaToken: ${{ secrets.ANACONDA_TOKEN }}
-        AnacondaUser: ncb
-        pyver: ${{ matrix.python-version }}
+        recipe_directory: 'conda/xarray-behave'
+        anaconda_token: ${{ secrets.ANACONDA_TOKEN }}
+        anaconda_user: ncb
+        python_version: ${{ matrix.python-version }}
