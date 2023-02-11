@@ -20,13 +20,28 @@ jobs:
       fail-fast: False
       matrix:
         python-version: [3.9]  # , '3.10']
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest]  #, windows-latest, macOS-latest]
+    defaults:  # https://github.com/marketplace/actions/setup-miniconda#use-a-default-shell
+      run:
+        shell: bash -l {0}
     steps:
     - uses: actions/checkout@v1
-    - name: publish-to-conda
-      uses: janclemenslab/conda-build-publish-action@v1.5
+    - name: Setup miniconda # https://github.com/marketplace/actions/setup-miniconda
+      uses: conda-incubator/setup-miniconda@v2.2.0
       with:
-        recipe_directory: 'conda/xarray-behave'
-        anaconda_token: ${{ secrets.ANACONDA_TOKEN }}
-        anaconda_user: ncb
-        python_version: ${{ matrix.python-version }}
+        auto-update-conda: true
+        miniforge-variant: Mambaforge
+        channels: conda-forge,ncb,anaconda,defaults
+        python-version: 3.9
+        mamba-version: "*"
+        auto-activate-base: false
+        activate-environment: anaconda-client-env
+        environment-file: build_env.yml
+        condarc-file: condarc.yml
+        use-mamba: true
+        use-only-tar-bz2: true  # IMPORTANT: This needs to be set for caching to work properly!
+    - name: Build and upload to anaconda
+      run: |
+        conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+      env:
+        ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
