@@ -988,6 +988,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 root, dat_path = os.path.split(base)
                 annotation_path = None if not len(form_data["annotation_path"]) else form_data["annotation_path"]
+                filepath_video = None if not len(form_data["video_filename"]) else form_data["video_filename"]
 
                 ds = xb.assemble(
                     datename,
@@ -995,6 +996,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     dat_path,
                     res_path="res",
                     filepath_annotations=annotation_path,
+                    filepath_video=filepath_video,
                     fix_fly_indices=form_data["fix_fly_indices"],
                     include_song=~form_data["ignore_song"],
                     target_sampling_rate=form_data["target_samplingrate"],

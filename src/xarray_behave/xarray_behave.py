@@ -89,6 +89,8 @@ def assemble(
 
     if filepath_video is None:
         filepath_video = str(Path(root, dat_path, datename, f"{datename}.mp4"))
+        if not os.path.exists(filepath_video):  # try avi
+            filepath_video = str(Path(root, dat_path, datename, f"{datename}.avi"))
 
     if filepath_timestamps is None:
         filepath_timestamps = Path(root, dat_path, datename, f"{datename}_timestamps.h5")
