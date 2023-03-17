@@ -136,7 +136,6 @@ class Poses:
 
 @io.register_provider
 class Leap(Poses, io.BaseProvider):
-
     KIND = "poses"
     NAME = "leap"
     SUFFIXES = ["_poses.h5", "_poses_leap.h5"]
@@ -217,7 +216,6 @@ class Leap(Poses, io.BaseProvider):
 
 @io.register_provider
 class DeepPoseKit(Poses, io.BaseProvider):
-
     KIND = "poses"
     NAME = "deepposekit"
     SUFFIXES = ["_poses_dpk.zarr"]
@@ -269,7 +267,6 @@ class DeepPoseKit(Poses, io.BaseProvider):
 
 @io.register_provider
 class Sleap(Poses, io.BaseProvider):
-
     KIND = "poses"
     NAME = "sleap"
     SUFFIXES = ["_poses_sleap.h5", "_sleap.h5", "_sleap.h5.slp"]
@@ -279,7 +276,6 @@ class Sleap(Poses, io.BaseProvider):
             filename = self.path
 
         with h5py.File(filename, "r") as f:
-
             if "node_names" not in f:
                 meta = json.loads(f["metadata"].attrs["json"])
                 pose_parts = []

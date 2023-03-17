@@ -37,7 +37,6 @@ def remove_short(sine_pred, min_len=100):
 
 @io.register_provider
 class DAS(io.BaseProvider):
-
     KIND = "annotations"
     NAME = "das"
     SUFFIXES = ["_song.h5", "_vibration.h5", "_pulse.h5", "_sine.h5", "_dss.h5", "_das.h5"]
@@ -117,7 +116,6 @@ class DAS(io.BaseProvider):
 
 @io.register_provider
 class FlySongSegmenter(io.BaseProvider):
-
     KIND = "annotations"
     NAME = "FlySongSegmenter"
     SUFFIXES = ["_song.mat"]

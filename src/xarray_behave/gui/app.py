@@ -764,7 +764,6 @@ class MainWindow(QtWidgets.QMainWindow):
                         detected_segment_names = [segments["names"][ii] for ii in detected_segment_names]
 
                 if len(detected_segment_names) > 0:  # and detected_segment_names[0] is not None:
-
                     logging.info(
                         f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'."
                     )
@@ -945,7 +944,6 @@ class MainWindow(QtWidgets.QMainWindow):
         skip_dialog: bool = False,
         is_das: bool = False,
     ):
-
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption="Select data directory")
         if dirname:
@@ -1085,7 +1083,6 @@ class MainWindow(QtWidgets.QMainWindow):
         skip_dialog: bool = False,
         is_das: bool = False,
     ):
-
         if not filename:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select dataset")
         if filename:
@@ -1263,7 +1260,6 @@ class NoEventsRegisteredWarning(QtWidgets.QMessageBox):
 
 
 class PSV(MainWindow):
-
     MAX_AUDIO_AMP = 3.0
 
     def __init__(
@@ -2649,7 +2645,6 @@ class PSV(MainWindow):
         self.dialog.button_layout.addWidget(self.dialog.revert_button)
 
     def update_eventtype_selector(self):
-
         # delete all existing entries
         while self.cb.count() > 0:
             self.cb.removeItem(0)

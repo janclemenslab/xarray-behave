@@ -6,7 +6,6 @@ from collections import namedtuple, OrderedDict
 
 
 class BaseProvider:
-
     KIND: str
     NAME: str
     SUFFIXES: List[str]

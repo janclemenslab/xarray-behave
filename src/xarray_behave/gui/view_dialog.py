@@ -60,7 +60,6 @@ class TextSlider(QtWidgets.QWidget):
         self.initUI()
 
     def initUI(self):
-
         self.label = QtWidgets.QLabel(self.description, self)
         self.label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.label.setFixedWidth(240)

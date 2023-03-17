@@ -33,7 +33,6 @@ class BallTracks:
 
 @io.register_provider
 class FicTrac_balltracks(io.BaseProvider, BallTracks):
-
     KIND = "balltracks"
     NAME = "fictrac csv"
     SUFFIXES = ["_fictrac.csv"]

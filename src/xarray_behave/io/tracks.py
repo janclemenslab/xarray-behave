@@ -50,7 +50,6 @@ class Tracks:
 
 @io.register_provider
 class Ethotracker(Tracks, io.BaseProvider):
-
     KIND = "tracks"
     NAME = "ethotracker"
     SUFFIXES = ["_tracks.h5", "_tracks_fixed.h5"]
@@ -107,7 +106,6 @@ class Ethotracker(Tracks, io.BaseProvider):
 
 @io.register_provider
 class CSV_tracks(Tracks, io.BaseProvider):
-
     KIND = "tracks"
     NAME = "generic csv"
     SUFFIXES = ["_tracks.csv"]

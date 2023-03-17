@@ -35,7 +35,6 @@ class MovieParams:
 
 @io.register_provider
 class DLP_h5log(io.BaseProvider, MovieParams):
-
     KIND = "movieparams"
     NAME = "h5"
     SUFFIXES = ["_dlp.h5"]
@@ -76,7 +75,6 @@ class DLP_h5log(io.BaseProvider, MovieParams):
 
 @io.register_provider
 class DLP_params(io.BaseProvider, MovieParams):
-
     KIND = "movieparams"
     NAME = "npz"
     SUFFIXES = ["_movieparams.npz"]

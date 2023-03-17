@@ -29,7 +29,6 @@ def split_song_and_nonsong(data, song_channels=None, return_nonsong_channels=Fal
 
 @io.register_provider
 class Ethodrome(io.BaseProvider):
-
     KIND = "audio"
     NAME = "ethodrome h5"
     SUFFIXES = ["_daq.h5"]
@@ -40,7 +39,7 @@ class Ethodrome(io.BaseProvider):
         song_channels: Optional[Sequence[int]] = None,
         return_nonsong_channels: bool = False,
         lazy: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """[summary]
 
@@ -89,7 +88,6 @@ class Ethodrome(io.BaseProvider):
 
 @io.register_provider
 class Npz(io.BaseProvider):
-
     KIND = "audio"
     NAME = "npz"
     SUFFIXES = [".npz"]
@@ -101,9 +99,8 @@ class Npz(io.BaseProvider):
         return_nonsong_channels: bool = False,
         lazy: bool = False,
         audio_dataset: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
-
         if filename is None:
             filename = self.path
         if audio_dataset is None:
@@ -132,7 +129,6 @@ class Npz(io.BaseProvider):
 
 @io.register_provider
 class Npy(io.BaseProvider):
-
     KIND = "audio"
     NAME = "npy"
     SUFFIXES = [".npy"]
@@ -143,9 +139,8 @@ class Npy(io.BaseProvider):
         song_channels: Optional[Sequence[int]] = None,
         return_nonsong_channels: bool = False,
         lazy: bool = False,
-        **kwargs
+        **kwargs,
     ):
-
         if filename is None:
             filename = self.path
 
@@ -158,7 +153,6 @@ class Npy(io.BaseProvider):
 
 @io.register_provider
 class AudioFile(io.BaseProvider):
-
     KIND = "audio"
     NAME = "generic audio file"
     SUFFIXES = [".wav", ".aif", ".mp3", ".flac"]
@@ -169,9 +163,8 @@ class AudioFile(io.BaseProvider):
         song_channels: Optional[Sequence[int]] = None,
         return_nonsong_channels: bool = False,
         lazy: bool = False,
-        **kwargs
+        **kwargs,
     ):
-
         if filename is None:
             filename = self.path
 
@@ -187,7 +180,6 @@ class AudioFile(io.BaseProvider):
 
 @io.register_provider
 class H5file(io.BaseProvider):
-
     KIND = "audio"
     NAME = "h5"
     SUFFIXES = [".h5", ".hdf5", ".hdfs"]
@@ -199,9 +191,8 @@ class H5file(io.BaseProvider):
         return_nonsong_channels: bool = False,
         lazy: bool = False,
         audio_dataset: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
-
         if filename is None:
             filename = self.path
         if audio_dataset is None:

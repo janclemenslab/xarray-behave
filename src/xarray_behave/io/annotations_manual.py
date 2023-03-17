@@ -9,7 +9,6 @@ from .. import io, annot, xarray_behave, event_utils
 
 @io.register_provider
 class Manual_xb_csv(io.BaseProvider):
-
     KIND = "annotations_manual"
     NAME = "XB csv"
     SUFFIXES = ["_annotations.csv", "_songmanual.csv", ".csv"]
@@ -17,7 +16,6 @@ class Manual_xb_csv(io.BaseProvider):
     def load(self, filename: Optional[str] = None):
         """Load output produced by xb."""
         df = pd.read_csv(filename)
-
         if not all([item in df.columns for item in ["name", "start_seconds", "stop_seconds"]]):
             logging.error(
                 f"Malformed CSV file {filename} - needs to have these columns: ['name','start_seconds', 'stop_seconds']. Returning empty results"
@@ -30,7 +28,6 @@ class Manual_xb_csv(io.BaseProvider):
 
 @io.register_provider
 class Definitions(io.BaseProvider):
-
     KIND = "definitions_manual"
     NAME = "XB def csv"
     SUFFIXES = ["_definitions.csv"]
@@ -52,7 +49,6 @@ class Definitions(io.BaseProvider):
 
 @io.register_provider
 class Manual_xb_zarr(io.BaseProvider):
-
     KIND = "annotations_manual"
     NAME = "XB zarr"
     SUFFIXES = ["_songmanual.zarr"]
@@ -88,7 +84,6 @@ class Manual_xb_zarr(io.BaseProvider):
 
 @io.register_provider
 class Manual_matlab(io.BaseProvider):
-
     KIND = "annotations_manual"
     NAME = "FSS matlab"
     SUFFIXES = ["_songmanual.mat"]

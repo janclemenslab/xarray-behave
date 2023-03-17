@@ -279,7 +279,6 @@ class CheckableComboBox(QtWidgets.QComboBox):
         super().resizeEvent(event)
 
     def eventFilter(self, object, event):
-
         if object == self.lineEdit():
             if event.type() == QtCore.QEvent.MouseButtonRelease:
                 if self.closeOnLineEditClick:

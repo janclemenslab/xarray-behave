@@ -719,7 +719,12 @@ def align_time(
 
 
 def assemble_metrics(
-    dataset, make_abs: bool = True, make_rel: bool = True, smooth_positions: bool = True, use_true_times: bool = False
+    dataset,
+    make_abs: bool = True,
+    make_rel: bool = True,
+    smooth_positions: bool = True,
+    use_true_times: bool = False,
+    custom_pose_names: Optional[Dict[str, str]] = None,
 ):
     """[summary]
 
@@ -731,6 +736,7 @@ def assemble_metrics(
         use_true_times (bool, optional): Will use times for each frame from the data as dt
                                          for speed and acceleration calculations.
                                          Defaults to False (timestep=1).
+        custom_pose_names (Dict[str, str]): Dictionary mapping default pose names (head, thorax, left_wing, right_wing) to custom names.
 
     Returns:
         [type]: [description]
@@ -753,16 +759,20 @@ def assemble_metrics(
     time = dataset.time.data
     nearest_frame = dataset.nearest_frame.data
 
+    pose_names = {"thorax": "thorax", "head": "head", "left_wing": "left_wing", "right_wing": "right_wing"}
+    if custom_pose_names is not None:
+        pose_names.update(custom_pose_names)
+
     if use_true_times:
         timestep = dataset.time.data
     else:
         timestep = 1
 
     if "pose_positions_allo" in dataset:
-        thoraces = dataset.pose_positions_allo.loc[:, :, "thorax", :].values.astype(np.float32)
-        heads = dataset.pose_positions_allo.loc[:, :, "head", :].values.astype(np.float32)
-        wing_left = dataset.pose_positions_allo.loc[:, :, "left_wing", :].values.astype(np.float32)
-        wing_right = dataset.pose_positions_allo.loc[:, :, "right_wing", :].values.astype(np.float32)
+        thoraces = dataset.pose_positions_allo.loc[:, :, pose_names["thorax"], :].values.astype(np.float32)
+        heads = dataset.pose_positions_allo.loc[:, :, pose_names["head"], :].values.astype(np.float32)
+        wing_left = dataset.pose_positions_allo.loc[:, :, pose_names["left_wing"], :].values.astype(np.float32)
+        wing_right = dataset.pose_positions_allo.loc[:, :, pose_names["right_wing"], :].values.astype(np.float32)
         sampling_rate = dataset.pose_positions.attrs["sampling_rate_Hz"]
         frame_rate = dataset.pose_positions.attrs["video_fps"]
     elif "body_positions" in dataset:
