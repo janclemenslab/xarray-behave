@@ -94,7 +94,6 @@ def assemble(
 
     if filepath_timestamps is None:
         filepath_timestamps = Path(root, dat_path, datename, f"{datename}_timestamps.h5")
-
     # Create samplestamps object
     ss = None
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
@@ -121,9 +120,9 @@ def assemble(
         frame_times[-1] = frame_times[-2]  # for auto-monotonize to not mess everything up
 
         sampling_rate = 10 * target_sampling_rate
-        sample_times = np.arange(0, vr.number_of_frames * vr.frame_rate, 1)  # 1s steps
+        sample_times = np.arange(frame_times[0], frame_times[-1], 1)  # first to last frame, in 1s steps
         sample_numbers = np.round(sample_times * sampling_rate)
-        last_sample_number = len(sample_times)
+        last_sample_number = sample_numbers[-1]
 
         ss = SampStamp(sample_times, frame_times, sample_numbers=sample_numbers)
         path_tried = (filepath_video,)
@@ -181,7 +180,7 @@ def assemble(
 
     if target_sampling_rate == 0 or target_sampling_rate is None:
         resample_video_data = False
-    fps = 1 / np.mean(np.diff(ss.frames2times.y))
+    fps = 1 / np.median(np.diff(ss.frames2times.y))
     if not resample_video_data:
         logging.info(f"  setting targetsamplingrate to avg. fps ({fps}).")
         target_sampling_rate = fps
@@ -388,7 +387,8 @@ def assemble(
             logging.info("Done.")
 
         if song_raw is None:
-            song_raw = np.zeros((len(sample_times), 1), dtype=bool)
+            # song_raw = scipy.sparse.csr_array((int(sample_numbers[-1]), 1), dtype=bool)  # mem efficient but does not work with xr atm
+            song_raw = np.zeros((int(sample_numbers[-1]), 1), dtype=bool)
 
     # merge manual and auto events -
     # manual will overwrite existing auto events with the same key
