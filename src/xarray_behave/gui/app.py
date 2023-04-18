@@ -456,8 +456,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 form_data["block_size"] = None
 
             to_npy_dir = form_data["store_format"] == "npy dir"
-            if not to_npy_dir and form_data["data_folder"] == data_folder + ".npy":
-                form_data["data_folder"] = data_folder + ".zarr"
+            store_ext = os.path.splitext(form_data["store_folder"])[-1]
+            if not to_npy_dir and store_ext != ".zarr":
+                form_data["store_folder"] = os.path.splitext(form_data["store_folder"])[0] + ".zarr"
 
             das.make(
                 data_folder=form_data["data_folder"],
