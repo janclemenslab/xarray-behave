@@ -26,6 +26,7 @@ requirements:
     - matplotlib
     - matplotlib-scalebar
     - pandas
+    - scipy>=1.9
     - peakutils
     - pyyaml
     - scikit-learn
