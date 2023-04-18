@@ -13,13 +13,13 @@ main:
   label: Audio file format
   type: list
   default: 'NPZ'
-  options: 'NPZ,WAV'
-  help: 'Will save audio data and samplerate as a numpy file (NPZ) or wave file (WAV).
+  options: 'NPZ,H5,WAV'
+  help: 'Will save audio data and samplerate as a numpy file (NPZ), a hdf5 file (H5), or a wave file (WAV).
          If choosing WAV, data will be clipped to [-1, 1] due to
          restrictions of the WAV file format. To prevent data loss, set a scale factor.'
 
 - name: scale_audio
-  label: Scale factor
+  label: Scale factor (ignored for H5)
   type: double
   default: 1.0
   help: 'To prevent clipping for WAV, which clips audio to [-1, 1] if data is float.'

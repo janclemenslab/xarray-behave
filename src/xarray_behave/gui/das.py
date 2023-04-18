@@ -8,6 +8,7 @@ import zarr
 import numpy as np
 import pandas as pd
 import librosa
+import h5py
 
 import das.make_dataset as dsm
 import das.npy_dir
@@ -38,11 +39,29 @@ def data_loader_wav(filename: str, fs: Optional[float] = None, duration: Optiona
 def data_loader_npz(filename: str, fs: Optional[float] = None, duration: Optional[float] = None):
     file = np.load(filename)
     fs_file = float(file["samplerate"])
-    if duration is None:
-        dur = -1
+    x = file["data"]
+    breakpoint()
+    if duration is not None:
+        dur = min(x.shape[0], int(duration * fs_file))
+        x = x[:dur]
+
+    x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
+    if fs is not None and fs != fs_file:
+        x = librosa.resample(x, orig_sr=fs_file, target_sr=fs, res_type="kaiser_best")
     else:
-        dur = min(file["data"].shape[0], int(duration * fs_file))
-    x = file["data"][:dur]
+        fs = fs_file
+    return fs, x
+
+
+def data_loader_h5(filename: str, fs: Optional[float] = None, duration: Optional[float] = None):
+    file = h5py.File(filename)
+    fs_file = float(file.attrs["samplerate"])
+
+    x = file["data"]
+    if duration is not None:
+        dur = min(x.shape[0], int(duration * fs_file))
+        x = x[:dur]
+
     x = x[:, np.newaxis] if x.ndim == 1 else x  # adds singleton dim for single-channel wavs
     if fs is not None and fs != fs_file:
         x = librosa.resample(x, orig_sr=fs_file, target_sr=fs, res_type="kaiser_best")
@@ -52,7 +71,7 @@ def data_loader_npz(filename: str, fs: Optional[float] = None, duration: Optiona
 
 
 # FIXME auto register with decorator or, even better, use io.audio
-data_loaders = {"npz": data_loader_npz, "wav": data_loader_wav, None: None}
+data_loaders = {"npz": data_loader_npz, "wav": data_loader_wav, "h5": data_loader_h5, None: None}
 
 
 def load_data(filename: str, **kwargs):
@@ -79,6 +98,7 @@ def make(
     delete_intermediate_store: bool = True,
     make_onset_offset_events: float = False,
     seed: Optional[float] = None,
+    to_npy_dir: bool = True,
 ):
     """_summary_
 
@@ -96,6 +116,7 @@ def make(
         delete_intermediate_store (bool, optional): _description_. Defaults to True.
         make_onset_offset_events (float, optional): _description_. Defaults to False.
         seed (Optional[float], optional): _description_. Defaults to None.
+        to_npy_dir (bool, optional): Save dataset as npy_dir. Avoid for very big datasets since it's memory intensive. Defaults to True.
 
     Raises:
         ValueError: _description_
@@ -150,12 +171,11 @@ def make(
     file_bases = [f[: -len("_annotations.csv")] for f in files_annotation]
     data_files: List[Union[str, None]] = []
     for file_base in file_bases:
-        if os.path.exists(file_base + ".npz"):
-            data_files.append(file_base + ".npz")
-        elif os.path.exists(file_base + ".wav"):
-            data_files.append(file_base + ".wav")
-        else:
-            data_files.append(None)
+        data_files.append(None)  # default fallback for no match
+        for ext in data_loaders.keys():
+            if os.path.exists(file_base + "." + ext):
+                data_files[-1] = file_base + "." + ext  # if matching file found, replace fallback "None" with actual file
+                break  # stop FOR loop after first match
 
     # read first data file to infer number of audio channels
     # get valid file
@@ -186,15 +206,20 @@ def make(
     nb_channels = int(list(nb_channelss)[0])
     logger.info(f"   Audio has {nb_channels} channels.")
 
+    if not to_npy_dir:
+        logging.info(f"   Making dataset at {store_folder}.")
+        store = zarr.DirectoryStore(store_folder)
+    else:
+        store = zarr.TempStore("store.zarr")  # create in temp store and then copy to npy_dir
+
     store = dsm.init_store(
         nb_channels=nb_channels,
         nb_classes=len(class_names),
+        store=store,
         samplerate=fs,
         class_names=class_names,
         class_types=class_types,
         make_single_class_datasets=make_single_class_datasets,
-        store_type=zarr.TempStore,
-        store_name="store.zarr",
         chunk_len=1_000_000,
     )
 
@@ -273,10 +298,9 @@ def make(
         logger.info(f"   {file_base}")
 
         # load the recording
-        if data_file.endswith(".npz"):
-            data_loader = data_loader_npz
-        elif data_file.endswith(".wav"):
-            data_loader = data_loader_wav
+        ext = os.path.splitext(data_file)[-1][1:]  # [1:] removes the dot...
+        if ext is not None:
+            data_loader = data_loaders[ext]
         else:
             logger.warning(f"Unknown data file {file_base} - skipping.")
             continue
@@ -371,11 +395,12 @@ def make(
     logger.info(
         f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples."
     )
-    # save as npy_dir
-    logger.info(f"  Saving to {store_folder}.")
-    das.npy_dir.save(store_folder, store)
-    if delete_intermediate_store:
-        pass
+    if to_npy_dir:
+        # save as npy_dir
+        logger.info(f"  Saving to {store_folder}.")
+        das.npy_dir.save(store_folder, store)
+        if delete_intermediate_store:
+            pass
     logger.info("The dataset has been made.")
 
 

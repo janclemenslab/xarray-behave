@@ -275,7 +275,8 @@ class MainWindow(QtWidgets.QMainWindow):
         end_seconds: Optional[float] = None,
         scale: float = 1.0,
     ):
-        """[summary]
+        """Save to WAV file. Float data will be cast to float32, integer data to int32.
+           Use the 'scale' arg to pre-scale data to avoid data .loss
 
         Args:
             savefilename (str, optional): [description]. Defaults to None.
@@ -312,13 +313,13 @@ class MainWindow(QtWidgets.QMainWindow):
         end_seconds: Optional[float] = None,
         scale: float = 1.0,
     ):
-        """[summary]
+        """Save as NPZ file. file['data'] contains the audio data, file['samplerate'] contains sample rate in Hz.
 
         Args:
             savefilename (str, optional): [description]. Defaults to None.
             start_seconds (int, optional): [description]. Defaults to 0.
             end_seconds ([type], optional): [description]. Defaults to None.
-            scale (float):
+            scale (float): UNUSED
         """
         # transform to indices for cutting song data
         start_index = int(start_seconds * self.fs_song)
@@ -328,13 +329,41 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # get clean data and save to WAV
         song = self.ds.song_raw.data[start_index:end_index]
-        song = song * scale
         try:
             song = song.compute()
         except AttributeError:
             pass
         os.makedirs(os.path.dirname(savefilename), exist_ok=True)
         np.savez(savefilename, data=song, samplerate=self.fs_song)
+
+    def export_to_h5(
+        self,
+        savefilename: Optional[str] = None,
+        start_seconds: float = 0,
+        end_seconds: Optional[float] = None,
+        scale: float = 1.0,
+    ):
+        """Save as HDF5 file. file['data'] contains the audio data, file.attrs['samplerate'] contains sample rate in Hz.
+
+        Args:
+            savefilename (str, optional): [description]. Defaults to None.
+            start_seconds (int, optional): [description]. Defaults to 0.
+            end_seconds ([type], optional): [description]. Defaults to None.
+            scale (float): UNUSED
+        """
+        # transform to indices for cutting song data
+        start_index = int(start_seconds * self.fs_song)
+        end_index = None
+        if end_seconds is not None:
+            end_index = int(end_seconds * self.fs_song)
+
+        # get clean data and save to WAV
+        song = self.ds.song_raw.data[start_index:end_index]
+        os.makedirs(os.path.dirname(savefilename), exist_ok=True)
+
+        with h5py.File(savefilename, mode="w") as f:
+            f.create_dataset(name="data", data=song)
+            f.attrs["samplerate"] = self.fs_song
 
     def export_for_das(self, qt_keycode=None):
         try:
@@ -386,7 +415,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.export_to_wav(savefilename_trunk + ".wav", start_seconds, end_seconds, form_data["scale_audio"])
             elif form_data["file_type"] == "NPZ":
                 logging.info(f"   song to NPZ: {savefilename_trunk + '.npz'}.")
-                self.export_to_npz(savefilename_trunk + ".npz", start_seconds, end_seconds, form_data["scale_audio"])
+                self.export_to_npz(savefilename_trunk + ".npz", start_seconds, end_seconds)  # , form_data["scale_audio"])
+            elif form_data["file_type"] == "H5":
+                logging.info(f"   song to H5: {savefilename_trunk + '.h5'}.")
+                self.export_to_h5(savefilename_trunk + ".h5", start_seconds, end_seconds)  # , form_data["scale_audio"])
 
             logging.info(f"   annotations to CSV: {savefilename_trunk + '.csv'}.")
             self.export_to_csv(
@@ -423,6 +455,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if "block_size" not in form_data:
                 form_data["block_size"] = None
 
+            to_npy_dir = form_data["store_format"] == "npy dir"
+            if not to_npy_dir and form_data["data_folder"] == data_folder + ".npy":
+                form_data["data_folder"] = data_folder + ".zarr"
+
             das.make(
                 data_folder=form_data["data_folder"],
                 store_folder=form_data["store_folder"],
@@ -436,6 +472,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 gap_seconds=form_data["gap_seconds"],
                 make_onset_offset_events=form_data["make_onset_offset_events"],
                 seed=form_data["seed_splits"],
+                to_npy_dir=to_npy_dir,
             )
             logging.info("Done.")
 
@@ -452,10 +489,11 @@ class MainWindow(QtWidgets.QMainWindow):
             """
 
             form_data["model_name"] = "tcn_stft"
-            form_data["nb_pre_conv"] = int(0)
             if form_data["frontend"] == "STFT":
-                form_data["nb_pre_conv"] = int(np.sqrt(int(form_data["pre_nb_conv"])))
+                form_data["nb_pre_conv"] = int(np.sqrt(int(form_data["nb_pre_conv"])))
                 form_data["pre_nb_dft"] = int(form_data["pre_nb_dft"])
+            else:
+                form_data["nb_pre_conv"] = int(0)
             del form_data["frontend"]
             form_data["reduce_lr"] = form_data["reduce_lr_patience"] is not None
             post_opt = form_data["postopt"] == "Yes"
@@ -2742,6 +2780,7 @@ def main(
         source.lower().endswith(".wav")
         or source.lower().endswith(".npz")
         or source.lower().endswith(".h5")
+        or source.lower().endswith(".mmap")
         or source.endswith(".hdf5")
         or source.lower().endswith(".mat")
     ):

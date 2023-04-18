@@ -18,6 +18,13 @@ main:
   default: " "
   help: Folder for saving the assembled data structure.
 
+- name: store_format
+  label: Store format
+  type: list
+  default: "npy dir"
+  options: "npy dir,zarr"
+  help: NPY_DIR is more portable but involves copying all data, which can by memory intensive for very big datasets. Use ZARR for very big data sets.
+
 - name: make_single_class_datasets
   label: Training targets for individual song types
   type: bool

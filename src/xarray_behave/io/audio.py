@@ -10,9 +10,12 @@ should return:
 # [x] npz, npy
 # [x] generic audio (pysoundfile)
 # [ ] npy_dir
+# [ ] mmap (Bartul)
 
 import h5py
+import os
 import numpy as np
+import logging
 from .. import io
 from typing import Optional, Sequence
 
@@ -214,4 +217,35 @@ class H5file(io.BaseProvider):
 
         data = data[:, np.newaxis] if data.ndim == 1 else data  # adds singleton dim for single-channel wavs
         song, non_song = split_song_and_nonsong(data, song_channels, return_nonsong_channels)
+        return song, non_song, sampling_rate
+
+
+@io.register_provider
+class MMAPfile(io.BaseProvider):
+    KIND = "audio"
+    NAME = "mmap"
+    SUFFIXES = [".mmap"]
+
+    def load(
+        self,
+        filename: Optional[str],
+        song_channels: Optional[Sequence[int]] = None,
+        return_nonsong_channels: bool = False,
+        lazy: bool = True,
+        audio_dataset: Optional[str] = None,
+        **kwargs,
+    ):
+        if filename is None:
+            filename = self.path
+        if audio_dataset is None:
+            audio_dataset = "data"
+
+        # parse filename parse, expected format: SOME_RANDOMN-NAME_{sampling_rate_Hz}_{nb_samples}_{nb_channels}_{dtype}.mmap
+        trunk = os.path.splitext(os.path.basename(filename))[0]
+        tokens = trunk.split("_")
+        sampling_rate, nb_samples, nb_channels, dtype = float(tokens[-4]), int(tokens[-3]), int(tokens[-2]), tokens[-1]
+        logging.info(f"{filename} with {nb_samples} samples, {nb_channels} channels, at {sampling_rate} Hz, type {dtype}.")
+
+        song = np.memmap(filename, mode="r", dtype=dtype, shape=(nb_samples, nb_channels))
+        non_song = None
         return song, non_song, sampling_rate

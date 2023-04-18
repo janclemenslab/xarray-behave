@@ -277,7 +277,7 @@ def load_times(filepath_timestamps, filepath_daq):
     daq_samplenumber = np.cumsum(daq_sampleinterval)[:last_valid_idx, np.newaxis]
     last_sample = daq_samplenumber[-1, 0]
     # seconds - using mode here to be more robust
-    nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]))
+    nb_seconds_per_interval, _ = scipy.stats.mode(np.diff(daq_stamps[:last_valid_idx, 0]), keepdims=True)
     nb_seconds_per_interval = nb_seconds_per_interval[0]
     nb_samples_per_interval = np.mean(np.diff(daq_samplenumber[:last_valid_idx, 0]))
     sampling_rate_Hz = np.around(nb_samples_per_interval / nb_seconds_per_interval, -3)  # round to 1000s of Hz

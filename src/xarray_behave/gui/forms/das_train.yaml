@@ -76,17 +76,18 @@ main:
   "None":
 
   "STFT":
+  - name: nb_pre_conv
+    label: Downsample factor
+    type: list
+    default: 16
+    options: 1,2,4,8,16,32,64,128
+
   - name: pre_nb_dft
     label: Number of frequency bands
     type: int
     default: 64
     range: 1,1000
 
-  - name: pre_nb_conv
-    label: Downsample factor
-    type: list
-    default: 16
-    options: 1,2,4,8,16,32,64,128
 
   # "TCN":
   # - name: pre_nb_filters
