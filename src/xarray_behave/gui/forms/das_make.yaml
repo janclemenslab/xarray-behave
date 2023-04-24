@@ -37,6 +37,13 @@ main:
   default: False
   help: Can help with smooth detectiong of syllables.
 
+
+- name: make_csv_annotations
+  label: Also save annotations as csv
+  type: bool
+  default: True
+  help: For easy loading in DAS
+
 - name: event_std_seconds
   label: Width of events (seconds)
   type: double

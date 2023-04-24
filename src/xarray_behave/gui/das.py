@@ -14,7 +14,7 @@ import das.make_dataset as dsm
 import das.npy_dir
 import das.annot
 
-from .. import annot
+from .. import annot, event_utils
 
 import das.make_dataset
 import das.npy_dir
@@ -40,7 +40,6 @@ def data_loader_npz(filename: str, fs: Optional[float] = None, duration: Optiona
     file = np.load(filename)
     fs_file = float(file["samplerate"])
     x = file["data"]
-    breakpoint()
     if duration is not None:
         dur = min(x.shape[0], int(duration * fs_file))
         x = x[:dur]
@@ -99,6 +98,7 @@ def make(
     make_onset_offset_events: float = False,
     seed: Optional[float] = None,
     to_npy_dir: bool = True,
+    make_csv_annotations: bool = True,
 ):
     """_summary_
 
@@ -117,6 +117,7 @@ def make(
         make_onset_offset_events (float, optional): _description_. Defaults to False.
         seed (Optional[float], optional): _description_. Defaults to None.
         to_npy_dir (bool, optional): Save dataset as npy_dir. Avoid for very big datasets since it's memory intensive. Defaults to True.
+        make_csv_annotations (bool, optional): Save annotations also as CSV for loading and inspecting the dataset in DAS. Defaults to True.
 
     Raises:
         ValueError: _description_
@@ -395,12 +396,22 @@ def make(
     logger.info(
         f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples."
     )
-    if to_npy_dir:
-        # save as npy_dir
+    if to_npy_dir:  # save as npy_dir
         logger.info(f"  Saving to {store_folder}.")
         das.npy_dir.save(store_folder, store)
         if delete_intermediate_store:
             pass
+
+    if make_csv_annotations:
+        logger.info("  Saving annotations to CSV.")
+        fs = store.attrs["samplerate_y_Hz"]
+        names = store.attrs["class_names"][1:]  # [1:] ignore the noise class
+        types = store.attrs["class_types"][1:]
+        for key in store.keys():
+            ann = event_utils.traces_to_eventtimes(store[key]["y"][:, 1:].T, names, types)
+            ann = {k: v / fs for k, v in ann.items()}  # convert indices to seconds
+            ev = annot.Events.from_dict(ann)
+            ev.to_df().to_csv(os.path.join(store.attrs["store_folder"], key, "x_annotations.csv"))
     logger.info("The dataset has been made.")
 
 

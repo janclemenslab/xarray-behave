@@ -108,7 +108,7 @@ def assemble(
         vr = VideoReader(filepath_video)
 
         if os.path.exists(filepath_timestamps):
-            frame_times = ld.load_timestamps(filepath_timestamps)
+            _, frame_times = io.timestamps.CamStamps().load(filepath_timestamps)
             frame_times -= frame_times[0]
         else:
             frame_times = np.arange(0, vr.number_of_frames, 1) / vr.frame_rate

@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 from collections import UserDict
-from typing import Optional, List, Dict, Tuple, Any, Union
+from typing import Optional, List, Dict, Tuple
 
 
 class Events(UserDict):
@@ -98,6 +98,23 @@ class Events(UserDict):
         if "event_categories" in ds:
             cats = {str(cat.event_types.data): str(cat.event_categories.data) for cat in ds.event_categories}
             out = cls(out, categories=cats)
+        return out
+
+    @classmethod
+    def from_dict(cls, dct: Dict):
+        """
+        Args:
+            dct (Dict[str, np.ndarray]): keys are event types, values is 2D array with
+                                         two columns containing start and stop seconds.
+        """
+        names = []
+        start_seconds = []
+        stop_seconds = []
+        for k, v in dct.items():
+            names.extend([k] * v.shape[0])
+            start_seconds.extend(v[:, 0])
+            stop_seconds.extend(v[:, 1])
+        out = cls.from_lists(names, start_seconds, stop_seconds)
         return out
 
     def update(self, new_dict: Dict):
@@ -335,9 +352,10 @@ class Events(UserDict):
         """Add a new segment/event.
 
         Args:
-            name (str): name of the segment/event.
-            start_seconds (float): start of the segment/event
-            stop_seconds (float, optional): end of the segment/event (for events, should equal start). Defaults to None (use start_seconds).
+            name (str): Name of the segment/event.
+            start_seconds (float): Start of the segment/event
+            stop_seconds (float, optional): End of the segment/event (for events, should equal start).
+                                            Defaults to None (use start_seconds).
             add_new_name (bool, optional): Add new song type if name does not exist yet. Defaults to True.
             category (str, optional): Manually specify category here.
         """

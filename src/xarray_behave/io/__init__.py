@@ -91,4 +91,4 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename
 
 
 # need to import new modules here!
-from . import tracks, balltracks, annotations, annotations_manual, poses, audio, movieparams
+from . import tracks, balltracks, annotations, annotations_manual, poses, audio, movieparams, timestamps

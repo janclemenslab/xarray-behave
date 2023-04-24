@@ -474,6 +474,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 make_onset_offset_events=form_data["make_onset_offset_events"],
                 seed=form_data["seed_splits"],
                 to_npy_dir=to_npy_dir,
+                make_csv_annotations=form_data["make_csv_annotations"],
             )
             logging.info("Done.")
 
