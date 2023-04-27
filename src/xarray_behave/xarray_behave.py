@@ -24,6 +24,8 @@ def assemble(
     filepath_daq: Optional[Union[Path, str]] = None,
     filepath_annotations: Optional[Union[Path, str]] = None,
     filepath_definitions: Optional[Union[Path, str]] = None,
+    filepath_tracks: Optional[Union[Path, str]] = None,
+    filepath_poses: Optional[Union[Path, str]] = None,
     target_sampling_rate: float = 1_000,
     audio_sampling_rate: Optional[float] = None,
     audio_channels: Optional[List[int]] = None,
@@ -55,7 +57,8 @@ def assemble(
         filepath_video (str, optional): Path to the video file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_daq (str, optional): Path to the daq file. Defaults to None (infer path from `datename` and `dat_path`).
         filepath_annotations (str, optional): Path to annotations file. Defaults to None (infer path from `datename` and `res_path`).
-        filepath_definitions (str, optional): Path to song definitions file. Defaults to None (infer path from `datename` and `res_path`).
+        filepath_tracks (str, optional): Path to tracks file. Defaults to None (infer path from `datename` and `res_path`).
+        filepath_poses (str, optional): Path to poses file. Defaults to None (infer path from `datename` and `res_path`).
         target_sampling_rate (int, optional): Sampling rate in Hz for pose and annotation data. Defaults to 1000.
         audio_sampling_rate (int, optional): Audio sampling rate in Hz.
                                              Used to override sampling rate inferred from file or to provide sampling rate if missing from file.
@@ -69,7 +72,7 @@ def assemble(
         include_tracks (bool, optional): [description]. Defaults to True.
         include_poses (bool, optional): [description]. Defaults to True.
         include_balltracker (bool, optional): [description]. Defaults to True.
-        include_balltracker (bool, optional): [description]. Defaults to True.
+        include_movieparams (bool, optional): [description]. Defaults to True.
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
@@ -190,7 +193,10 @@ def assemble(
     with_fixed_tracks = False
     if include_tracks:
         logging.info("Loading tracks:")
-        tracks_loader = io.get_loader(kind="tracks", basename=os.path.join(root, res_path, datename, datename))
+        if filepath_tracks is not None:
+            tracks_loader = io.get_loader(kind="tracks", basename=filepath_tracks, basename_is_full_name=True)
+        else:
+            tracks_loader = io.get_loader(kind="tracks", basename=os.path.join(root, res_path, datename, datename))
         if tracks_loader:
             try:
                 xr_tracks = tracks_loader.make(tracks_loader.path)
@@ -211,7 +217,10 @@ def assemble(
     poses_from = None
     if include_poses:
         logging.info("Loading poses:")
-        poses_loader = io.get_loader(kind="poses", basename=os.path.join(root, res_path, datename, datename))
+        if filepath_poses is not None:
+            poses_loader = io.get_loader(kind="poses", basename=filepath_poses, basename_is_full_name=True)
+        else:
+            poses_loader = io.get_loader(kind="poses", basename=os.path.join(root, res_path, datename, datename))
         if poses_loader:
             try:
                 xr_poses, xr_poses_allo = poses_loader.make(poses_loader.path)
