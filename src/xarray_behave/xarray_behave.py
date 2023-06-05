@@ -1,6 +1,6 @@
 """Create self-documenting xarray dataset from behavioral recordings and annotations."""
 import numpy as np
-from samplestamps.samplestamps import SampStamp
+from samplestamps.samplestamps import SampStamp, SimpleStamp
 import scipy.interpolate
 import scipy.stats
 import xarray as xr
@@ -95,8 +95,12 @@ def assemble(
         if not os.path.exists(filepath_video):  # try avi
             filepath_video = str(Path(root, dat_path, datename, f"{datename}.avi"))
 
-    if filepath_timestamps is None:
-        filepath_timestamps = Path(root, dat_path, datename, f"{datename}_timestamps.h5")
+    if filepath_timestamps is None:  # for video
+        basename = os.path.splitext(filepath_video)[0]
+        filepath_timestamps = f"{basename}_timestamps.h5"
+        if not os.path.exists(filepath_timestamps):  # try avi
+            filepath_timestamps = Path(root, dat_path, datename, f"{datename}_timestamps.h5")
+
     # Create samplestamps object
     ss = None
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
@@ -154,15 +158,7 @@ def assemble(
             if sampling_rate is None:
                 sampling_rate = audio_sampling_rate
             last_sample_number = len(song_raw)
-            sample_numbers = np.arange(0, last_sample_number, sampling_rate).flatten()
-            # make sure we include the last sample
-            if sample_numbers[-1] < last_sample_number:
-                sample_numbers = np.append(sample_numbers, last_sample_number)
-            sample_times = sample_numbers / sampling_rate
-            frame_step = max(1, len(sample_times) // 1_000)
-            frame_times = sample_times[::frame_step]
-            frame_numbers = sample_numbers[::frame_step]
-            ss = SampStamp(sample_times, frame_times, sample_numbers=sample_numbers, frame_numbers=frame_numbers)
+            ss = SimpleStamp(sampling_rate)
         except:
             raise ValueError(f"Loading {audio_loader.path} using {audio_loader.NAME} failed.")
         path_tried = (filepath_daq,)

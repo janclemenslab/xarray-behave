@@ -1453,7 +1453,7 @@ class PSV(MainWindow):
         else:
             self.frame_interval = self.fs_song / 1_000
 
-        self._span = int(self.fs_song)
+        self._span = min(int(self.fs_song), self.tmax)
         self._t0 = int(self.span / 2)
         self.step = 1
 
