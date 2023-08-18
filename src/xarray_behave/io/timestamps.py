@@ -92,9 +92,10 @@ class DaqStamps(io.BaseProvider):
             last_valid_idx = np.argmax(daq_stamps == 0)
         else:
             last_valid_idx = len(daq_stamps) - 1  # in case there are no trailing zeros
+
         daq_samplenumber = np.cumsum(daq_sampleinterval)[:last_valid_idx, np.newaxis]
 
-        indices = daq_samplenumber[:, 0]
+        indices = daq_samplenumber[:last_valid_idx, 0]
         timestamps = daq_stamps[:last_valid_idx, 0]
 
         return indices, timestamps

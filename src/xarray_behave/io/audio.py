@@ -48,8 +48,9 @@ class Ethodrome(io.BaseProvider):
 
         Args:
             filename ([type]): [description]
-            song_channels (List[int], optional): Sequence of integers as indices into 'samples' datasaet.
-                                                Defaults to [0,..., 15].
+            song_channels (List[int], optional): Sequence of integers as indices into 'samples' dataset.
+                                                 Taken from 'song_channels' dataset of the h5 file if it exists.
+                                                 Defaults to [0,..., 15].
             return_nonsong_channels (bool, optional): will return the data not in song_channels as separate array. Defaults to False
             lazy (bool, optional): If True, will load song as dask.array, which allows lazy indexing.
                                 Otherwise, will load the full recording from disk (slow). Defaults to False.
@@ -60,8 +61,12 @@ class Ethodrome(io.BaseProvider):
         if filename is None:
             filename = self.path
 
-        if song_channels is None:  # the first 16 channels in the data are the mic recordings
-            song_channels = np.arange(16)
+        if song_channels is None:
+            with h5py.File(filename, mode="r") as f:
+                if "song_channels" in f:
+                    song_channels = np.asarray(f["song_channels"][:])
+            if song_channels is None:  # the first 16 channels in the data are the mic recordings
+                song_channels = np.arange(16)
 
         non_song = None
         samplerate = None

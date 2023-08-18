@@ -385,7 +385,7 @@ def assemble(
                     song_raw, non_song_raw, samplerate = audio_loader.load(
                         audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song
                     )
-                    logging.info(f"   {audio_loader.path} loaded using {audio_loader.NAME}.")
+                    logging.info(f"   {audio_loader.path} with shape {song_raw.shape} loaded using {audio_loader.NAME}.")
                 except Exception as e:
                     logging.info(f"   Loading {audio_loader.path} using {audio_loader.NAME} failed.")
                     logging.exception(e)
