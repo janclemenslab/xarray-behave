@@ -46,6 +46,13 @@ main:
   range: 0,10000
   default: 1.0
 
+
+- name: daq_filename
+  label: DAQ file
+  type: file_open
+  default: ""
+  help: 'select custom filename'
+
 - name: ignore_song
   label: Ignore song
   type: bool

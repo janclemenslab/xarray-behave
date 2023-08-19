@@ -119,7 +119,7 @@ fig*
 !/src/
 !/tests/
 !/env/
-!/docs/
+# !/docs/
 !/*.toml
 !/.github
 !/conda
