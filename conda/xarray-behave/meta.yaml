@@ -47,7 +47,7 @@ requirements:
     - opencv
     - ffmpeg
     - pyvideoreader
-    - samplestamps
+    - samplestamps>=0.6
     - pysoundfile
 
 test:
