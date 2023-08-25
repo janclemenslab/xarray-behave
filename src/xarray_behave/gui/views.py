@@ -494,7 +494,7 @@ class MovieView(utils.FastImageWidget):
 
         self.image_view_framenumber_text = pg.TextItem(color=(200, 0, 0), anchor=(-2, 1))
         self.viewBox.addItem(self.image_view_framenumber_text)
-
+        self.viewBox.setDefaultPadding(padding=0.0)
         self.fly_positions = Draggable(self.m.on_position_dragged, acceptDrags=not self.m.move_poses)
         self.viewBox.addItem(self.fly_positions)
         self.fly_poses = Draggable(self.m.on_poses_dragged, acceptDrags=self.m.move_poses)
@@ -532,9 +532,7 @@ class MovieView(utils.FastImageWidget):
     def m(self):  # read only access to the model
         return self._m
 
-    def update_frame(
-        self,
-    ):
+    def update_frame(self):
         frame = self.m.vr[self.m.framenumber]
 
         if self.m.frame_fliplr:
@@ -544,7 +542,7 @@ class MovieView(utils.FastImageWidget):
             frame = np.ascontiguousarray(frame[::-1, :])
 
         if frame is not None:  # frame is None when at end of video
-            # # FIXME the annotations potentially waste time annotating outside of the cropped frame
+            # FIXME the annotations potentially waste time annotating outside of the cropped frame
             if "pose_positions_allo" in self.m.ds:
                 if self.m.show_poses:
                     frame = self.annotate_poses(frame)
@@ -559,15 +557,20 @@ class MovieView(utils.FastImageWidget):
                 else:
                     self.fly_positions.setData(pos=None)  # this deletes the graph
 
-                if self.m.crop:
+                x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
+                if self.m.crop and not self.m.maintain_custom_crop:
                     x_range, y_range = self.crop_frame(frame)
-                else:
-                    x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
+                # else:
+                # x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
             else:
                 x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
 
+            # this overrides everything
+            if self.m.maintain_custom_crop:
+                x_range, y_range = self.viewBox.viewRange()
+
             self.setImage(frame, auto_scale=True)
-            self.viewBox.setRange(xRange=y_range, yRange=x_range)
+            self.viewBox.setRange(xRange=x_range, yRange=y_range, padding=0)
 
     def annotate_dot(self, frame):
         # mark each fly with uniquely colored dots

@@ -1366,6 +1366,7 @@ class PSV(MainWindow):
             self.tmax = len(self.ds.time)
 
         self.crop = True
+        self.maintain_custom_crop = False
         try:
             self.pose_center_index = list(self.ds.poseparts).index("thorax")
         except:
@@ -1496,6 +1497,14 @@ class PSV(MainWindow):
 
         view_video = self.bar.addMenu("Video")
         self._add_keyed_menuitem(view_video, "Crop frame", partial(self.toggle, "crop"), "C", checkable=True, checked=self.crop)
+        self._add_keyed_menuitem(
+            view_video,
+            "Maintain custom crop",
+            partial(self.toggle, "maintain_custom_crop"),
+            None,
+            checkable=True,
+            checked=self.maintain_custom_crop,
+        )
         self._add_keyed_menuitem(
             view_video,
             "Flip frame left-right",
