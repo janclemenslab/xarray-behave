@@ -49,35 +49,11 @@ except Exception as e:
     )
 
 from .formbuilder import YamlDialog
+from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
+
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir: str = xarray_behave.__path__[0]
-
-
-class ChkBxFileDialog(QtWidgets.QFileDialog):
-    def __init__(self, caption: str = "", checkbox_titles: List[str] = [""], filter: str = "*", directory: str = ""):
-        super().__init__(caption=caption, filter=filter, directory=directory)
-        self.setSupportedSchemes(["file"])
-        self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog)
-        self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
-        self.selectNameFilter(filter)
-        self.selectFile(directory)
-        self.checkboxes = []
-        self.checkbox_titles = checkbox_titles
-
-        for title in self.checkbox_titles:
-            self.checkboxes.append(QtWidgets.QCheckBox(title))
-            self.layout().addWidget(self.checkboxes[-1])
-
-    def checked(self, name) -> bool:
-        cnt = self.checkbox_titles.index(name)
-        return self.checkboxes[cnt].checkState() == QtCore.Qt.CheckState.Checked
-
-    def get_checked_state(self) -> Dict[str, bool]:
-        states = {}
-        for cnt, title in enumerate(self.checkbox_titles):
-            states[title] = self.checkboxes[cnt].checkState() == QtCore.Qt.CheckState.Checked
-        return states
 
 
 class DataSource:
@@ -206,9 +182,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # TODO: Add explanatory text to ChkBxFileDialog
         dialog = ChkBxFileDialog(
             caption="Save annotations to",
-            checkbox_titles=["Save definitions to separate file", "Preserve empty"],
+            checkbox_titles=["Save definitions to separate file", "Preserve empty", "Save channel information"],
             directory=savefilename,
         )
+        dialog.set_checked("Save channel information", True)
+
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
             savefilename = dialog.selectedUrls()[0].toLocalFile()
         else:
@@ -216,7 +194,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if len(savefilename):
             logging.info(f"   Saving annotations to {savefilename}.")
-            self.export_to_csv(savefilename, preserve_empty=dialog.checked("Preserve empty"))
+            self.export_to_csv(
+                savefilename,
+                preserve_empty=dialog.checked("Preserve empty"),
+                with_channels=dialog.checked("Save channel information"),
+            )
             logging.info("Done.")
 
         if dialog.checked("Save definitions to separate file"):
@@ -230,6 +212,7 @@ class MainWindow(QtWidgets.QMainWindow):
         which_events: Optional[List[str]] = None,
         match_to_samples: bool = False,
         preserve_empty: bool = True,
+        with_channels: bool = True,
         qt_keycode=None,
     ):
         """[summary]
@@ -244,6 +227,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                               Only relevant for xb.datasets with timestamp info.
                                               Defaults to False.
             preserve_empty (bool, optional): Preserve song types without annotations. Defaults to True.
+            with_channels (bool, optional): Add channels column to file. Defaults to True.
             qt_keycode ([type], optional): [description]. Defaults to None.
         """
         if which_events is None:
@@ -263,7 +247,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     event_times[name] = times_correct
                 event_times[name] = event_times.filter_range(name, start_seconds, end_seconds) - start_seconds
 
-        df = event_times.to_df(preserve_empty=preserve_empty)
+        df = event_times.to_df(preserve_empty=preserve_empty, with_channels=with_channels)
         df = df.sort_values(by="start_seconds", ascending=True, ignore_index=True)
         os.makedirs(os.path.dirname(savefilename), exist_ok=True)
         df.to_csv(savefilename, index=False)
@@ -1274,33 +1258,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 logging.info("Saving aborted.")
 
 
-class ZarrOverwriteWarning(QtWidgets.QMessageBox):
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self.setIcon(QtWidgets.QMessageBox.Warning)
-        self.setText("Attempting to overwrite existing zarr file.")
-        self.setInformativeText(
-            "This can corrupt the file and lead to data loss. \
-                                 ABORT unless you know what you're doing\
-                                 or save to a file with a different name."
-        )
-        self.setStandardButtons(QtWidgets.QMessageBox.Ignore | QtWidgets.QMessageBox.Abort)
-        self.setDefaultButton(QtWidgets.QMessageBox.Abort)
-        self.setEscapeButton(QtWidgets.QMessageBox.Abort)
-
-
-class NoEventsRegisteredWarning(QtWidgets.QMessageBox):
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self.setIcon(QtWidgets.QMessageBox.Warning)
-        self.setText("No song types added")
-        self.setInformativeText("To annotate song, you first need to add song types.")
-        self.setStandardButtons(QtWidgets.QMessageBox.Ignore)
-        self.button = self.addButton(self.tr("Add song types"), QtWidgets.QMessageBox.ActionRole)
-        self.setDefaultButton(QtWidgets.QMessageBox.Ignore)
-        self.setEscapeButton(QtWidgets.QMessageBox.Ignore)
-
-
 class PSV(MainWindow):
     MAX_AUDIO_AMP = 3.0
 
@@ -2034,7 +1991,6 @@ class PSV(MainWindow):
                 indexes = peakutils.indexes(
                     self.envelope, thres=self.slice_view.threshold, min_dist=self.thres_min_dist * self.fs_song, thres_abs=True
                 )
-
                 # add events to current song type
                 for t in self.x[indexes]:
                     self.event_times.add_time(self.current_event_name, t)
@@ -2470,13 +2426,22 @@ class PSV(MainWindow):
                     else:
                         self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
                         self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-                        self.event_times.add_time(self.current_event_name, self.sinet0, mouseT)
-                        logging.info(f"  Added {self.current_event_name} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.")
+                        self.event_times.add_time(
+                            self.current_event_name,
+                            start_seconds=self.sinet0,
+                            stop_seconds=mouseT,
+                            channel=self.current_channel_index,
+                        )
+                        logging.info(
+                            f"  Added {self.current_event_name} on channel {self.current_channel_index} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds."
+                        )
                         self.sinet0 = None
                 if self.event_times.categories[self.current_event_name] == "event":
                     self.sinet0 = None
-                    self.event_times.add_time(self.current_event_name, mouseT)
-                    logging.info(f"  Added {self.current_event_name} at t={mouseT:1.4f} seconds.")
+                    self.event_times.add_time(self.current_event_name, start_seconds=mouseT, channel=self.current_channel_index)
+                    logging.info(
+                        f"  Added {self.current_event_name} on channel {self.current_channel_index} at t={mouseT:1.4f} seconds."
+                    )
                 self.update_xy()
             else:
                 self.sinet0 = None

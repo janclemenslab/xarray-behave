@@ -15,6 +15,108 @@ main:
   default: 0.020
   decimals: 4
 
+# - name: threshold_mode
+#   label: Threshold mode
+#   type: stacked
+#   default: "Amplitude threshold"
+#   options: "Amplitude threshold,Amplitude threshold and frequency band,Amplitude threshold and frequency lines"
+
+#   "Amplitude threshold":
+#   - type: text
+#     text: 'Simple amplitude threshold on the RMS envelope. The smoothing window determines the minimal time scale on which events can be detected.'
+#   - name: thres_env_std
+#     label: Smoothing window for envelope (seconds)
+#     type: double
+#     default_disabled: True
+#     range: 0.0,1.0
+#     default: 0.010
+#     decimals: 4
+
+#   - name: thres_min_dist
+#     label: Minimal distance between events (seconds)
+#     type: double
+#     range: 0.0,100.0
+#     default: 0.020
+#     decimals: 4
+
+#   "Amplitude threshold and frequency band":
+#   - name: thres_env_std
+#     label: Smoothing window for envelope (seconds)
+#     type: double
+#     default_disabled: True
+#     range: 0.0,1.0
+#     default: 0.010
+#     decimals: 4
+
+#   - name: thres_min_dist
+#     label: Minimal distance between events (seconds)
+#     type: double
+#     range: 0.0,100.0
+#     default: 0.020
+#     decimals: 4
+
+#   - name: lower_freq_hz
+#     label: lower_freq (Hz)
+#     type: double
+#     default_disabled: True
+#     range: 0.0,1.0
+#     default: 0.010
+#     decimals: 4
+
+#   - name: upper_freq_hz
+#     label: upper_freq (Hz)
+#     type: double
+#     range: 0.0,100.0
+#     default: 0.020
+#     decimals: 4
+
+#   "Amplitude threshold and frequency lines":
+#   - type: text
+#     text: 'Modified from songexplorer'
+
+#   - name: thres_env_std
+#     label: Smoothing window for envelope (seconds)
+#     type: double
+#     default_disabled: True
+#     range: 0.0,1.0
+#     default: 0.010
+#     decimals: 4
+
+#   - name: thres_min_dist
+#     label: Minimal distance between events (seconds)
+#     type: double
+#     range: 0.0,100.0
+#     default: 0.020
+#     decimals: 4
+
+#   - name: lower_freq_hz
+#     label: lower_freq (Hz)
+#     type: double
+#     default_disabled: True
+#     range: 0.0,1.0
+#     default: 0.010
+#     decimals: 4
+
+#   - name: upper_freq_hz
+#     label: upper_freq (Hz)
+#     type: double
+#     range: 0.0,100.0
+#     default: 0.020
+#     decimals: 4
+
+
+    # time_sigma_signal: float = 9,
+    # time_sigma_noise: float = 4,
+    # time_smooth_ms: float = 6.4,
+    # frequency_n: float = 25.6,
+    # frequency_nw: int = 4,
+    # frequency_p_signal: float = 0.1,
+    # frequency_p_noise: float = 1.0,
+    # frequency_range_lo: float = None,
+    # frequency_range_hi: float = None,
+    # frequency_smooth_ms: float = 25.6,
+    # time_sigma_robust: bool = True,
+
 - name: set
   label: Set parameters for envelope computation
   type: button

@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 from collections import UserDict
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Union
 
 
 class Events(UserDict):
@@ -34,6 +34,9 @@ class Events(UserDict):
                 val = val[:, np.newaxis]
             if val.shape[1] == 1:
                 val = np.concatenate((val, val), axis=1)
+            if val.shape[1] == 2:
+                channels = np.full((val.shape[0], 1), fill_value=-1)
+                val = np.concatenate((val, channels), axis=1)
 
             self.data[key] = val
         self.categories = self._infer_categories()
@@ -59,8 +62,17 @@ class Events(UserDict):
     def from_df(cls, df: pd.DataFrame, possible_event_names: Optional[List[str]] = None):
         if possible_event_names is None:
             possible_event_names = []
+        if "channel" in df:
+            channels = list(df["channel"])
+        else:
+            channels = None
+
         return cls.from_lists(
-            df.name.values, df.start_seconds.values.astype(float), df.stop_seconds.values.astype(float), possible_event_names
+            df.name.values,
+            df.start_seconds.values.astype(float),
+            df.stop_seconds.values.astype(float),
+            possible_event_names,
+            channels=channels,
         )
 
     @classmethod
@@ -70,6 +82,7 @@ class Events(UserDict):
         start_seconds: List[float],
         stop_seconds: List[float],
         possible_event_names: Optional[List[str]] = None,
+        channels: Optional[List[int]] = None,
     ):
         if possible_event_names is None:
             possible_event_names = []
@@ -77,8 +90,11 @@ class Events(UserDict):
         unique_names.extend(possible_event_names)
         dct = {name: [] for name in unique_names}
 
-        for name, start_second, stop_second in zip(names, start_seconds, stop_seconds):
-            dct[name].append([start_second, stop_second])
+        if channels is None:
+            channels = np.full((len(start_seconds),), fill_value=-1)
+
+        for name, start_second, stop_second, channel in zip(names, start_seconds, stop_seconds, channels):
+            dct[name].append([start_second, stop_second, channel])
 
         return cls(dct)
 
@@ -86,6 +102,11 @@ class Events(UserDict):
     def from_dataset(cls, ds: xr.Dataset):
         start_seconds = np.array(ds.event_times.sel(event_time="start_seconds").data)
         stop_seconds = np.array(ds.event_times.sel(event_time="stop_seconds").data)
+        if "channels" in ds.event_times:
+            channels = np.array(ds.event_times.sel(event_time="channels").data)
+        else:
+            channels = None
+
         names = np.array(ds.event_names.data)
         if "possible_event_names" in ds.attrs:
             possible_event_names = ds.attrs["possible_event_names"]
@@ -94,7 +115,7 @@ class Events(UserDict):
         else:
             possible_event_names = []
 
-        out = cls.from_lists(names, start_seconds, stop_seconds, possible_event_names)
+        out = cls.from_lists(names, start_seconds, stop_seconds, possible_event_names, channels)
         if "event_categories" in ds:
             cats = {str(cat.event_types.data): str(cat.event_categories.data) for cat in ds.event_categories}
             out = cls(out, categories=cats)
@@ -105,16 +126,24 @@ class Events(UserDict):
         """
         Args:
             dct (Dict[str, np.ndarray]): keys are event types, values is 2D array with
-                                         two columns containing start and stop seconds.
+                                         either two columns containing start and stop seconds
+                                         or three columns with start, stop, and channel.
         """
         names = []
         start_seconds = []
         stop_seconds = []
+        if dct.values()[0].shape[1] > 2:
+            channels = []
+        else:
+            channels = None
+
         for k, v in dct.items():
             names.extend([k] * v.shape[0])
             start_seconds.extend(v[:, 0])
             stop_seconds.extend(v[:, 1])
-        out = cls.from_lists(names, start_seconds, stop_seconds)
+            if channels is not None:
+                channels.extend(v[:, 2])
+        out = cls.from_lists(names, start_seconds, stop_seconds, channels=channels)
         return out
 
     def update(self, new_dict: Dict):
@@ -128,16 +157,23 @@ class Events(UserDict):
         if hasattr(self, "categories") and hasattr(new_dict, "categories"):
             self.categories.update(new_dict.categories)
 
-    def _init_df(self):
-        return pd.DataFrame(columns=["name", "start_seconds", "stop_seconds"])
+    def _init_df(self, with_channel: bool = True):
+        columns = ["name", "start_seconds", "stop_seconds"]
+        if with_channel:
+            columns.append("channel")
+        return pd.DataFrame(columns=columns)
 
-    def _append_row(self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None):
+    def _append_row(
+        self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None, channel: int = -1
+    ):
         if stop_seconds is None:
             stop_seconds = start_seconds
-        new_row = pd.DataFrame(np.array([name, start_seconds, stop_seconds])[np.newaxis, :], columns=df.columns)
+
+        data = [name, start_seconds, stop_seconds, channel]
+        new_row = pd.DataFrame(np.array(data)[np.newaxis, :], columns=df.columns)
         return pd.concat((df, new_row), ignore_index=True)
 
-    def to_df(self, preserve_empty: bool = True):
+    def to_df(self, preserve_empty: bool = True, with_channels: bool = True):
         """Convert to pandas.DataFeame
 
         Args:
@@ -149,14 +185,19 @@ class Events(UserDict):
                 the name will be a segment,
                 if only the start is np.nan (the stop does not matter), the name will be an event
                 Defaults to True.
+            with_channels (bool, optional):
+                Will add channel information as 4th column to df.
+                Defaults to True.
 
         Returns:
-            pandas.DataFrame: with columns name, start_seconds, stop_seconds, one row per event.
+            pandas.DataFrame: with columns name, start_seconds, stop_seconds, channels (if with_channels). One row per event.
         """
         df = self._init_df()
         for name in self.names:
-            for start_second, stop_second in zip(self.start_seconds(name), self.stop_seconds(name)):
-                df = self._append_row(df, name, start_second, stop_second)
+            for start_second, stop_second, channel in zip(
+                self.start_seconds(name), self.stop_seconds(name), self.channels(name)
+            ):
+                df = self._append_row(df, name, start_second, stop_second, channel)
         if preserve_empty:  # ensure we keep events without annotations
             for name, cat in zip(self.names, self.categories.values()):
                 if name not in df.name.values:
@@ -167,6 +208,8 @@ class Events(UserDict):
         # make sure start and stop seconds are numeric
         df["start_seconds"] = pd.to_numeric(df["start_seconds"], errors="coerce")
         df["stop_seconds"] = pd.to_numeric(df["stop_seconds"], errors="coerce")
+        if not with_channels:
+            del df["channel"]
         return df
 
     def to_lists(self, preserve_empty: bool = True):
@@ -189,17 +232,19 @@ class Events(UserDict):
         names = df.name.values
         start_seconds = df.start_seconds.values.astype(float)
         stop_seconds = df.stop_seconds.values.astype(float)
-        return names, start_seconds, stop_seconds
+        channels = df.channel.values.astype(float)
+        return names, start_seconds, stop_seconds, channels
 
     def to_dataset(self):
-        names, start_seconds, stop_seconds = self.to_lists()
+        names, start_seconds, stop_seconds, channels = self.to_lists()
 
         da_names = xr.DataArray(name="event_names", data=np.array(names, dtype="U128"), dims=["index"])
+        # da_channels = xr.DataArray(name="event_channels", data=np.array(names, dtype="U128"), dims=["index"])
         da_times = xr.DataArray(
             name="event_times",
-            data=np.array([start_seconds, stop_seconds]).T,
+            data=np.array([start_seconds, stop_seconds, channels]).T,
             dims=["index", "event_time"],
-            coords={"event_time": ["start_seconds", "stop_seconds"]},
+            coords={"event_time": ["start_seconds", "stop_seconds", "channels"]},
         )
 
         ds = xr.Dataset({da.name: da for da in [da_names, da_times]})
@@ -228,7 +273,7 @@ class Events(UserDict):
             sort_after_append (bool, optional): Sort times by start_seconds. Defaults to False.
         """
         if times is None:
-            times = np.zeros((0, 2))
+            times = np.zeros((0, 3))
 
         if name not in self or (name in self and overwrite):
             self.update({name: times})
@@ -348,6 +393,7 @@ class Events(UserDict):
         stop_seconds: float = None,
         add_new_name: bool = True,
         category: Optional[str] = None,
+        channel: int = -1,
     ):
         """Add a new segment/event.
 
@@ -358,6 +404,7 @@ class Events(UserDict):
                                             Defaults to None (use start_seconds).
             add_new_name (bool, optional): Add new song type if name does not exist yet. Defaults to True.
             category (str, optional): Manually specify category here.
+            channel (int, optional): Index into channel.
         """
         if stop_seconds is None:
             stop_seconds = start_seconds
@@ -367,9 +414,12 @@ class Events(UserDict):
                 category = "event" if stop_seconds == start_seconds else "segment"
             self.add_name(name, category=category)
 
-        self[name] = np.insert(self[name], len(self[name]), sorted([start_seconds, stop_seconds]), axis=0)
+        data = sorted([start_seconds, stop_seconds])  # sort to make sure start is before stop
+        data.append(channel)
 
-    def move_time(self, name: str, old_time: float, new_time: float):
+        self[name] = np.insert(self[name], len(self[name]), data, axis=0)  # why not use append?
+
+    def move_time(self, name: str, old_time: Union[float, Tuple], new_time: Union[float, Tuple]):
         """[summary]
 
         Args:
@@ -377,7 +427,13 @@ class Events(UserDict):
             old_time ([type]): [description]
             new_time ([type]): [description]
         """
-        self[name][self[name] == old_time] = new_time
+        if isinstance(old_time, float):
+            old_time = [old_time, old_time]
+        if isinstance(new_time, float):
+            new_time = [new_time, new_time]
+
+        hits = np.all(self[name][:, : len(old_time)] == old_time, axis=1)
+        self[name][hits, : len(new_time)] = new_time
 
     def delete_time(
         self,
@@ -568,6 +624,9 @@ class Events(UserDict):
 
     def stop_seconds(self, key: str):
         return self[key][:, 1]
+
+    def channels(self, key: str):
+        return self[key][:, 2]
 
     def duration_seconds(self, key: str):
         return self[key][:, 1] - self[key][:, 0]
