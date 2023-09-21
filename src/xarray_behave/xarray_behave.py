@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import List, Optional, Union, Dict, Any
 from . import loaders as ld, metrics as mt, event_utils, annot, io
 
+logger = logging.getLogger(__name__)
+
 
 def assemble(
     datename: str = "",
@@ -136,7 +138,7 @@ def assemble(
     elif os.path.exists(filepath_daq) and not os.path.exists(filepath_timestamps):  # Audio (+ annotations) only
         # if there is no video and no timestamps - generate fake from samplerate and number of samples
         # THIS SHOULD BE THE FIRST THING WE DO:
-        logging.info("Loading audio data:")
+        logger.info("Loading audio data:")
         if not filepath_daq_is_custom:
             basename = os.path.join(root, dat_path, datename, datename)
         else:
@@ -154,7 +156,7 @@ def assemble(
                 lazy=lazy_load_song,
                 audio_dataset=audio_dataset,
             )
-            logging.info(f"   {audio_loader.path} loaded using {audio_loader.NAME}.")
+            logger.info(f"   {audio_loader.path} loaded using {audio_loader.NAME}.")
             if sampling_rate is None:
                 sampling_rate = audio_sampling_rate
             last_sample_number = len(song_raw)
@@ -181,14 +183,14 @@ def assemble(
         resample_video_data = False
     fps = 1 / np.median(np.diff(ss.frames2times.y))
     if not resample_video_data:
-        logging.info(f"  setting targetsamplingrate to avg. fps ({fps}).")
+        logger.info(f"  setting targetsamplingrate to avg. fps ({fps}).")
         target_sampling_rate = fps
 
     # LOAD TRACKS
     with_tracks = False
     with_fixed_tracks = False
     if include_tracks:
-        logging.info("Loading tracks:")
+        logger.info("Loading tracks:")
         if filepath_tracks is not None:
             tracks_loader = io.get_loader(kind="tracks", basename=filepath_tracks, basename_is_full_name=True)
         else:
@@ -199,20 +201,20 @@ def assemble(
                 xr_tracks = add_time(xr_tracks, ss, dim="frame_number")
 
                 with_fixed_tracks = tracks_loader.path.endswith("_tracks_fixed.h5")
-                logging.info(f"  {tracks_loader.path} loaded.")
+                logger.info(f"  {tracks_loader.path} loaded.")
                 with_tracks = True
             except Exception as e:
-                logging.info(f"  Loading {tracks_loader.path} failed.")
-                logging.exception(e)
+                logger.info(f"  Loading {tracks_loader.path} failed.")
+                logger.exception(e)
         else:
-            logging.info("   Found no tracks.")
-        logging.info("Done.")
+            logger.info("   Found no tracks.")
+        logger.info("Done.")
 
     # LOAD POSES
     with_poses = False
     poses_from = None
     if include_poses:
-        logging.info("Loading poses:")
+        logger.info("Loading poses:")
         if filepath_poses is not None:
             poses_loader = io.get_loader(kind="poses", basename=filepath_poses, basename_is_full_name=True)
         else:
@@ -225,51 +227,51 @@ def assemble(
 
                 with_poses = True
                 poses_from = poses_loader.NAME
-                logging.info(f"   {poses_loader.path} loaded.")
+                logger.info(f"   {poses_loader.path} loaded.")
             except Exception as e:
-                logging.info(f"   Loading {poses_loader.path} failed.")
-                logging.exception(e)
+                logger.info(f"   Loading {poses_loader.path} failed.")
+                logger.exception(e)
         else:
-            logging.info("   Found no poses.")
-        logging.info("Done.")
+            logger.info("   Found no poses.")
+        logger.info("Done.")
 
     # LOAD BALLTRACKER
     with_balltracker = False
     if include_balltracker:
-        logging.info("Loading ball tracker:")
+        logger.info("Loading ball tracker:")
         balltracker_loader = io.get_loader(kind="balltracks", basename=os.path.join(root, res_path, datename, datename))
         if balltracker_loader:
             try:
                 xr_balltracks = balltracker_loader.make(balltracker_loader.path)
                 xr_balltracks = add_time(xr_balltracks, ss_ball, dim="frame_number_ball", suffix="_ball")
 
-                logging.info(f"   {balltracker_loader.path} loaded.")
+                logger.info(f"   {balltracker_loader.path} loaded.")
                 with_balltracker = True
             except Exception as e:
-                logging.info(f"   Loading {balltracker_loader.path} failed.")
-                logging.exception(e)
+                logger.info(f"   Loading {balltracker_loader.path} failed.")
+                logger.exception(e)
         else:
-            logging.info("   Found no balltracker data.")
-        logging.info("Done.")
+            logger.info("   Found no balltracker data.")
+        logger.info("Done.")
 
     # LOAD MOVIEPARAMS
     with_movieparams = False
     if include_movieparams:
-        logging.info("Loading movie params:")
+        logger.info("Loading movie params:")
         movieparams_loader = io.get_loader(kind="movieparams", basename=os.path.join(root, dat_path, datename, datename))
         if movieparams_loader:
             try:
                 xr_movieparams = movieparams_loader.make(movieparams_loader.path)
                 xr_movieparams = add_time(xr_movieparams, ss_movie, dim="frame_number_movie", suffix="_movie")
 
-                logging.info(f"   {movieparams_loader.path} loaded.")
+                logger.info(f"   {movieparams_loader.path} loaded.")
                 with_movieparams = True
             except Exception as e:
-                logging.info(f"   Loading {movieparams_loader.path} failed.")
-                logging.exception(e)
+                logger.info(f"   Loading {movieparams_loader.path} failed.")
+                logger.exception(e)
         else:
-            logging.info("   Found no movie params data.")
-        logging.info("Done.")
+            logger.info("   Found no movie params data.")
+        logger.info("Done.")
 
     # Init empty and event data
     auto_event_seconds: Dict[str, Any] = {}
@@ -281,19 +283,19 @@ def assemble(
         event_categories = []
 
     if len(event_names) != len(event_categories):
-        logging.warning(
+        logger.warning(
             f"event_names and event_categories need to have same length - have {len(event_names)} and {len(event_categories)}."
         )
         event_categories = []
 
     if event_names and not event_categories:
-        logging.info("No event_categories specified - defaulting to segments")
+        logger.info("No event_categories specified - defaulting to segments")
         event_categories = ["segment"] * len(event_names)
     manual_event_seconds: Dict[str, Any] = {name: np.zeros((0,)) for name in event_names}
     manual_event_categories: Dict[str, Any] = {nam: cat for nam, cat in zip(event_names, event_categories)}
 
     if include_song:
-        logging.info("Loading automatic annotations:")
+        logger.info("Loading automatic annotations:")
         custom_filepath_annotations = filepath_annotations is not None
         if not custom_filepath_annotations:
             filepath_annotations = os.path.join(root, res_path, datename, datename)
@@ -313,16 +315,16 @@ def assemble(
                     this_event_seconds, this_event_categories = al.load()
                     auto_event_seconds.update(this_event_seconds)
                     auto_event_categories.update(this_event_categories)
-                    logging.info(f"   {al.path} loaded.")
+                    logger.info(f"   {al.path} loaded.")
                 except Exception as e:
-                    logging.info(f"   Loading {al.path} failed.")
-                    logging.exception(e)
+                    logger.info(f"   Loading {al.path} failed.")
+                    logger.exception(e)
         else:
-            logging.info(f"   Found no automatic annotations.")
-        logging.info("Done.")
+            logger.info(f"   Found no automatic annotations.")
+        logger.info("Done.")
 
         # load MANUAL SONG ANNOTATIONS
-        logging.info("Loading manual annotations:")
+        logger.info("Loading manual annotations:")
         manual_annot_loader = io.get_loader(
             kind="annotations_manual", basename=filepath_annotations, basename_is_full_name=custom_filepath_annotations
         )
@@ -331,17 +333,17 @@ def assemble(
                 manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(manual_annot_loader.path)
                 manual_event_seconds.update(manual_event_seconds_loaded)
                 manual_event_categories.update(manual_event_categories_loaded)
-                logging.info(f"   {manual_annot_loader.path} loaded.")
+                logger.info(f"   {manual_annot_loader.path} loaded.")
             except Exception as e:
-                logging.info(f"   Loading {manual_annot_loader.path} failed.")
-                logging.exception(e)
+                logger.info(f"   Loading {manual_annot_loader.path} failed.")
+                logger.exception(e)
 
         else:
-            logging.info("   Found no manual automatic annotations.")
-        logging.info("Done.")
+            logger.info("   Found no manual automatic annotations.")
+        logger.info("Done.")
 
         # load SONG DEFINITIONS
-        logging.info("Loading song definitions:")
+        logger.info("Loading song definitions:")
         custom_filepath_definitions = filepath_definitions is not None
         if not custom_filepath_definitions:
             filepath_definitions = os.path.join(
@@ -359,18 +361,18 @@ def assemble(
                     {k: v for k, v in manual_event_seconds_loaded.items() if k not in manual_event_seconds}
                 )
                 manual_event_categories.update(manual_event_categories_loaded)
-                logging.info(f"   {definitions_loader.path} loaded.")
+                logger.info(f"   {definitions_loader.path} loaded.")
             except Exception as e:
-                logging.info(f"   Loading {definitions_loader.path} failed.")
-                logging.exception(e)
+                logger.info(f"   Loading {definitions_loader.path} failed.")
+                logger.exception(e)
 
         else:
-            logging.info("   Found no song definitions.")
-        logging.info("Done.")
+            logger.info("   Found no song definitions.")
+        logger.info("Done.")
 
         # load RAW song traces
         if song_raw is None:
-            logging.info("Loading audio data:")
+            logger.info("Loading audio data:")
             if not filepath_daq_is_custom:
                 basename = os.path.join(root, dat_path, datename, datename)
             else:
@@ -385,11 +387,11 @@ def assemble(
                     song_raw, non_song_raw, samplerate = audio_loader.load(
                         audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song
                     )
-                    logging.info(f"   {audio_loader.path} with shape {song_raw.shape} loaded using {audio_loader.NAME}.")
+                    logger.info(f"   {audio_loader.path} with shape {song_raw.shape} loaded using {audio_loader.NAME}.")
                 except Exception as e:
-                    logging.info(f"   Loading {audio_loader.path} using {audio_loader.NAME} failed.")
-                    logging.exception(e)
-            logging.info("Done.")
+                    logger.info(f"   Loading {audio_loader.path} using {audio_loader.NAME} failed.")
+                    logger.exception(e)
+            logger.info("Done.")
 
         if song_raw is None:
             # song_raw = scipy.sparse.csr_array((int(sample_numbers[-1]), 1), dtype=bool)  # mem efficient but does not work with xr atm
@@ -409,12 +411,12 @@ def assemble(
     if not with_tracks:
         first_tracked_frame = int(ss.frame(0))
         last_tracked_frame = int(ss.frame(last_sample_number))
-        logging.info(
+        logger.info(
             f"No tracks - setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame})."
         )
     else:
         first_tracked_frame, last_tracked_frame = int(xr_tracks.frame_number[0]), int(xr_tracks.frame_number[-1])
-        logging.info(f"Tracked frame {first_tracked_frame} to {last_tracked_frame}.")
+        logger.info(f"Tracked frame {first_tracked_frame} to {last_tracked_frame}.")
 
     # construct desired sample grid for data
     step = sampling_rate / target_sampling_rate
@@ -433,7 +435,7 @@ def assemble(
 
     # PREPARE DataArrays
     dataset_data = dict()
-    logging.info("Making all datasets:")
+    logger.info("Making all datasets:")
     if song_raw is not None:
         if 0 not in song_raw.shape:  # xr fails saving zarr files with 0-size along any dim
             song_raw = xr.DataArray(
@@ -468,7 +470,7 @@ def assemble(
             )
             dataset_data["non_song_raw"] = non_song_raw
 
-    logging.info("   Segmentations")
+    logger.info("   Segmentations")
     if make_song_events:
         song_events = np.zeros((len(time), len(event_seconds)), dtype=np.int16)
         song_events = xr.DataArray(
@@ -498,15 +500,15 @@ def assemble(
         dataset_data["event_names"] = ds_eventtimes.event_names
         dataset_data["event_names"].attrs["possible_event_names"] = ds_eventtimes.attrs["possible_event_names"]
     except Exception as e:
-        logging.error("      Failed to generate event_times data arrays:")
-        logging.exception(e)
+        logger.error("      Failed to generate event_times data arrays:")
+        logger.exception(e)
 
     # BODY POSITION
     if pixel_size_mm is None:
         pixel_size_mm = np.nan
 
     if with_tracks:
-        logging.info("   Tracking")
+        logger.info("   Tracking")
         xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time, target_time=time, extrapolate=True)
         xr_tracks.attrs.update(
             {
@@ -523,7 +525,7 @@ def assemble(
 
     # POSES
     if with_poses:
-        logging.info("   Poses")
+        logger.info("   Poses")
         xr_poses = align_time(xr_poses, ss, target_samples, ref_time=ref_time, target_time=time)
         xr_poses.attrs.update(
             {
@@ -556,7 +558,7 @@ def assemble(
 
     # BALLTRACKS
     if with_balltracker:
-        logging.info("   Balltracker")
+        logger.info("   Balltracker")
         xr_balltracks = align_time(
             xr_balltracks, ss_ball, target_samples, target_time=time, dim="frame_number_ball", suffix="_ball", ref_time=ref_time
         )
@@ -572,7 +574,7 @@ def assemble(
 
     # MOVIEPARAMS
     if with_movieparams:
-        logging.info("   Movieparams")
+        logger.info("   Movieparams")
         xr_movieparams = align_time(
             xr_movieparams,
             ss_movie,
@@ -594,7 +596,7 @@ def assemble(
         dataset_data["movieparams"] = xr_movieparams
 
     # MAKE THE DATASET
-    logging.info("   Assembling")
+    logger.info("   Assembling")
 
     dataset = xr.Dataset(dataset_data, attrs={})
     if "time" not in dataset:
@@ -621,16 +623,16 @@ def assemble(
 
     filepath_swap = Path(root, res_path, datename, f"{datename}_idswaps.txt")
     if fix_fly_indices and os.path.exists(filepath_swap):
-        logging.info(f"   Applying fly identity fixes from {filepath_swap}.")
+        logger.info(f"   Applying fly identity fixes from {filepath_swap}.")
         try:
             indices, flies1, flies2 = ld.load_swap_indices(filepath_swap)
             dataset = ld.swap_flies(dataset, indices, flies1=flies1, flies2=flies2)
             dataset.attrs["swap_events"] = [[ii, f1, f2] for ii, f1, f2 in zip(indices, flies1, flies2)]
-            logging.info(f"  Fixed fly identities using info from {filepath_swap}.")
+            logger.info(f"  Fixed fly identities using info from {filepath_swap}.")
         except (FileNotFoundError, OSError) as e:
-            logging.debug(f"      Could not load fly identities using info from {filepath_swap}.")
-            logging.debug(e)
-    logging.info("Done.")
+            logger.debug(f"      Could not load fly identities using info from {filepath_swap}.")
+            logger.debug(e)
+    logger.info("Done.")
     return dataset
 
 
@@ -781,7 +783,7 @@ def assemble_metrics(
         sampling_rate = dataset.pose_positions.attrs["sampling_rate_Hz"]
         frame_rate = dataset.pose_positions.attrs["video_fps"]
     elif "body_positions" in dataset:
-        logging.warning(
+        logger.warning(
             "No pose tracking data in dataset. Trying standard tracking data to compute metrics. Metrics may be wrong/incomplete."
         )
         thoraces = dataset.body_positions.loc[:, :, "center", :].values.astype(np.float32)
@@ -1035,5 +1037,5 @@ def load(savepath, lazy: bool = False, normalize_strings: bool = True, use_temp:
 
     if normalize_strings:
         dataset = _normalize_strings(dataset)
-    logging.info(dataset)
+    logger.info(dataset)
     return dataset

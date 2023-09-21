@@ -20,6 +20,9 @@ from .. import io
 from typing import Optional, Sequence
 
 
+logger = logging.getLogger(__name__)
+
+
 def split_song_and_nonsong(data, song_channels=None, return_nonsong_channels=False):
     song = data
     nonsong = None
@@ -82,6 +85,11 @@ class Ethodrome(io.BaseProvider):
             if return_nonsong_channels:
                 non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
                 non_song = da[:, non_song_channels]
+            if "rate" in f.attrs:
+                samplerate = f.attrs["rate"]
+            else:
+                logger.info("   No sampling rate information in daq.h5 file - setting samplerate to default 10_000Hz.")
+                samplerate = 10_000
         else:
             with h5py.File(filename, "r") as f:
                 nb_channels = f["samples"].shape[1]
@@ -90,6 +98,12 @@ class Ethodrome(io.BaseProvider):
                 if return_nonsong_channels:
                     non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
                     non_song = f["samples"][:, non_song_channels]
+
+                if "rate" in f.attrs:
+                    samplerate = f.attrs["rate"]
+                else:
+                    logger.info("   No sampling rate information in daq.h5 file - setting samplerate to default 10_000Hz.")
+                    samplerate = 10_000
 
         return song, non_song, samplerate
 
@@ -249,7 +263,7 @@ class MMAPfile(io.BaseProvider):
         trunk = os.path.splitext(os.path.basename(filename))[0]
         tokens = trunk.split("_")
         sampling_rate, nb_samples, nb_channels, dtype = float(tokens[-4]), int(tokens[-3]), int(tokens[-2]), tokens[-1]
-        logging.info(f"{filename} with {nb_samples} samples, {nb_channels} channels, at {sampling_rate} Hz, type {dtype}.")
+        logger.info(f"{filename} with {nb_samples} samples, {nb_channels} channels, at {sampling_rate} Hz, type {dtype}.")
 
         song = np.memmap(filename, mode="r", dtype=dtype, shape=(nb_samples, nb_channels))
         non_song = None
