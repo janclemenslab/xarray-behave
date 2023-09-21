@@ -8,6 +8,9 @@ from typing import Optional
 from .. import io, annot
 
 
+logger = logging.getLogger(__name__)
+
+
 def fill_gaps(sine_pred, gap_dur=100):
     onsets = np.where(np.diff(sine_pred.astype(np.int)) == 1)[0]
     offsets = np.where(np.diff(sine_pred.astype(np.int)) == -1)[0]
@@ -53,7 +56,7 @@ class DAS(io.BaseProvider):
         res = flammkuchen.load(filename)
 
         if "event_indices" in res or "segment_labels" in res:  # load old style format
-            logging.info("   Converting legacy DAS format...")
+            logger.info("   Converting legacy DAS format...")
             res["event_seconds"] = np.zeros((0,))
             res["event_sequence"] = []
             for event_name, event_idx in zip(res["event_names"], res["event_indices"]):
@@ -65,7 +68,7 @@ class DAS(io.BaseProvider):
             res["segment_sequence"] = []
             for segment_name, segment_labels in zip(res["segment_names"], res["segment_labels"]):
                 if "sine" in segment_name:
-                    logging.info(f"   Postprocessing {segment_name}")
+                    logger.info(f"   Postprocessing {segment_name}")
                     segment_labels = fill_gaps(segment_labels, gap_dur=0.02 * res["samplerate_Hz"])
                     segment_labels = remove_short(segment_labels, min_len=0.02 * res["samplerate_Hz"])
 

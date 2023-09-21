@@ -7,6 +7,9 @@ from typing import Optional
 from .. import io, annot, xarray_behave, event_utils
 
 
+logger = logging.getLogger(__name__)
+
+
 @io.register_provider
 class Manual_xb_csv(io.BaseProvider):
     KIND = "annotations_manual"
@@ -17,7 +20,7 @@ class Manual_xb_csv(io.BaseProvider):
         """Load output produced by xb."""
         df = pd.read_csv(filename)
         if not all([item in df.columns for item in ["name", "start_seconds", "stop_seconds"]]):
-            logging.error(
+            logger.error(
                 f"Malformed CSV file {filename} - needs to have these columns: ['name','start_seconds', 'stop_seconds']. Returning empty results"
             )
             event_seconds = annot.Events()  # make empty

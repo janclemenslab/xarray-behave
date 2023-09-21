@@ -10,6 +10,9 @@ import logging
 import xarray as xr
 
 
+logger = logging.getLogger(__name__)
+
+
 class MovieParams:
     def make(self, filename: Optional[str] = None):
         if filename is None:

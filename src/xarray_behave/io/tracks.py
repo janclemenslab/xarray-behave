@@ -11,10 +11,14 @@ import h5py
 import flammkuchen
 import numpy as np
 import pandas as pd
-from .. import io
 from typing import Optional
 import logging
 import xarray as xr
+
+from .. import io
+
+
+logger = logging.getLogger(__name__)
 
 
 class Tracks:
@@ -134,7 +138,7 @@ class CSV_tracks(Tracks, io.BaseProvider):
 
         if filename is None:
             filename = self.path
-        logging.warning("Loading tracks from CSV.")
+        logger.warning("Loading tracks from CSV.")
         df = pd.read_csv(filename, header=[0, 1, 2], index_col=0)
         track_names = df.columns.levels[df.columns.names.index("track")].to_list()
         track_parts = df.columns.levels[df.columns.names.index("part")].to_list()

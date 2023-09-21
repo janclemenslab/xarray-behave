@@ -31,6 +31,8 @@ from .. import xarray_behave as xb, loaders as ld, annot, event_utils
 
 from . import utils, views, table
 
+logger = logging.getLogger(__name__)
+
 try:
     import numba
 
@@ -41,8 +43,8 @@ except ImportError:
 try:
     from . import das
 except Exception as e:
-    logging.exception(e)
-    logging.warning(
+    logger.exception(e)
+    logger.warning(
         "Failed to import the das module.\nIgnore if you do not want to use das.\n"
         "Otherwise follow these instructions to install:\n"
         "https://janclemenslab.org/das/install.html"
@@ -155,10 +157,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self, "Save swaps to", str(savefilename), filter="txt files (*.txt);;all files (*)"
         )
         if len(savefilename):
-            logging.info(f"   Saving list of swap indices to {savefilename}.")
+            logger.info(f"   Saving list of swap indices to {savefilename}.")
             os.makedirs(os.path.dirname(savefilename), exist_ok=True)
             np.savetxt(savefilename, self.swap_events, fmt="%f %d %d", header="index fly1 fly2")
-            logging.info("Done.")
+            logger.info("Done.")
 
     def save_definitions(self, qt_keycode=None):
         savefilename = self._get_filename_from_ds(suffix="_definitions.csv")
@@ -167,11 +169,11 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if len(savefilename):
             # get defs from annot and save them to csv
-            logging.info(f"   Saving definitions to {savefilename}.")
+            logger.info(f"   Saving definitions to {savefilename}.")
             defs = [[key, val] for key, val in annot.Events(self.event_times).categories.items()]
             os.makedirs(os.path.dirname(savefilename), exist_ok=True)
             np.savetxt(savefilename, defs, delimiter=",", fmt="%s")
-            logging.info("Done.")
+            logger.info("Done.")
 
     def save_annotations(self, qt_keycode=None):
         """Save annotations to csv.
@@ -193,13 +195,13 @@ class MainWindow(QtWidgets.QMainWindow):
             savefilename = ""
 
         if len(savefilename):
-            logging.info(f"   Saving annotations to {savefilename}.")
+            logger.info(f"   Saving annotations to {savefilename}.")
             self.export_to_csv(
                 savefilename,
                 preserve_empty=dialog.checked("Preserve empty"),
                 with_channels=dialog.checked("Save channel information"),
             )
-            logging.info("Done.")
+            logger.info("Done.")
 
         if dialog.checked("Save definitions to separate file"):
             self.save_definitions()
@@ -393,22 +395,22 @@ class MainWindow(QtWidgets.QMainWindow):
             start_seconds = form_data["start_seconds"]
             end_seconds = form_data["end_seconds"]
 
-            logging.info("Exporting for DAS:")
+            logger.info("Exporting for DAS:")
             if form_data["file_type"] == "WAV":
-                logging.info(f"   song to WAV: {savefilename_trunk + '.wav'}.")
+                logger.info(f"   song to WAV: {savefilename_trunk + '.wav'}.")
                 self.export_to_wav(savefilename_trunk + ".wav", start_seconds, end_seconds, form_data["scale_audio"])
             elif form_data["file_type"] == "NPZ":
-                logging.info(f"   song to NPZ: {savefilename_trunk + '.npz'}.")
+                logger.info(f"   song to NPZ: {savefilename_trunk + '.npz'}.")
                 self.export_to_npz(savefilename_trunk + ".npz", start_seconds, end_seconds)  # , form_data["scale_audio"])
             elif form_data["file_type"] == "H5":
-                logging.info(f"   song to H5: {savefilename_trunk + '.h5'}.")
+                logger.info(f"   song to H5: {savefilename_trunk + '.h5'}.")
                 self.export_to_h5(savefilename_trunk + ".h5", start_seconds, end_seconds)  # , form_data["scale_audio"])
 
-            logging.info(f"   annotations to CSV: {savefilename_trunk + '.csv'}.")
+            logger.info(f"   annotations to CSV: {savefilename_trunk + '.csv'}.")
             self.export_to_csv(
                 savefilename_trunk + "_annotations.csv", start_seconds, end_seconds, which_events, match_to_samples=True
             )
-            logging.info("Done.")
+            logger.info("Done.")
 
     def das_make(self, qt_keycode=None):
         data_folder = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption="Select data folder")
@@ -460,7 +462,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 to_npy_dir=to_npy_dir,
                 make_csv_annotations=form_data["make_csv_annotations"],
             )
-            logging.info("Done.")
+            logger.info("Done.")
 
     def das_train(self, qt_keycode):
         def _filter_form_data(form_data: Dict[str, Any], is_cli: bool = False) -> Dict[str, Any]:
@@ -513,10 +515,10 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             if len(savefilename):
                 data = dialog.form.get_form_data()
-                logging.info(f"   Saving form fields to {savefilename}.")
+                logger.info(f"   Saving form fields to {savefilename}.")
                 with open(savefilename, "w") as stream:
                     yaml.safe_dump(data, stream)
-                logging.info("Done.")
+                logger.info("Done.")
 
         def make_cli(arg):
             script_ext = "cmd" if os.name == "nt" else "sh"
@@ -536,16 +538,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     f.write(cmd)
 
                 # TODO: dialog to suggest editing the script (change paths, activate conda env, cluster specific stuff)
-                logging.info("Done.")
+                logger.info("Done.")
 
         def load(arg):
             yaml_filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select yaml file")
             if len(yaml_filename):
-                logging.info(f"   Updating form fields with information from {yaml_filename}.")
+                logger.info(f"   Updating form fields with information from {yaml_filename}.")
                 with open(yaml_filename, "r") as stream:
                     data = yaml.safe_load(stream)
                 dialog.form.set_form_data(data)  # update form
-                logging.info("Done.")
+                logger.info("Done.")
 
         data_dir = QtWidgets.QFileDialog.getExistingDirectory(None, caption="Open Data Folder (*.npy)")
         # TODO: check that this is a valid data_dir!
@@ -572,7 +574,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 got_das = True
             except ImportError:
-                logging.exception("Need to install das. Alternatively, make scripts and run training elsewhere.")
+                logger.exception("Need to install das. Alternatively, make scripts and run training elsewhere.")
 
             if got_das:
                 # start in independent process, otherwise GUI will freeze during training
@@ -616,17 +618,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QApplication.processEvents()
 
     def das_predict(self, qt_keycode):
-        logging.info("Predicting song using DAS:")
+        logger.info("Predicting song using DAS:")
 
         if hasattr(self, "ds") and "song_raw" not in self.ds:
-            logging.error("   Missing `song_raw`. skipping.")
+            logger.error("   Missing `song_raw`. skipping.")
 
         try:
             import das.predict
             import das.utils
         except ImportError as e:
-            logging.exception(e)
-            logging.info("   Failed to import das. Install via `pip install das`.")
+            logger.exception(e)
+            logger.info("   Failed to import das. Install via `pip install das`.")
             return
 
         dialog = YamlDialog(yaml_file=package_dir + "/gui/forms/das_predict.yaml", title="Predict labels using DAS")
@@ -636,7 +638,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if len(model_path):
             dialog.form["model_path"] = model_path
         else:
-            logging.warning("No model selected.")
+            logger.warning("No model selected.")
             return
 
         # populate values for postprocessing from params if they exist
@@ -657,7 +659,7 @@ class MainWindow(QtWidgets.QMainWindow):
             form_data = dialog.form.get_form_data()
             model_path = form_data["model_path"]
             if model_path == " ":
-                logging.warning("No model for prediction selected.")
+                logger.warning("No model for prediction selected.")
                 return
             else:
                 model_path = model_path.rsplit("_", 1)[0]  # split off suffix
@@ -674,7 +676,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif form_data["file"] != " ":
                     file_path = form_data["file"]
                 else:
-                    logging.warning("No audio data. Either open a file or select a folder or file in the predict dialog.")
+                    logger.warning("No audio data. Either open a file or select a folder or file in the predict dialog.")
                     return
 
                 das.predict.cli_predict(
@@ -705,7 +707,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 params = das.utils.load_params(model_path)
                 if audio.shape[0] < params["nb_hist"]:
-                    logging.warning(
+                    logger.warning(
                         f"   Aborting. Audio has fewer samples ({audio.shape[0]}) shorter"
                         f"    than network chunk size ({params['nb_hist']})."
                         "    Fix by select longer audio."
@@ -721,14 +723,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 while nb_batches(batch_size) < 10 and batch_size > 1:
                     batch_size -= 1
 
-                logging.info("   Running inference on audio.")
-                logging.info(f"   Model from {model_path}.")
+                logger.info("   Running inference on audio.")
+                logger.info(f"   Model from {model_path}.")
                 params = das.utils.load_params(model_path)
                 fs_model = params["samplerate_x_Hz"]
                 fs_audio = self.ds.song_raw.attrs["sampling_rate_Hz"]
 
                 if form_data["resample_audio"] and fs_audio and fs_audio != fs_model:
-                    logging.info(f"   Resampling. Audio rate is {fs_audio}Hz but model was trained on data with {fs_model}Hz.")
+                    logger.info(f"   Resampling. Audio rate is {fs_audio}Hz but model was trained on data with {fs_model}Hz.")
                     audio = das.utils.resample(audio, fs_audio, fs_model)
 
                 events, segments, _, _ = das.predict.predict(
@@ -747,7 +749,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # Process detected song
                 if not events and not segments:
-                    logging.warning("Found no song.")
+                    logger.warning("Found no song.")
                     return
 
                 suffix = ""
@@ -760,7 +762,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     detected_event_names = np.unique(events["sequence"])
 
                 if len(detected_event_names) > 0 and detected_event_names[0] is not None:
-                    logging.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
+                    logger.info(f"   found {len(events['seconds'])} instances of events '{detected_event_names}'.")
                     event_samples = (np.array(events["seconds"]) * self.fs_song + start_index).astype(np.uintp)
 
                     # make sure all detected events are within bounds
@@ -788,9 +790,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         detected_segment_names = [segments["names"][ii] for ii in detected_segment_names]
 
                 if len(detected_segment_names) > 0:  # and detected_segment_names[0] is not None:
-                    logging.info(
-                        f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'."
-                    )
+                    logger.info(f"   found {len(segments['onsets_seconds'])} instances of segments '{detected_segment_names}'.")
                     onsets_samples = (np.array(segments["onsets_seconds"]) * self.fs_song + start_index).astype(np.uintp)
                     offsets_samples = (np.array(segments["offsets_seconds"]) * self.fs_song + start_index).astype(np.uintp)
 
@@ -815,7 +815,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.nb_eventtypes = len(self.event_times)
                 self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
                 self.update_eventtype_selector()
-        logging.info("Done.")
+        logger.info("Done.")
 
     @classmethod
     def from_file(
@@ -853,7 +853,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             except KeyError:
                                 pass
                 except KeyError:
-                    logging.info(
+                    logger.info(
                         f"{filename} no sample rate info in NPZ file."
                         f"Need to save 'samplerate' variable with the audio data. Defaulting to {samplerate}"
                     )
@@ -919,7 +919,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 form_data = dialog.form.get_form_data()  # why call this twice
 
                 form_data = dialog.form.get_form_data()
-                logging.info(f"Making new dataset from {filename}.")
+                logger.info(f"Making new dataset from {filename}.")
                 # if form_data['target_samplingrate'] is None:
                 #     form_data['target_samplingrate'] = None
 
@@ -995,7 +995,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
-                logging.info(f"Making new dataset from directory {dirname}.")
+                logger.info(f"Making new dataset from directory {dirname}.")
 
                 if form_data["target_samplingrate"] == 0 or form_data["target_samplingrate"] is None:
                     resample_video_data = False
@@ -1075,11 +1075,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         except:
                             video_filename = os.path.join(dirname, datename + ".avi")
                             vr = utils.VideoReaderNP(video_filename)
-                    logging.info(vr)
+                    logger.info(vr)
                 except FileNotFoundError:
-                    logging.info(f'Video "{video_filename}" not found. Continuing without.')
+                    logger.info(f'Video "{video_filename}" not found. Continuing without.')
                 except:
-                    logging.info("Something went wrong when loading the video. Continuing without.")
+                    logger.info("Something went wrong when loading the video. Continuing without.")
 
                 cue_points = []
                 if form_data["load_cues"] == "yes":
@@ -1132,12 +1132,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
-                logging.info(f"Loading {filename}.")
+                logger.info(f"Loading {filename}.")
                 ds = xb.load(filename, lazy=True, use_temp=True)
                 if "song_events" in ds:
                     ds.song_events.load()
                 if not form_data["lazy"]:
-                    logging.info("   Loading data from ds.")
+                    logger.info("   Loading data from ds.")
                     if "song" in ds:
                         ds.song.load()  # non-lazy load song for faster updates
                     if "pose_positions_allo" in ds:
@@ -1156,16 +1156,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         "segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values
                     ]
                     ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
-                logging.info(ds)
+                logger.info(ds)
                 vr = None
                 try:
                     video_filename = ds.attrs["video_filename"]
                     vr = utils.VideoReaderNP(video_filename)
-                    logging.info(vr)
+                    logger.info(vr)
                 except FileNotFoundError:
-                    logging.info(f'Video "{video_filename}" not found. Continuing without.')
+                    logger.info(f'Video "{video_filename}" not found. Continuing without.')
                 except:
-                    logging.info("Something went wrong when loading the video. Continuing without.")
+                    logger.info("Something went wrong when loading the video. Continuing without.")
 
                 # load cues
                 cue_points = []
@@ -1194,13 +1194,13 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 f_high = min(f_high, ds.song_raw.attrs["sampling_rate_Hz"] / 2 - 1)
             sos_bp = ss.butter(5, [f_low, f_high], "bandpass", output="sos", fs=ds.song_raw.attrs["sampling_rate_Hz"])
-            logging.info(f"Filtering `song_raw` between {f_low} and {f_high} Hz.")
+            logger.info(f"Filtering `song_raw` between {f_low} and {f_high} Hz.")
             ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
         return ds
 
     @classmethod
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
-        logging.info("Not implemented yet")
+        logger.info("Not implemented yet")
         pass
 
     @staticmethod
@@ -1211,7 +1211,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             cues = np.loadtxt(fname=filename, delimiter=delimiter)
         except FileNotFoundError:
-            logging.warning(f"{filename} not found.")
+            logger.warning(f"{filename} not found.")
         return cues
 
     def save_dataset(self, qt_keycode=None):
@@ -1235,13 +1235,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if retval == QtWidgets.QMessageBox.Ignore:
                 if "song_events" in self.ds:
-                    logging.info("   Updating song events")
+                    logger.info("   Updating song events")
                     # TODO: replace with method in annot.Events
                     self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
 
                 # scale tracks back to original units upon save
                 if hasattr(self, "original_spatial_units"):
-                    logging.info(f"Converting spatial units back to {self.original_spatial_units} if required.")
+                    logger.info(f"Converting spatial units back to {self.original_spatial_units} if required.")
                     self.ds = xb.convert_spatial_units(self.ds, to_units=self.original_spatial_units)
 
                 # update ds.event_times from event_times dict
@@ -1251,11 +1251,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.ds = self.ds.drop_dims(["index", "event_time"])
                     self.ds = self.ds.combine_first(ds_event_times)
 
-                logging.info(f"   Saving dataset to {savefilename}.")
+                logger.info(f"   Saving dataset to {savefilename}.")
                 xb.save(savefilename, self.ds)
-                logging.info("Done.")
+                logger.info("Done.")
             else:
-                logging.info("Saving aborted.")
+                logger.info("Saving aborted.")
 
 
 class PSV(MainWindow):
@@ -1705,7 +1705,7 @@ class PSV(MainWindow):
             try:
                 self.t0 = float(source.text()) * self.fs_song
             except Exception as e:
-                logging.debug(e)
+                logger.debug(e)
             source.clearFocus()  # de-focus text field upon enter so we can continue annotating right away
 
         def edit_frame_finished(source=None):
@@ -1759,7 +1759,7 @@ class PSV(MainWindow):
         self.update_frame()
         self.t0 = self.t0 + 0.0000000001
         self.span = self.span + 0.0000000001
-        logging.info("DAS gui initialized.")
+        logger.info("DAS gui initialized.")
 
         self.update_xy()
         self.app.processEvents()
@@ -1768,7 +1768,7 @@ class PSV(MainWindow):
         try:
             self.update_xy()
         except (AttributeError, ValueError) as e:
-            logging.debug(e)
+            logger.debug(e)
 
     @property
     def ylim(self):
@@ -1960,7 +1960,7 @@ class PSV(MainWindow):
                 self.update_frame()
                 self.update_xy()
         except KeyError as e:
-            logging.exception(e)
+            logger.exception(e)
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
@@ -1969,18 +1969,18 @@ class PSV(MainWindow):
             )
             nb_deleted_events = len(deleted_events)
             if nb_deleted_events:
-                logging.info(f"   Deleted {nb_deleted_events} annotation(s) of type {self.current_event_name}.")
+                logger.info(f"   Deleted {nb_deleted_events} annotation(s) of type {self.current_event_name}.")
                 if self.STOP:
                     self.update_xy()
         else:
-            logging.info("   No event type selected. Not deleting anything.")
+            logger.info("   No event type selected. Not deleting anything.")
 
     def delete_all_events(self, qt_keycode):
         for event_name in self.event_times.names:
             deleted_events = self.event_times.delete_range(event_name, self.time0 / self.fs_song, self.time1 / self.fs_song)
             nb_deleted_events = len(deleted_events)
             if nb_deleted_events:
-                logging.info(f"   Deleted {nb_deleted_events} annotation(s) of type {event_name}.")
+                logger.info(f"   Deleted {nb_deleted_events} annotation(s) of type {event_name}.")
 
         if self.STOP:
             self.update_xy()
@@ -1994,13 +1994,13 @@ class PSV(MainWindow):
                 # add events to current song type
                 for t in self.x[indexes]:
                     self.event_times.add_time(self.current_event_name, t)
-                    logging.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
+                    logger.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
                 # TODO ensure we did not add duplicates - maybe call np.unique at the end?
                 old_len = self.event_times[self.current_event_name].shape[0]
                 self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
                 new_len = self.event_times[self.current_event_name].shape[0]
                 if new_len != old_len:
-                    logging.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
+                    logger.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
             if self.event_times.categories[self.current_event_name] == "segment":
                 # get pos and neg crossings
                 x = np.diff((self.envelope > self.slice_view.threshold).astype(np.float))
@@ -2014,7 +2014,7 @@ class PSV(MainWindow):
                 # add segments to current song type
                 for onset, offset in zip(self.x[onsets], self.x[offsets]):
                     self.event_times.add_time(self.current_event_name, onset, offset)
-                    logging.info(f"   Added {self.current_event_name} at t={offset:1.4f}:{onset:1.4f}: seconds.")
+                    logger.info(f"   Added {self.current_event_name} at t={offset:1.4f}:{onset:1.4f}: seconds.")
 
             self.update_xy()
 
@@ -2095,7 +2095,7 @@ class PSV(MainWindow):
     def set_prev_cuepoint(self, qt_keycode):
         if len(self.cue_points):
             self.cue_index = max(0, self.cue_index - 1)
-            logging.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
+            logger.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
             self.t0 = self.cue_points[self.cue_index] * self.fs_song  # jump to PREV cue point
         else:  # no cue points - jump to prev song event
             if self.edit_only_current_events:  # of the currently active type
@@ -2111,7 +2111,7 @@ class PSV(MainWindow):
     def set_next_cuepoint(self, qt_keycode):
         if len(self.cue_points):
             self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
-            logging.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
+            logger.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
             self.t0 = self.cue_points[self.cue_index] * self.fs_song  # jump to PREV cue point
         else:  # no cue points - jump to next song event
             if self.edit_only_current_events:  # of the currently active type
@@ -2169,9 +2169,9 @@ class PSV(MainWindow):
             # fix these to be at least 1/fs audio
             self.thres_min_dist = max(form_data["thres_min_dist"], 1 / self.fs_song)
             self.thres_env_std = max(form_data["thres_env_std"], 1 / self.fs_song)
-            logging.info("Setting parameters for envelope computation:")
-            logging.info(f"     Minimal distance between events: {self.thres_min_dist} seconds")
-            logging.info(f"     Smoothing window for envelope: {self.thres_env_std} seconds")
+            logger.info("Setting parameters for envelope computation:")
+            logger.info(f"     Minimal distance between events: {self.thres_min_dist} seconds")
+            logger.info(f"     Smoothing window for envelope: {self.thres_env_std} seconds")
             self.update_xy()
 
     def update_xy(self):
@@ -2302,7 +2302,7 @@ class PSV(MainWindow):
                 RUN = False
                 self.update_xy()
                 self.update_frame()
-                logging.debug("   Stopped playback.")
+                logger.debug("   Stopped playback.")
                 self.app.processEvents()
 
     def on_region_change_finished(self, region):
@@ -2317,7 +2317,7 @@ class PSV(MainWindow):
         new_region = region.getRegion()
         # need to figure out event_name of the moved one if moving non-selected event
         self.event_times.move_time(event_name_to_move, region.bounds, new_region)
-        logging.info(
+        logger.info(
             f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
         )
         self.update_xy()
@@ -2332,7 +2332,7 @@ class PSV(MainWindow):
 
         new_position = position.pos()[0]
         self.event_times.move_time(event_name_to_move, position.position, new_position)
-        logging.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
+        logger.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
         self.update_xy()
 
     def on_position_dragged(self, fly, pos, offset):
@@ -2344,7 +2344,7 @@ class PSV(MainWindow):
             except:
                 pos1 = pos
             self.ds.pose_positions_allo.data[self.index_other, fly, :] += pos1 - pos0
-            logging.info(f"   Moved fly from {pos0} to {pos1}.")
+            logger.info(f"   Moved fly from {pos0} to {pos1}.")
             self.update_frame()
 
     def on_poses_dragged(self, ind, pos, offset):
@@ -2357,7 +2357,7 @@ class PSV(MainWindow):
             except:
                 pos1 = pos
             self.ds.pose_positions_allo.data[self.index_other, fly, part] += pos1 - pos0
-            logging.info(f"   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.")
+            logger.info(f"   Moved {self.ds.poseparts[part].data} of fly {fly} from {pos0} to {pos1}.")
             self.update_frame()
 
     def on_video_clicked(self, mouseX, mouseY, event):
@@ -2378,7 +2378,7 @@ class PSV(MainWindow):
                 fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX])) ** 2, axis=-1)
                 fly_dist[self.focal_fly] = np.inf  # ensure that other_fly is not focal_fly
                 self.other_fly = np.argmin(fly_dist)
-                logging.debug(f"Selected {self.other_fly}.")
+                logger.debug(f"Selected {self.other_fly}.")
             self.update_frame()
 
     def on_trace_clicked(self, mouseT, mouseButton):
@@ -2410,9 +2410,9 @@ class PSV(MainWindow):
             )
             if changed_time is not None:
                 if self.event_times.categories[self.current_event_name] == "event":
-                    logging.info(f"  Changed event at {changed_time[0]:1.4f} from {old_name} to {new_name}.")
+                    logger.info(f"  Changed event at {changed_time[0]:1.4f} from {old_name} to {new_name}.")
                 else:
-                    logging.info(
+                    logger.info(
                         f"  Changed segment at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}."
                     )
                 self.update_xy()
@@ -2432,14 +2432,14 @@ class PSV(MainWindow):
                             stop_seconds=mouseT,
                             channel=self.current_channel_index,
                         )
-                        logging.info(
+                        logger.info(
                             f"  Added {self.current_event_name} on channel {self.current_channel_index} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds."
                         )
                         self.sinet0 = None
                 if self.event_times.categories[self.current_event_name] == "event":
                     self.sinet0 = None
                     self.event_times.add_time(self.current_event_name, start_seconds=mouseT, channel=self.current_channel_index)
-                    logging.info(
+                    logger.info(
                         f"  Added {self.current_event_name} on channel {self.current_channel_index} at t={mouseT:1.4f} seconds."
                     )
                 self.update_xy()
@@ -2463,7 +2463,7 @@ class PSV(MainWindow):
                 max_time=self.time1 / self.fs_song,
             )
             if len(deleted_time):
-                logging.info(f"  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.")
+                logger.info(f"  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.")
             self.update_xy()
 
     def play_audio(self, qt_keycode):
@@ -2477,7 +2477,7 @@ class PSV(MainWindow):
 
                 has_sounddevice = True
             except (ImportError, ModuleNotFoundError):
-                logging.info(
+                logger.info(
                     "Could not import python-sounddevice. Maybe you need to install it.\
                               See https://python-sounddevice.readthedocs.io/en/latest/installation.html for instructions.\
                               \
@@ -2491,7 +2491,7 @@ class PSV(MainWindow):
                     has_simpleaudio = True
 
                 except (ImportError, ModuleNotFoundError):
-                    logging.info(
+                    logger.info(
                         "Could not import simpleaudio. Maybe you need to install it.\
                                 See https://simpleaudio.readthedocs.io/en/latest/installation.html for instructions."
                     )
@@ -2513,7 +2513,7 @@ class PSV(MainWindow):
                     try:
                         y = y.astype(np.float) / np.iinfo(y.dtype).max * self.MAX_AUDIO_AMP
                     except ValueError:
-                        # logging.exception(e)
+                        # logger.exception(e)
                         y = y / y.max() / 10 * self.MAX_AUDIO_AMP
                     # sd.play(ss.resample_poly(y, 44100, self.fs_song), 44100)
                     sd.play(y, self.fs_song)
@@ -2526,14 +2526,14 @@ class PSV(MainWindow):
                     # start playback in background
                     simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
             else:
-                logging.info("No sound module installed - install python-sounddevice")
+                logger.info("No sound module installed - install python-sounddevice")
         else:
-            logging.info("Could not play sound - no sound data in the dataset.")
+            logger.info("Could not play sound - no sound data in the dataset.")
 
     def swap_flies(self, qt_keycode):
         if self.vr is not None:
             swap_time = float(self.ds.time[self.index_other])
-            logging.info(f"   Swapping flies {self.focal_fly} & {self.other_fly} at {swap_time} seconds.")
+            logger.info(f"   Swapping flies {self.focal_fly} & {self.other_fly} at {swap_time} seconds.")
 
             # save swap info
             # if already in there remove - swapping a second time would negate first swap
@@ -2558,7 +2558,7 @@ class PSV(MainWindow):
         t1 = self.ds.sampletime.data[self.time1]
 
         proposal_suffix = "_proposals"
-        logging.info("Approving:")
+        logger.info("Approving:")
         for name in self.event_times.names:
             if appprove_only_active_event and name != self.current_event_name:
                 continue
@@ -2576,13 +2576,13 @@ class PSV(MainWindow):
                 )
                 self.event_times.delete_range(name, t0, t1, strict=False)
                 if len(within_range_times):
-                    logging.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
+                    logger.info(f"   {len(within_range_times)} events of {name} to {name[:-len(proposal_suffix)]}")
         # update event selector in case the event did not exist yet
         self.nb_eventtypes = len(self.event_times)
         self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
         self.update_eventtype_selector()
 
-        logging.info("Done.")
+        logger.info("Done.")
         self.update_xy()
 
     def edit_annotation_types(self, qt_keycode=None, dialog=None):
@@ -2691,7 +2691,7 @@ class PSV(MainWindow):
                 try:
                     self.view_audio.removeAction(event_item)
                 except ValueError:
-                    logging.warning("item not in actions")  # item not in actions
+                    logger.warning("item not in actions")  # item not in actions
 
         # add new ones (make this function)
         self.event_items = []
@@ -2753,7 +2753,7 @@ def main(
     if not len(source):
         pass
     elif not os.path.exists(source):
-        logging.info(f"{source} does not exist - skipping.")
+        logger.info(f"{source} does not exist - skipping.")
     elif (
         source.lower().endswith(".wav")
         or source.lower().endswith(".npz")
@@ -2843,8 +2843,8 @@ def cli():
     warnings.filterwarnings("ignore")
     # enforce log level
     try:  # py38+
-        logging.basicConfig(level=logging.INFO, force=True)
+        logger.basicConfig(level=logger.INFO, force=True)
     except ValueError:  # <py38
-        logging.getLogger().setLevel(logging.INFO)
+        logger.getLogger().setLevel(logger.INFO)
 
     defopt.run(main, show_defaults=False)

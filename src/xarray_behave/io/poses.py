@@ -20,6 +20,9 @@ import logging
 import json
 
 
+logger = logging.getLogger(__name__)
+
+
 def rotate_point(pos, degrees, origin=(0, 0)):
     """Rotate point.
 
@@ -65,16 +68,16 @@ def rotate_pose(positions, degree, origin=(0, 0)):
 def load_skeleton(filename, body_parts):
     skeleton_file = os.path.splitext(filename)[0] + "_skeleton.csv"
     if os.path.exists(skeleton_file):
-        logging.info(f"Loading skeleton from {skeleton_file}.")
+        logger.info(f"Loading skeleton from {skeleton_file}.")
         df = pd.read_csv(skeleton_file)
         skeleton = df.values
     elif len(body_parts) == 11:  # probably a fly - use default skeleton
-        logging.info(f"No skeleton file ({skeleton_file}) found but detected 11 - assume this is a fly.")
+        logger.info(f"No skeleton file ({skeleton_file}) found but detected 11 - assume this is a fly.")
         skeleton = np.array(
             [[0, 1], [1, 8], [8, 11], [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7], [8, 9], [8, 10]]  # body axis  # legs
         )  # wings
     else:
-        logging.info(
+        logger.info(
             f"No skeleton file ({skeleton_file}) found and poses do not have 11 body parts - falling back to empty skeleton."
         )
         skeleton = np.zeros((0, 2), dtype=np.uint)
@@ -342,7 +345,7 @@ class Sleap(Poses, io.BaseProvider):
 
 #         if filename is None:
 #             filename = self.path
-#         logging.warning('Loading tracks from CSV.')
+#         logger.warning('Loading tracks from CSV.')
 #         df = pd.read_csv(filename, header=[0, 1, 2], index_col=0)
 #         track_names = df.columns.levels[df.columns.names.index('track')].to_list()
 #         track_parts = df.columns.levels[df.columns.names.index('part')].to_list()

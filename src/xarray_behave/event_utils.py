@@ -4,6 +4,9 @@ import xarray as xr
 import pandas as pd
 
 
+logger = logging.getLogger(__name__)
+
+
 def detect_events(ds):
     """Transform ds.song_events into dict of event (on/offset) times.
     Args:
@@ -16,9 +19,9 @@ def detect_events(ds):
     ds.song_events.data = ds.song_events.data.astype(np.float)  # make sure this is non-bool so diff works
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
-    logging.info("Extracting event times from song_events:")
+    logger.info("Extracting event times from song_events:")
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
-        logging.info(f"   {event_name}")
+        logger.info(f"   {event_name}")
         if event_category == "event":
             event_times[event_name] = ds.song_events.time.where(ds.song_events[:, event_idx] == 1, drop=True).data.ravel()
         elif event_category == "segment":
@@ -29,7 +32,7 @@ def detect_events(ds):
                 offsets = offsets[offsets > np.min(onsets)]
                 onsets = onsets[onsets < np.max(offsets)]
             if len(onsets) != len(offsets):
-                logging.warning("Inconsistent segment onsets or offsets - ignoring all on- and offsets.")
+                logger.warning("Inconsistent segment onsets or offsets - ignoring all on- and offsets.")
                 onsets = []
                 offsets = []
 
@@ -110,7 +113,7 @@ def update_traces(ds, event_times):
     event_categories = infer_event_categories_from_shape(event_times)
     # populate with data:
     for cnt, (event_name, event_data) in enumerate(event_times.items()):
-        logging.info(f"   {event_name} ({event_data.shape[0]} instances")
+        logger.info(f"   {event_name} ({event_data.shape[0]} instances")
         if event_categories[event_name] == "event":
             event_indices = (event_data * fs).astype(np.uintp)
             event_indices = event_indices[event_indices >= 0]
@@ -161,7 +164,7 @@ def eventtimes_to_traces(ds, event_times):
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
-        logging.info(f"   {event_name}")
+        logger.info(f"   {event_name}")
         ds.song_events.sel(event_types=event_name).data[:] = 0  # delete all events
         if event_category == "event":
             # times = ds.song_events.time.sel(time=event_times[event_name][:, 0], method='nearest').data
@@ -195,9 +198,9 @@ def traces_to_eventtimes(traces, event_names, event_categories):
 
     event_times = dict()
 
-    logging.info("Extracting event times from song_events:")
+    logger.info("Extracting event times from song_events:")
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
-        logging.info(f"   {event_name}")
+        logger.info(f"   {event_name}")
         if event_category == "event":
             event_times[event_name] = np.where(traces[event_idx] == 1)[0]
         elif event_category == "segment":
@@ -209,7 +212,7 @@ def traces_to_eventtimes(traces, event_names, event_categories):
                 offsets = offsets[offsets > np.min(onsets)]
                 onsets = onsets[onsets < np.max(offsets)]
             if len(onsets) != len(offsets):
-                logging.warning("Inconsistent segment onsets or offsets - ignoring all on- and offsets.")
+                logger.warning("Inconsistent segment onsets or offsets - ignoring all on- and offsets.")
                 onsets = []
                 offsets = []
 
