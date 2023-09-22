@@ -85,8 +85,11 @@ class Ethodrome(io.BaseProvider):
             if return_nonsong_channels:
                 non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
                 non_song = da[:, non_song_channels]
+
             if "rate" in f.attrs:
                 samplerate = f.attrs["rate"]
+            elif "rate" in f["samples"].attrs:
+                samplerate = f["samples"].attrs["rate"]
             else:
                 logger.info("   No sampling rate information in daq.h5 file - setting samplerate to default 10_000Hz.")
                 samplerate = 10_000
@@ -101,6 +104,8 @@ class Ethodrome(io.BaseProvider):
 
                 if "rate" in f.attrs:
                     samplerate = f.attrs["rate"]
+                elif "rate" in f["samples"].attrs:
+                    samplerate = f["samples"].attrs["rate"]
                 else:
                     logger.info("   No sampling rate information in daq.h5 file - setting samplerate to default 10_000Hz.")
                     samplerate = 10_000
