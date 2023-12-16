@@ -35,7 +35,8 @@ requirements:
     - xarray
     - dask
     - pyside2 # [not win]
-    - pyside6 # [win and py>39]
+    - pyside6 # [win and py==310]
+    - pyside2 # [win and py>310]
     - pyside2 # [win and py==39]
     - pyqtgraph>0.12.2
     - qtpy
