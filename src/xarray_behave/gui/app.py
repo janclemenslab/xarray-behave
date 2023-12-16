@@ -28,7 +28,8 @@ import pyqtgraph as pg
 
 import xarray_behave
 from .. import xarray_behave as xb, loaders as ld, annot, event_utils
-
+from .formbuilder import YamlDialog
+from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
 from . import utils, views, table
 
 logger = logging.getLogger(__name__)
@@ -42,16 +43,12 @@ except ImportError:
 
 try:
     from . import das
-except Exception as e:
-    logger.exception(e)
+except Exception:
     logger.warning(
         "Failed to import the das module.\nIgnore if you do not want to use das.\n"
         "Otherwise follow these instructions to install:\n"
         "https://janclemenslab.org/das/install.html"
     )
-
-from .formbuilder import YamlDialog
-from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
 
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
@@ -718,7 +715,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # minimizes loss of annotations from batch size "quantization" errors
                 batch_size = 32
                 nb_batches = lambda batch_size: int(
-                    np.floor((audio.shape[0] - (((batch_size - 1)) + params["nb_hist"])) / (params["stride"] * (batch_size)))
+                    np.floor((audio.shape[0] - ((batch_size - 1) + params["nb_hist"])) / (params["stride"] * (batch_size)))
                 )
                 while nb_batches(batch_size) < 10 and batch_size > 1:
                     batch_size -= 1
@@ -1438,7 +1435,7 @@ class PSV(MainWindow):
         view_play = self.bar.addMenu("Playback")
         self._add_keyed_menuitem(view_play, "Play video", self.toggle_playvideo, "Space", checkable=True, checked=not self.STOP)
         view_play.addSeparator()
-        self._add_keyed_menuitem(view_play, " < Reverse one frame", self.single_frame_reverse, "Left"),
+        (self._add_keyed_menuitem(view_play, " < Reverse one frame", self.single_frame_reverse, "Left"),)
         self._add_keyed_menuitem(view_play, "<< Reverse jump", self.jump_reverse, "A")
         self._add_keyed_menuitem(view_play, ">> Forward jump", self.jump_forward, "D")
         self._add_keyed_menuitem(view_play, " > Forward one frame", self.single_frame_advance, "Right")
@@ -2843,8 +2840,8 @@ def cli():
     warnings.filterwarnings("ignore")
     # enforce log level
     try:  # py38+
-        logger.basicConfig(level=logger.INFO, force=True)
+        logging.basicConfig(level=logging.INFO)
     except ValueError:  # <py38
-        logger.getLogger().setLevel(logger.INFO)
+        logger.getLogger().setLevel(logging.INFO)
 
     defopt.run(main, show_defaults=False)
