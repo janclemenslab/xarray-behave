@@ -30,7 +30,7 @@ import xarray_behave
 from .. import xarray_behave as xb, loaders as ld, annot, event_utils
 from .formbuilder import YamlDialog
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
-from . import utils, views, table
+from . import utils, views, table, audio_player
 
 logger = logging.getLogger(__name__)
 
@@ -2467,63 +2467,19 @@ class PSV(MainWindow):
         """Play vector as audio using the simpleaudio package."""
 
         if "song" in self.ds or "song_raw" in self.ds:
-            has_sounddevice = False
-            has_simpleaudio = False
-            try:
-                import sounddevice as sd
+            if not hasattr(self, "audio_player"):
+                self.audio_player = audio_player.AudioPlayer()
 
-                has_sounddevice = True
-            except (ImportError, ModuleNotFoundError):
-                logger.info(
-                    "Could not import python-sounddevice. Maybe you need to install it.\
-                              See https://python-sounddevice.readthedocs.io/en/latest/installation.html for instructions.\
-                              \
-                              Trying to fall back to simpleaudio, which may be buggy."
-                )
-
-            if not has_sounddevice:
-                try:
-                    import simpleaudio
-
-                    has_simpleaudio = True
-
-                except (ImportError, ModuleNotFoundError):
-                    logger.info(
-                        "Could not import simpleaudio. Maybe you need to install it.\
-                                See https://simpleaudio.readthedocs.io/en/latest/installation.html for instructions."
-                    )
-                    return
-
-            if has_sounddevice or has_simpleaudio:
+            if self.audio_player.player is not None:
                 if "song" in self.ds and self.current_channel_name == "Merged channels":
                     y = self.ds.song.data[self.time0 : self.time1]
                 else:
                     y = self.ds.song_raw.data[self.time0 : self.time1, self.current_channel_index]
                 y = np.array(y)  # if y is a dask.array (lazy loaded)
 
-                max_amp = self.MAX_AUDIO_AMP
-                if max_amp is None:
-                    max_amp = np.nanmax(np.abs(y))
-
-                if has_sounddevice:
-                    # scale sound so we do not blow out the speakers
-                    try:
-                        y = y.astype(np.float) / np.iinfo(y.dtype).max * self.MAX_AUDIO_AMP
-                    except ValueError:
-                        # logger.exception(e)
-                        y = y / y.max() / 10 * self.MAX_AUDIO_AMP
-                    # sd.play(ss.resample_poly(y, 44100, self.fs_song), 44100)
-                    sd.play(y, self.fs_song)
-                elif has_simpleaudio:
-                    y = y * 32767 / max_amp
-                    y = y.astype(np.int16)
-                    # simpleaudio can only play at these rates - choose the one nearest to our rate
-                    allowed_sample_rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 192000]  # Hz
-                    sample_rate = min(allowed_sample_rates, key=lambda x: abs(x - int(self.fs_song)))
-                    # start playback in background
-                    simpleaudio.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=sample_rate)
+                self.audio_player.play(y, self.fs_song)
             else:
-                logger.info("No sound module installed - install python-sounddevice")
+                logger.info("No sound module installed - install 'sounddevice' or 'simpleaudio'")
         else:
             logger.info("Could not play sound - no sound data in the dataset.")
 

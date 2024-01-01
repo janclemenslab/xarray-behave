@@ -132,17 +132,19 @@ class Events(UserDict):
         names = []
         start_seconds = []
         stop_seconds = []
-        if dct.values()[0].shape[1] > 2:
-            channels = []
-        else:
-            channels = None
 
-        for k, v in dct.items():
-            names.extend([k] * v.shape[0])
-            start_seconds.extend(v[:, 0])
-            stop_seconds.extend(v[:, 1])
-            if channels is not None:
-                channels.extend(v[:, 2])
+        if len(dct.values()):
+            if list(dct.values())[0].shape[1] > 2:
+                channels = []
+            else:
+                channels = None
+
+            for k, v in dct.items():
+                names.extend([k] * v.shape[0])
+                start_seconds.extend(v[:, 0])
+                stop_seconds.extend(v[:, 1])
+                if channels is not None:
+                    channels.extend(v[:, 2])
         out = cls.from_lists(names, start_seconds, stop_seconds, channels=channels)
         return out
 
