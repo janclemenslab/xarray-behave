@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def fill_gaps(sine_pred, gap_dur=100):
-    onsets = np.where(np.diff(sine_pred.astype(np.int)) == 1)[0]
-    offsets = np.where(np.diff(sine_pred.astype(np.int)) == -1)[0]
+    onsets = np.where(np.diff(sine_pred.astype(int)) == 1)[0]
+    offsets = np.where(np.diff(sine_pred.astype(int)) == -1)[0]
     if len(onsets) and len(offsets):
         onsets = onsets[onsets < offsets[-1]]
         offsets = offsets[offsets > onsets[0]]
@@ -26,8 +26,8 @@ def fill_gaps(sine_pred, gap_dur=100):
 
 def remove_short(sine_pred, min_len=100):
     # remove too short sine songs
-    onsets = np.where(np.diff(sine_pred.astype(np.int)) == 1)[0]
-    offsets = np.where(np.diff(sine_pred.astype(np.int)) == -1)[0]
+    onsets = np.where(np.diff(sine_pred.astype(int)) == 1)[0]
+    offsets = np.where(np.diff(sine_pred.astype(int)) == -1)[0]
     if len(onsets) and len(offsets):
         onsets = onsets[onsets < offsets[-1]]
         offsets = offsets[offsets > onsets[0]]
@@ -73,8 +73,8 @@ class DAS(io.BaseProvider):
                     segment_labels = remove_short(segment_labels, min_len=0.02 * res["samplerate_Hz"])
 
                 # detect on and offset from binary labels
-                segment_onset_idx = np.where(np.diff(segment_labels.astype(np.float), prepend=0) == 1)[0].astype(np.float)
-                segment_offset_idx = np.where(np.diff(segment_labels.astype(np.float), append=0) == -1)[0].astype(np.float)
+                segment_onset_idx = np.where(np.diff(segment_labels.astype(float), prepend=0) == 1)[0].astype(float)
+                segment_offset_idx = np.where(np.diff(segment_labels.astype(float), append=0) == -1)[0].astype(float)
 
                 res["segment_onsets_seconds"] = np.append(
                     res["segment_onsets_seconds"], segment_onset_idx / res["samplerate_Hz"]

@@ -157,7 +157,7 @@ class Leap(Poses, io.BaseProvider):
 
         with h5py.File(filename, "r") as f:
             box_offset = f["box_centers"][:]
-            box_angle = f["fixed_angles"][:].astype(np.float64)
+            box_angle = f["fixed_angles"][:].astype(float)
             box_size = (f["box_size"].attrs["i0"], f["box_size"].attrs["i1"])
             poses = f["positions"][:]
             nb_flies = int(np.max(f["fly_id"]) + 1)
@@ -181,7 +181,7 @@ class Leap(Poses, io.BaseProvider):
         box_offset = box_offset[first_pose_index:last_pose_index, ...]
         box_angle = box_angle[first_pose_index:last_pose_index, ...]
         poses = poses[first_pose_index:last_pose_index, ...]
-        poses = poses.astype(np.float64)
+        poses = poses.astype(float)
 
         # transform poses back to frame coordinates
         origin = [b / 2 for b in box_size]

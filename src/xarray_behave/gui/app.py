@@ -2000,7 +2000,7 @@ class PSV(MainWindow):
                     logger.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
             if self.event_times.categories[self.current_event_name] == "segment":
                 # get pos and neg crossings
-                x = np.diff((self.envelope > self.slice_view.threshold).astype(np.float))
+                x = np.diff((self.envelope > self.slice_view.threshold).astype(float))
                 onsets = np.where(x == 1)[0]
                 offsets = np.where(x == -1)[0]
                 # remove incomplete segments at bounds
@@ -2019,7 +2019,7 @@ class PSV(MainWindow):
         std = self.thres_env_std * self.fs_song
         win = scipy.signal.windows.gaussian(int(std * 6), std)
         win /= np.sum(win)
-        env = np.sqrt(np.convolve(self.y.astype(np.float) ** 2, win, mode="same"))
+        env = np.sqrt(np.convolve(self.y.astype(float) ** 2, win, mode="same"))
         return env
 
     def set_prev_channel(self, qt_keycode):

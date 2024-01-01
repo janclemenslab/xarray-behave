@@ -16,7 +16,7 @@ def detect_events(ds):
         dict: with event times or segment on/offsets.
     """
     event_times = dict()
-    ds.song_events.data = ds.song_events.data.astype(np.float)  # make sure this is non-bool so diff works
+    ds.song_events.data = ds.song_events.data.astype(float)  # make sure this is non-bool so diff works
     event_names = ds.song_events.event_types.data
     event_categories = ds.song_events.event_categories.data
     logger.info("Extracting event times from song_events:")
