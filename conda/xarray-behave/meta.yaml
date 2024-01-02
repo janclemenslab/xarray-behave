@@ -31,6 +31,7 @@ requirements:
     - scikit-learn
     - zarr
     - numba>=0.56
+    - numba>=0.58 # [linux and py>311]
     - xarray
     - dask
     - pyside2 # [not win]
