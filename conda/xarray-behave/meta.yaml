@@ -31,7 +31,7 @@ requirements:
     - scikit-learn
     - zarr
     - numba>=0.56
-    - anaconda::_openmp_mutex>5.1  # [linux and py>=3.11]
+    - anaconda::_openmp_mutex>=5.1  # [linux and py>=3.11]
     - xarray
     - dask
     - pyside2 # [not win]
