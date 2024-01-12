@@ -158,6 +158,30 @@ main:
   help: Reduce learning rate if performance does not improve after patience epochs.
 
 
+- name: morph
+  label: Postprocessing with trainable morphological kernels
+  type: stacked
+  default: "No"
+  options: "No,Yes"
+
+  "No":
+
+  "Yes":
+  - type: text
+    text: 'Clean up predictions using trainable kernels for opening and closing operations.'
+
+  - name: morph_nb_kernels
+    label:  Number of morphological kernels
+    type: int
+    default: 1
+    range: 0, 100
+  - name: morph_kernel_duration
+    label: Duration of morphological kernels (samples)
+    type: int
+    default: 32
+    range: 1,1000
+
+
 - name: postopt
   label: Optimize postprocessing
   type: stacked
