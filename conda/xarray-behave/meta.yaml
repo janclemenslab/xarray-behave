@@ -34,11 +34,11 @@ requirements:
     # - anaconda::_openmp_mutex>=5.1  # [linux and py>=3.11]
     - xarray
     - dask
-    - pyside6 # [linux]
-    - pyside2 # [osx or arm64]
-    - pyside6 # [win and py==310]
-    - pyside2 # [win and py>310]
-    - pyside2 # [win and py==39]
+    - pyqt6 # [linux]
+    #- pyside2 # [osx or arm64]
+    #- pyside6 # [win and py==310]
+    #- pyside2 # [win and py>310]
+    #- pyside2 # [win and py==39]
     - pyqtgraph>0.12.2
     - qtpy
     - superqt
