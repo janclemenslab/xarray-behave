@@ -45,7 +45,7 @@ jobs:
         use-only-tar-bz2: true  # IMPORTANT: This needs to be set for caching to work properly!
     - name: Update build env
       run: |
-        mamba update --all -y
+        /home/runner/miniconda3/condabin/mamba env update --name anaconda-client-env
     - name: List build env
       run: |
         conda list -n anaconda-client-env
@@ -55,3 +55,4 @@ jobs:
       env:
         ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         
+ 
