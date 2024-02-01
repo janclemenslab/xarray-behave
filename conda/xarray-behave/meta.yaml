@@ -46,10 +46,10 @@ requirements:
     - colorcet
     - python-sounddevice
     - scikit-image
-    - opencv
+    # - opencv
     - ffmpeg
-    - pyvideoreader
-    - samplestamps>=0.6
+    # - pyvideoreader
+    # - samplestamps>=0.6
     - pysoundfile
 
 test:
