@@ -34,7 +34,7 @@ requirements:
     - numba # >=0.56
     - xarray
     - dask
-    - py
+    #- py
     - conda-forge::pyside2 # [not win]
     #- pyside6 # [win and py==310]
     #- pyside2 # [win and py>310]
