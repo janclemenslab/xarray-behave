@@ -18,10 +18,10 @@ requirements:
     - pip
   run:
     - python {{ python }}
-    - defopt=6.3
+    - defopt #=6.3
     - flammkuchen
     - h5py
-    - librosa>0.8
+    - librosa #>0.8
     - matplotlib
     - matplotlib-scalebar
     - pandas
