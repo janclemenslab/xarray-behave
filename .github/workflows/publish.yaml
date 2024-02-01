@@ -41,7 +41,7 @@ jobs:
         activate-environment: anaconda-client-env
         environment-file: build_env.yml
         condarc-file: condarc.yml
-        use-mamba: true
+        #use-mamba: true
         use-only-tar-bz2: true  # IMPORTANT: This needs to be set for caching to work properly!
     - name: Update build env
       run: |
