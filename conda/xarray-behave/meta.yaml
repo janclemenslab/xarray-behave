@@ -19,6 +19,7 @@ requirements:
   run:
     - python {{ python }}
     - defopt=6.3
+    - rich
     - flammkuchen
     - h5py
     - librosa>0.8
