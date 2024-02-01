@@ -43,6 +43,9 @@ jobs:
         condarc-file: condarc.yml
         use-mamba: true
         use-only-tar-bz2: true  # IMPORTANT: This needs to be set for caching to work properly!
+    - name: Update build env
+      run: |
+        mamba update --all -y
     - name: Build and upload to anaconda
       run: |
         conda mambabuild conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
