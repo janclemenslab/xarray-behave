@@ -22,8 +22,8 @@ requirements:
     - flammkuchen
     - h5py
     - librosa #>0.8
-    - matplotlib
-    - matplotlib-scalebar
+    #- matplotlib
+    #- matplotlib-scalebar
     - pandas
     - scipy>=1.9
     - peakutils
@@ -33,13 +33,13 @@ requirements:
     - numba # >=0.56
     - xarray
     - dask
-    - pyside2 # [not win]
-    - pyside6 # [win and py==310]
-    - pyside2 # [win and py>310]
-    - pyside2 # [win and py==39]
-    - pyqtgraph>0.12.2
-    - qtpy
-    - superqt
+    #- pyside2 # [not win]
+    #- pyside6 # [win and py==310]
+    #- pyside2 # [win and py>310]
+    #- pyside2 # [win and py==39]
+    #- pyqtgraph>0.12.2
+    #- qtpy
+    #- superqt
     - rich
     - colorcet
     - python-sounddevice
