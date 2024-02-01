@@ -34,7 +34,7 @@ requirements:
     # - anaconda::_openmp_mutex>=5.1  # [linux and py>=3.11]
     - xarray
     - dask
-    - pyside6
+    - pyside6=6.6
     #- pyside2 # [osx or arm64]
     #- pyside6 # [win and py==310]
     #- pyside2 # [win and py>310]
