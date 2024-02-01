@@ -18,7 +18,7 @@ requirements:
     - pip
   run:
     - python {{ python }}
-    - defopt #=6.3
+    - defopt=6.3
     - flammkuchen
     - h5py
     - librosa #>0.8
@@ -31,14 +31,12 @@ requirements:
     - scikit-learn
     - zarr
     - numba # >=0.56
-    # - anaconda::_openmp_mutex>=5.1  # [linux and py>=3.11]
     - xarray
     - dask
-    - pyside2
-    #- pyside2 # [osx or arm64]
-    #- pyside6 # [win and py==310]
-    #- pyside2 # [win and py>310]
-    #- pyside2 # [win and py==39]
+    - pyside2 # [not win]
+    - pyside6 # [win and py==310]
+    - pyside2 # [win and py>310]
+    - pyside2 # [win and py==39]
     - pyqtgraph>0.12.2
     - qtpy
     - superqt
