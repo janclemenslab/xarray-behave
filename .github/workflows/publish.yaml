@@ -19,10 +19,10 @@ jobs:
     strategy:
       fail-fast: False
       matrix:
-        # python-version: [3.9 , '3.10', '3.11']
-        # os: [ubuntu-latest, windows-latest, macOS-13, macOS-14]
-        python-version: ['3.11']
-        os: [ubuntu-latest]
+        python-version: [3.9 , '3.10', '3.11']
+        os: [ubuntu-latest, windows-latest, macOS-13, macOS-14]
+        #python-version: ['3.11']
+        #os: [ubuntu-latest]
     defaults:  # https://github.com/marketplace/actions/setup-miniconda#use-a-default-shell
       run:
         shell: bash -l {0}
@@ -32,26 +32,20 @@ jobs:
       uses: conda-incubator/setup-miniconda@v3
       with:
         auto-update-conda: true
-        #miniforge-variant: Mambaforge
+        miniforge-variant: Mambaforge
         miniforge-version: latest
         channels: conda-forge,ncb,anaconda,defaults
         python-version: 3.11
-        #mamba-version: "*"
+        mamba-version: "*"
         auto-activate-base: false
         activate-environment: anaconda-client-env
         environment-file: build_env.yml
         condarc-file: condarc.yml
-        #use-mamba: true
+        use-mamba: true
         use-only-tar-bz2: true  # IMPORTANT: This needs to be set for caching to work properly!
-    # - name: Update build env
-    #   run: |
-    #     /home/runner/miniconda3/condabin/mamba update --name anaconda-client-env --all -y
-    # - name: List build env
-    #   run: |
-    #     conda list -n anaconda-client-env
     - name: Build and upload to anaconda
       run: |
-        conda build conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+        conda mambabuild conda/xarray-behave -c conda-forge -c ncb -c anaconda --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
       env:
         ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         
