@@ -21,9 +21,9 @@ requirements:
     - defopt=6.3
     - flammkuchen
     - h5py
-    - librosa #>0.8
-    #- matplotlib
-    #- matplotlib-scalebar
+    - librosa>0.8
+    - matplotlib
+    - matplotlib-scalebar
     - pandas
     - scipy>=1.9
     - peakutils
@@ -38,8 +38,8 @@ requirements:
     #- pyside2 # [win and py>310]
     #- pyside2 # [win and py==39]
     #- pyqtgraph>0.12.2
-    #- qtpy
-    #- superqt
+    - qtpy
+    - superqt
     - rich
     - colorcet
     - python-sounddevice
