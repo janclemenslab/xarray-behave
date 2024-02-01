@@ -30,7 +30,7 @@ requirements:
     - pyyaml
     - scikit-learn
     - zarr
-    - numba>=0.56
+    - numba # >=0.56
     # - anaconda::_openmp_mutex>=5.1  # [linux and py>=3.11]
     - xarray
     - dask
