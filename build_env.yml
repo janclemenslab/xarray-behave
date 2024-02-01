@@ -6,10 +6,10 @@ channels:
   - defaults
 dependencies:
   - conda
-  - mamba>1.4
+  - mamba
   - anaconda-client
   - boa
-  - conda-build>3.25
+  - conda-build
   - conda-verify
   - pip
   - git
