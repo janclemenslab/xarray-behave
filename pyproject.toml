@@ -32,3 +32,9 @@ name = "xarray_behave"
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["tests",]
+
+[tool.ruff]
+extend-select = ["C4", "NPY", "PD", "TCH"]
+ignore = ["E501"]
+show-fixes = true
+line-length = 196

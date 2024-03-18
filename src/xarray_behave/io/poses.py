@@ -19,7 +19,8 @@ from typing import Optional
 import logging
 import json
 
-
+# TODO Refactor - read poses, normalize to the same allocentric coordinate system,
+# TODO thentransforms to egocentric in a common (speed and memory optimized) function
 logger = logging.getLogger(__name__)
 
 

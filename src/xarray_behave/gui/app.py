@@ -1,6 +1,6 @@
 """PLOT SONG AND PLAY VIDEO IN SYNC
 
-`python -m xarray_behave.ui datename root cuepoints`
+`python -m xarray_behave.ui datename root`
 """
 import os
 import sys
@@ -50,7 +50,6 @@ except Exception:
         "https://janclemenslab.org/das/install.html"
     )
 
-
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir: str = xarray_behave.__path__[0]
 
@@ -71,6 +70,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.app is None:
             self.app = QtGui.QApplication([])
         self.app.setWindowIcon(QtGui.QIcon(package_dir + "/gui/icon.png"))
+
+        # id = QtGui.QFontDatabase.addApplicationFont(package_dir + "/assets/fonts/HubotSansCondensed-Medium.ttf")
+        # families = QtGui.QFontDatabase.applicationFontFamilies(id)
+        # self.font_condensed = QtGui.QFont(families[0])
+        # id = QtGui.QFontDatabase.addApplicationFont(package_dir + "/assets/fonts/Hubot-Sans.ttf")
+        # families = QtGui.QFontDatabase.applicationFontFamilies(id)
+        # self.font = QtGui.QFont(families[0])
+        # self.app.setFont(self.font)  # sets app-wide font
 
         self.resize(400, 200)
         self.setWindowTitle(title)
@@ -231,7 +238,6 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if which_events is None:
             which_events = self.event_times.names
-
         samplerate = self.fs_song
         event_times = annot.Events(self.event_times)
         for name in event_times.names:
@@ -932,10 +938,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 if form_data["filter_song"] == "yes":
                     ds = cls.filter_song(ds, form_data["f_low"], form_data["f_high"])
 
-                cue_points = []
-                if form_data["load_cues"] == "yes":
-                    cue_points = cls.load_cuepoints(form_data["cues_file"])
-
                 ds.attrs["filename"] = filename
                 ds.attrs["filebase"] = os.path.splitext(filename)[0]
                 ds.attrs["datename"] = ""
@@ -944,7 +946,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 return PSV(
                     ds,
                     title=filename,
-                    cue_points=cue_points,
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
                     data_source=DataSource("file", filename),
@@ -1078,13 +1079,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 except:
                     logger.info("Something went wrong when loading the video. Continuing without.")
 
-                cue_points = []
-                if form_data["load_cues"] == "yes":
-                    cue_points = cls.load_cuepoints(form_data["cues_file"])
                 return PSV(
                     ds,
                     title=dirname,
-                    cue_points=cue_points,
                     vr=vr,
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
@@ -1164,15 +1161,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 except:
                     logger.info("Something went wrong when loading the video. Continuing without.")
 
-                # load cues
-                cue_points = []
-                if form_data["load_cues"] == "yes":
-                    cue_points = cls.load_cuepoints(form_data["cues_file"])
-
                 return PSV(
                     ds,
                     vr=vr,
-                    cue_points=cue_points,
                     title=filename,
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
@@ -1199,17 +1190,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
         logger.info("Not implemented yet")
         pass
-
-    @staticmethod
-    def load_cuepoints(filename=None, delimiter=","):
-        if filename is None or not len(filename):
-            filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select file with cue points")
-        cues = []
-        try:
-            cues = np.loadtxt(fname=filename, delimiter=delimiter)
-        except FileNotFoundError:
-            logger.warning(f"{filename} not found.")
-        return cues
 
     def save_dataset(self, qt_keycode=None):
         try:
@@ -1262,7 +1242,6 @@ class PSV(MainWindow):
         self,
         ds,
         vr=None,
-        cue_points=[],
         title="xb.ui",
         cmap_name: str = "turbo",
         box_size: int = 200,
@@ -1286,7 +1265,6 @@ class PSV(MainWindow):
 
         # TODO allow vr to be a string with the video file name
         self.vr = vr
-        self.cue_points = cue_points
 
         # detect all event times and segment on/offsets
         if "event_times" in ds and "event_names" in ds and len(ds["event_names"]) > 0:
@@ -1336,8 +1314,6 @@ class PSV(MainWindow):
         self.move_poses = False
         self.circle_size = 8
 
-        self.cue_index = -1  # set this to -1 not to 0 so that upon first increase we will jump to 0, not to 1
-
         self.nb_flies = np.max(self.ds.flies).values + 1 if "flies" in self.ds.dims else 1
         self.focal_fly = 0
         self.other_fly = 1 if self.nb_flies > 1 else 0
@@ -1372,6 +1348,7 @@ class PSV(MainWindow):
         self.STOP = True
         self.show_spec = True
         self.show_trace = True
+        self.show_annot = False
         self.show_tracks = False
         self.show_movie = True
         self.show_options = True
@@ -1440,11 +1417,8 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_play, ">> Forward jump", self.jump_forward, "D")
         self._add_keyed_menuitem(view_play, " > Forward one frame", self.single_frame_advance, "Right")
         view_play.addSeparator()
-        self._add_keyed_menuitem(
-            view_play, "Load cue points", self.reload_cuepoints
-        )  # text file with comma separated seconds or frames...
-        self._add_keyed_menuitem(view_play, "Move to previous cue", self.set_prev_cuepoint, "K")
-        self._add_keyed_menuitem(view_play, "Move to next cue", self.set_next_cuepoint, "L")
+        self._add_keyed_menuitem(view_play, "Move to previous annotation", self.set_prev_cuepoint, "K")
+        self._add_keyed_menuitem(view_play, "Move to next annotation", self.set_next_cuepoint, "L")
         view_play.addSeparator()
         self._add_keyed_menuitem(view_play, "Zoom in song", self.zoom_in_song, "W")
         self._add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, "S")
@@ -1585,6 +1559,9 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(
             view_view, "Show waveform", partial(self.toggle, "show_trace"), None, checkable=True, checked=self.show_trace
         )
+        self._add_keyed_menuitem(
+            view_view, "Show ethogram", partial(self.toggle, "show_annot"), None, checkable=True, checked=self.show_annot
+        )
         if "pose_positions_allo" in self.ds:
             self._add_keyed_menuitem(
                 view_view, "Show tracks", partial(self.toggle, "show_tracks"), None, checkable=True, checked=self.show_tracks
@@ -1672,6 +1649,7 @@ class PSV(MainWindow):
 
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
+        self.annot_view = views.AnnotView(model=self, callback=self.on_trace_clicked)
         self.spec_compression_ratio = 0
         self.spec_mel = False
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=cmap_name)
@@ -1686,6 +1664,7 @@ class PSV(MainWindow):
         splitter.addWidget(splitter_horizontal)
         if "pose_positions_allo" in self.ds:
             splitter.addWidget(self.tracks_view)
+        splitter.addWidget(self.annot_view)
         splitter.addWidget(self.slice_view)
         splitter.addWidget(self.spec_view)
         if self.vr is not None:
@@ -2090,40 +2069,26 @@ class PSV(MainWindow):
             self.update_frame()
 
     def set_prev_cuepoint(self, qt_keycode):
-        if len(self.cue_points):
-            self.cue_index = max(0, self.cue_index - 1)
-            logger.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
-            self.t0 = self.cue_points[self.cue_index] * self.fs_song  # jump to PREV cue point
-        else:  # no cue points - jump to prev song event
-            if self.edit_only_current_events:  # of the currently active type
-                names = [self.current_event_name]
-            else:  # of any type
-                names = self.event_times.names
+        if self.edit_only_current_events:  # of the currently active type
+            names = [self.current_event_name]
+        else:  # of any type
+            names = self.event_times.names
 
-            t = (self.t0 - 1) / self.fs_song
-            nxt = self.event_times.find_prev(t, names)
-            if nxt is not None:
-                self.t0 = nxt * self.fs_song
+        t = (self.t0 - 1) / self.fs_song
+        nxt = self.event_times.find_prev(t, names)
+        if nxt is not None:
+            self.t0 = nxt * self.fs_song
 
     def set_next_cuepoint(self, qt_keycode):
-        if len(self.cue_points):
-            self.cue_index = min(self.cue_index + 1, len(self.cue_points) - 1)
-            logger.debug(f"cue val at cue_index {self.cue_index} is {self.cue_points[self.cue_index]}")
-            self.t0 = self.cue_points[self.cue_index] * self.fs_song  # jump to PREV cue point
-        else:  # no cue points - jump to next song event
-            if self.edit_only_current_events:  # of the currently active type
-                names = [self.current_event_name]
-            else:  # of any type
-                names = self.event_times.names
+        if self.edit_only_current_events:  # of the currently active type
+            names = [self.current_event_name]
+        else:  # of any type
+            names = self.event_times.names
 
-            t = (self.t0 + 1) / self.fs_song
-            nxt = self.event_times.find_next(t, names)
-            if nxt is not None:
-                self.t0 = nxt * self.fs_song
-
-    def reload_cuepoints(self, qt_keycode):
-        self.cue_points = PSV.load_cuepoints()
-        self.cue_index = -1
+        t = (self.t0 + 1) / self.fs_song
+        nxt = self.event_times.find_next(t, names)
+        if nxt is not None:
+            self.t0 = nxt * self.fs_song
 
     def zoom_in_song(self, qt_keycode):
         self.span /= 2
@@ -2210,6 +2175,13 @@ class PSV(MainWindow):
             self.slice_view.clear()
             self.slice_view.hide()
 
+        if self.show_annot:
+            self.annot_view.update_trace()
+            self.annot_view.show()
+        else:
+            self.annot_view.clear()
+            self.annot_view.hide()
+
         if "pose_positions_allo" in self.ds:
             if self.show_tracks:
                 # make this part of the callback?
@@ -2241,7 +2213,7 @@ class PSV(MainWindow):
             self.spec_view.clear()
             self.spec_view.hide()
 
-        if self.show_songevents and (self.show_trace or self.show_tracks or self.show_spec):
+        if self.show_songevents and (self.show_trace or self.show_tracks or self.show_spec or self.show_annot):
             self.plot_song_events(self.x)
 
     def update_frame(self):
@@ -2261,6 +2233,7 @@ class PSV(MainWindow):
 
             event_pen = pg.mkPen(color=self.eventtype_colors[event_index], width=3)
             event_brush = pg.mkBrush(color=[*self.eventtype_colors[event_index], 25])
+            event_brush_annot = pg.mkBrush(color=[*self.eventtype_colors[event_index], 128])
 
             events_in_view = self.event_times.filter_range(event_name, x[0], x[-1], strict=False)
 
@@ -2279,6 +2252,16 @@ class PSV(MainWindow):
                         self.tracks_view.add_segment(
                             onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text
                         )
+                    if self.show_annot:
+                        self.annot_view.add_segment(
+                            onset,
+                            offset,
+                            event_index,
+                            brush=event_brush_annot,
+                            pen=event_pen,
+                            movable=movable,
+                            text=segment_text,
+                        )
                     if self.show_spec:
                         self.spec_view.add_segment(
                             onset, offset, event_index, brush=event_brush, pen=event_pen, movable=movable, text=segment_text
@@ -2288,6 +2271,8 @@ class PSV(MainWindow):
                     self.slice_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
                 if self.show_tracks:
                     self.tracks_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
+                if self.show_annot:
+                    self.annot_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
                 if self.show_spec:
                     self.spec_view.add_event(events_in_view[:, 0], event_index, event_pen, movable=movable, text=segment_text)
 
@@ -2312,11 +2297,19 @@ class PSV(MainWindow):
             event_name_to_move = self.event_times.names[region.event_index]
 
         new_region = region.getRegion()
-        # need to figure out event_name of the moved one if moving non-selected event
         self.event_times.move_time(event_name_to_move, region.bounds, new_region)
         logger.info(
             f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
         )
+
+        mp = self.annot_view.mousePoint.y()
+        if mp > 0 and mp < 1:
+            new_event_idx = int(mp * self.nb_eventtypes)
+            new_event_name = self.event_times.names[new_event_idx]
+            _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
+            if old_name is not None:
+                logger.info(f"  Changed from {old_name} to {new_name}.")
+
         self.update_xy()
 
     def on_position_change_finished(self, position):
@@ -2330,6 +2323,16 @@ class PSV(MainWindow):
         new_position = position.pos()[0]
         self.event_times.move_time(event_name_to_move, position.position, new_position)
         logger.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
+
+        mp = self.annot_view.mousePoint.y()
+        if mp > 0 and mp < 1:
+            new_event_idx = int(mp * self.nb_eventtypes)
+            new_event_name = self.event_times.names[new_event_idx]
+            print(new_event_name)
+            _, old_name, new_name = self.event_times.change_name(new_position, new_event_name, tol=1)
+            if old_name is not None:
+                logger.info(f"  Changed from {old_name} to {new_name}.")
+
         self.update_xy()
 
     def on_position_dragged(self, fly, pos, offset):
@@ -2419,10 +2422,12 @@ class PSV(MainWindow):
                     if self.sinet0 is None:
                         self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
                         self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+                        self.annot_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
                         self.sinet0 = mouseT
                     else:
                         self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
                         self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                        self.annot_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
                         self.event_times.add_time(
                             self.current_event_name,
                             start_seconds=self.sinet0,
@@ -2445,6 +2450,7 @@ class PSV(MainWindow):
         elif mouseButton == 2:  # delete nearest event
             self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+            self.annot_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.sinet0 = None
 
             if not self.edit_only_current_events:

@@ -186,6 +186,31 @@ def assemble(
         logger.info(f"  setting targetsamplingrate to avg. fps ({fps}).")
         target_sampling_rate = fps
 
+    # # LOAD VIDEO
+    # with_video = False
+    # include_video = False  #True
+    # if include_video:
+    #     logger.info("Loading video:")
+    #     if filepath_video is not None:
+    #         video_loader = io.get_loader(kind="video", basename=filepath_video, basename_is_full_name=True)
+    #     else:
+    #         video_loader = io.get_loader(kind="video", basename=os.path.join(root, res_path, datename, datename))
+    #     # breakpoint()
+    #     if video_loader:
+    #         try:
+    #             xr_video = video_loader.make(video_loader.path)
+    #             xr_video = add_time(xr_video, ss, dim="frame_number")
+    #             xr_video = xr_video.drop_indexes(["frame_number"])
+    #             xr_video = xr_video.set_xindex("frametimes")
+    #             logger.info(f"  {video_loader.path} loaded.")
+    #             with_video = True
+    #         except Exception as e:
+    #             logger.info(f"  Loading {video_loader.path} failed.")
+    #             logger.exception(e)
+    #     else:
+    #         logger.info("   Found no tracks.")
+    #     logger.info("Done.")
+
     # LOAD TRACKS
     with_tracks = False
     with_fixed_tracks = False
@@ -507,6 +532,15 @@ def assemble(
     if pixel_size_mm is None:
         pixel_size_mm = np.nan
 
+    # if with_video:
+    #     logger.info("   Video")
+    #     # set frametimes rel to ref-time
+    #     xr_video["frametimes_rel"] = xr_video.frametimes - ref_time
+    #     xr_video["frametimes"] = xr_video["frametimes_rel"]
+    #     xr_video = xr_video.drop_vars("frametimes_rel")
+    #     xr_video = xr_video.set_xindex("frametimes")
+    #     dataset_data["video"] = xr_video
+
     if with_tracks:
         logger.info("   Tracking")
         xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time, target_time=time, extrapolate=True)
@@ -633,6 +667,7 @@ def assemble(
             logger.debug(f"      Could not load fly identities using info from {filepath_swap}.")
             logger.debug(e)
     logger.info("Done.")
+
     return dataset
 
 

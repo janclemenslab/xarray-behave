@@ -42,6 +42,7 @@ class SegmentItem(pg.LinearRegionItem):
         movable=True,
         pen=None,
         brush=None,
+        change_finished_fun=None,
         **kwargs,
     ):
         """[summary]
@@ -54,6 +55,7 @@ class SegmentItem(pg.LinearRegionItem):
             movable (bool, optional): [description]. Defaults to True.
             pen ([type], optional): [description]. Defaults to None.
             brush ([type], optional): [description]. Defaults to None.
+            change_finished_fun ([type], optional): [description]. Defaults to None.
             **kwargs passed to pg.LinearRegionItem
         """
         super().__init__(bounds, movable=movable, pen=pen, brush=brush, **kwargs)
@@ -65,6 +67,8 @@ class SegmentItem(pg.LinearRegionItem):
         self.xrange = xrange
         # this corresponds to the underlying view only for TraceView, not for SpecView
         self._parent = self.getViewWidget
+        if change_finished_fun is not None:
+            self.sigRegionChangeFinished.connect(change_finished_fun)
 
 
 class EventItem(pg.InfiniteLine):
@@ -90,6 +94,84 @@ class EventItem(pg.InfiniteLine):
         self.xrange = xrange
         # this corresponds to the undelrying only for TraceView, not for SpecView
         self._parent = self.getViewWidget
+
+
+class SegmentRectItem(pg.RectROI):
+    def __init__(
+        self,
+        bounds: Tuple[float, float],
+        event_index: int,
+        xrange,
+        nb_eventtypes: int = 1,
+        time_bounds: Tuple[float, float] = None,
+        movable=True,
+        pen=None,
+        brush=None,
+        change_finished_fun=None,
+        **kwargs,
+    ):
+        """[summary]
+
+        Args:
+            bounds (Tuple[float, float]): (onset, offset) in seconds.
+            event_index (int): for directly indexing event_types in ds.song_events
+            xrange: prop from parent
+            time_bounds (Tuple[float, float], optional): if axis coords is not seconds
+            movable (bool, optional): [description]. Defaults to True.
+            pen ([type], optional): [description]. Defaults to None.
+            brush ([type], optional): [description]. Defaults to None.
+            change_finished_fun ([type], optional): [description]. Defaults to None.
+            **kwargs passed to pg.LinearRegionItem
+        """
+        snapSize = 1 / nb_eventtypes
+        pos = [bounds[0], event_index * snapSize]
+        size = [bounds[1] - bounds[0], snapSize]
+        super().__init__(
+            pos,
+            size=size,
+            angle=0.0,
+            invertible=False,
+            maxBounds=None,
+            snapSize=snapSize,
+            # translateSnap=False,
+            pen=pen,
+            movable=True,
+            rotatable=False,
+            resizable=True,
+            removable=True,
+        )
+        # breakpoint()
+        [self.removeHandle(handle) for handle in self.getHandles()]
+        # self.addScaleHandle([0, 1], [1, 1])
+        # self.addScaleHandle([1, 1], [1, 1])
+        self.addScaleHandle([0, 1], [1, 1])
+        self.addScaleHandle([1, 0], [0, 0])
+        self.currentBrush = brush
+
+        if time_bounds is None:
+            self.bounds = bounds
+        else:
+            self.bounds = time_bounds
+        self.event_index = event_index
+        self.xrange = xrange
+        # this corresponds to the underlying view only for TraceView, not for SpecView
+        self._parent = self.getViewWidget
+        if change_finished_fun is not None:
+            self.sigRegionChangeFinished.connect(change_finished_fun)
+
+    def getRegion(self):
+        return [self.pos()[0], self.pos()[0] + self.size()[0]]
+
+    def paint(self, p, opt, widget):
+        # Note: don't use self.boundingRect here, because subclasses may need to redefine it.
+        r = QtCore.QRectF(0, 0, self.state["size"][0], self.state["size"][1]).normalized()
+
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setPen(self.currentPen)
+        p.setBrush(self.currentBrush)
+        p.translate(r.left(), r.top())
+        p.scale(r.width(), r.height())
+        p.drawRect(0, 0, 1, 1)
 
 
 class Draggable(pg.GraphItem):
@@ -483,6 +565,104 @@ class SpecView(pg.ImageView):
         pos = event.pos()[0]
         mouseT = self.pos_to_time(pos) * self.t_step
         self.callback(mouseT, event.button())
+
+
+class AnnotView(pg.PlotWidget):
+    def __init__(self, model, callback, ylim=None):
+        # additionally make names of trace and event arrays in ds args?
+        super().__init__()
+        self.setMouseEnabled(x=False, y=False)
+        # this should be just a link/ref so changes in ds made by the controller will propagate
+        # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
+        self.disableAutoRange()
+        self.enableAutoRange(False, False)
+        self.setDefaultPadding(0.0)
+
+        self._m = model
+        self.callback = callback
+        self.getPlotItem().mouseClickEvent = self._click
+        self.scene().sigMouseMoved.connect(self.mouseMoved)
+
+        self.annotation_items = []
+        self.getAxis("left").setStyle(tickFont=self.m.font_condensed)
+        self.getAxis("left").setWidth(50)
+
+        self.mousePoint = None
+
+    @property
+    def m(self):  # read-only property
+        return self._m
+
+    @property
+    def trange(self):
+        return None
+
+    @property
+    def xrange(self):
+        return np.array(self.viewRange()[0])
+
+    @property
+    def yrange(self):
+        return np.array(self.viewRange()[1])
+
+    @property
+    def threshold(self):
+        if self.threshold_line is not None:
+            return self.threshold_line.value()
+
+    def update_trace(self):
+        self.clear()
+        self.setYRange(0, 1)
+        self.setXRange(self.m.x[0], self.m.x[-1])
+
+        # time of current frame in trace
+        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
+        self.addItem(pos_line)
+
+        # update event names on y-axis
+        yticks = [((cnt + 0.5) / self.m.nb_eventtypes, name) for cnt, name in enumerate(self.m.event_times.names)]
+        self.getAxis("left").setTicks([yticks])
+
+    def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
+        # span = [region_typeindex / self.m.nb_eventtypes, (region_typeindex + 1) / self.m.nb_eventtypes]
+        region = SegmentRectItem(
+            (onset, offset),
+            region_typeindex,
+            self.xrange,
+            nb_eventtypes=self.m.nb_eventtypes,
+            brush=brush,
+            pen=pen,
+            movable=movable,
+            # span=span,
+            change_finished_fun=self.m.on_region_change_finished if movable else None,
+        )
+        self.addItem(region)
+
+    def add_event(self, xx, event_type, pen, movable=False, text=None):
+        if not len(xx):
+            return
+
+        span = [event_type / self.m.nb_eventtypes, (event_type + 1) / self.m.nb_eventtypes]
+        for x in xx:
+            line = EventItem(x, event_type, self.xrange, movable=movable, angle=90, pen=pen, span=span)
+            line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
+            self.addItem(line)
+
+    def time_to_pos(self, t):
+        return np.interp(t, self.m.trange, self.xrange)
+
+    def pos_to_time(self, pos):
+        return np.interp(pos, self.xrange, self.m.trange)
+
+    def _click(self, event):
+        event.accept()
+        pos = event.pos()
+        mouseT = self.getPlotItem().getViewBox().mapSceneToView(pos).x()
+        self.callback(mouseT, event.button())
+
+    def mouseMoved(self, pos):
+        if self.sceneBoundingRect().contains(pos):
+            self.mousePoint = self.getPlotItem().vb.mapSceneToView(pos)
 
 
 class MovieView(utils.FastImageWidget):

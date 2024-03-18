@@ -102,7 +102,7 @@ class Events(UserDict):
     def from_dataset(cls, ds: xr.Dataset):
         start_seconds = np.array(ds.event_times.sel(event_time="start_seconds").data)
         stop_seconds = np.array(ds.event_times.sel(event_time="stop_seconds").data)
-        if "channels" in ds.event_times:
+        if "channels" in ds.event_time:
             channels = np.array(ds.event_times.sel(event_time="channels").data)
         else:
             channels = None
@@ -379,6 +379,7 @@ class Events(UserDict):
             return None, None, None
 
         index = self._get_index_of_nearest(time, name, tol, min_time, max_time)
+        print(index)
         if index is not None:
             changed_time = self[name][index, :]
             old_name = name

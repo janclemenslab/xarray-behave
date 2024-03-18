@@ -79,11 +79,13 @@ class Ethodrome(io.BaseProvider):
             import dask.array as daskarray
 
             da = daskarray.from_array(f["samples"], chunks=(10000, 1))
+
+            # FIXME: code in "if" and in "else" is identical - refactor to function
             nb_channels = f["samples"].shape[1]
             song_channels = song_channels[song_channels < nb_channels]
             song = da[:, song_channels]
             if return_nonsong_channels:
-                non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
+                non_song_channels = list(set(range(nb_channels)) - set(song_channels))
                 non_song = da[:, non_song_channels]
 
             if "rate" in f.attrs:
@@ -95,12 +97,13 @@ class Ethodrome(io.BaseProvider):
                 samplerate = 10_000
         else:
             with h5py.File(filename, "r") as f:
+                da = f["samples"]
                 nb_channels = f["samples"].shape[1]
                 song_channels = song_channels[song_channels < nb_channels]
-                song = f["samples"][:, song_channels]
+                song = da[:, song_channels]
                 if return_nonsong_channels:
-                    non_song_channels = list(set(list(range(nb_channels))) - set(song_channels))
-                    non_song = f["samples"][:, non_song_channels]
+                    non_song_channels = list(set(range(nb_channels)) - set(song_channels))
+                    non_song = da[:, non_song_channels]
 
                 if "rate" in f.attrs:
                     samplerate = f.attrs["rate"]
