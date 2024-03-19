@@ -584,7 +584,7 @@ class AnnotView(pg.PlotWidget):
         self.scene().sigMouseMoved.connect(self.mouseMoved)
 
         self.annotation_items = []
-        self.getAxis("left").setStyle(tickFont=self.m.font_condensed)
+        # self.getAxis("left").setStyle(tickFont=self.m.font_condensed)
         self.getAxis("left").setWidth(50)
 
         self.mousePoint = None
