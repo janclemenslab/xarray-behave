@@ -35,7 +35,8 @@ requirements:
     - xarray
     - dask
     #- py
-    - conda-forge::pyside6 # [not win]
+    - conda-forge::pyside6 # [linux]
+    - conda-forge::pyside2 # [osx or arm64]
     - pyside6 # [win and py==310]
     - pyside2 # [win and py>310]
     - pyside2 # [win and py==39]
