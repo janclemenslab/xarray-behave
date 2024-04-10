@@ -2,6 +2,7 @@ import logging
 import numpy as np
 import xarray as xr
 import pandas as pd
+import scipy
 
 
 logger = logging.getLogger(__name__)
@@ -182,14 +183,14 @@ def eventtimes_to_traces(ds, event_times):
     return ds
 
 
-def traces_to_eventtimes(traces, event_names, event_categories):
+def traces_to_eventtimes(traces, event_names, event_categories, events_are_binary: bool = True):
     """[summary]
 
     Args:
         traces ([type]): list of numpy arrays with the binary traces for each event/segment
         event_names ([type]): [description]
         event_categories ([type]): [description]
-
+        events_are_binary (bool, True): detect events indices where value is 1.0. Otherwise use scipy.signal.find_peaks.
     Returns:
         [type]: [description]
     """
@@ -202,7 +203,10 @@ def traces_to_eventtimes(traces, event_names, event_categories):
     for event_idx, (event_name, event_category) in enumerate(zip(event_names, event_categories)):
         logger.info(f"   {event_name}")
         if event_category == "event":
-            event_times[event_name] = np.where(traces[event_idx] == 1)[0]
+            if events_are_binary:
+                event_times[event_name] = np.where(traces[event_idx] == 1)[0]
+            else:
+                event_times[event_name], _ = scipy.signal.find_peaks(traces[event_idx])
         elif event_category == "segment":
             tmp = (traces[event_idx] == 1).astype(float)  # makes this more robust
             onsets = np.where(np.diff(tmp) == 1)[0]

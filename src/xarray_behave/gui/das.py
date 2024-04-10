@@ -8,6 +8,7 @@ import zarr
 import numpy as np
 import pandas as pd
 import librosa
+import scipy
 import h5py
 
 import das.make_dataset as dsm
@@ -393,9 +394,7 @@ def make(
     store.attrs["data_splits"] = data_split_dict
     logger.info("Done.")
     # report
-    logger.info(
-        f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples."
-    )
+    logger.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
     if to_npy_dir:  # save as npy_dir
         logger.info(f"  Saving to {store_folder}.")
         das.npy_dir.save(store_folder, store)
@@ -408,8 +407,12 @@ def make(
         names = store.attrs["class_names"][1:]  # [1:] ignore the noise class
         types = store.attrs["class_types"][1:]
         for key in store.keys():
-            ann = event_utils.traces_to_eventtimes(store[key]["y"][:, 1:].T, names, types)
-            ann = {k: v / fs for k, v in ann.items()}  # convert indices to seconds
+            ann = event_utils.traces_to_eventtimes(store[key]["y"][:, 1:].T, names, types, events_are_binary=False)
+            for k, v in ann.items():
+                if v.ndim == 1:  # add start/stop seconds for events - traces_to_eventtimes only returns event start times but annot expects both start and end
+                    v = np.stack((v, v)).T
+                v = v / fs  # convert indices to seconds
+                ann[k] = v
             ev = annot.Events.from_dict(ann)
             ev.to_df().to_csv(os.path.join(store.attrs["store_folder"], key, "x_annotations.csv"))
     logger.info("The dataset has been made.")

@@ -132,19 +132,20 @@ class Events(UserDict):
         names = []
         start_seconds = []
         stop_seconds = []
-
         if len(dct.values()):
-            if list(dct.values())[0].shape[1] > 2:
+            # check if there are annotations and if so, if they comes with channel information
+            if list(dct.values())[0].ndim > 1 and list(dct.values())[0].shape[1] > 2:
                 channels = []
             else:
                 channels = None
 
             for k, v in dct.items():
-                names.extend([k] * v.shape[0])
-                start_seconds.extend(v[:, 0])
-                stop_seconds.extend(v[:, 1])
-                if channels is not None:
-                    channels.extend(v[:, 2])
+                if len(v):  # check if there are annotations
+                    names.extend([k] * v.shape[0])
+                    start_seconds.extend(v[:, 0])
+                    stop_seconds.extend(v[:, 1])
+                    if channels is not None:
+                        channels.extend(v[:, 2])
         out = cls.from_lists(names, start_seconds, stop_seconds, channels=channels)
         return out
 
@@ -165,9 +166,7 @@ class Events(UserDict):
             columns.append("channel")
         return pd.DataFrame(columns=columns)
 
-    def _append_row(
-        self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None, channel: int = -1
-    ):
+    def _append_row(self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None, channel: int = -1):
         if stop_seconds is None:
             stop_seconds = start_seconds
 
@@ -196,16 +195,12 @@ class Events(UserDict):
         """
         df = self._init_df()
         for name in self.names:
-            for start_second, stop_second, channel in zip(
-                self.start_seconds(name), self.stop_seconds(name), self.channels(name)
-            ):
+            for start_second, stop_second, channel in zip(self.start_seconds(name), self.stop_seconds(name), self.channels(name)):
                 df = self._append_row(df, name, start_second, stop_second, channel)
         if preserve_empty:  # ensure we keep events without annotations
             for name, cat in zip(self.names, self.categories.values()):
                 if name not in df.name.values:
-                    stop_seconds = (
-                        np.nan if cat == "event" else 0
-                    )  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
+                    stop_seconds = np.nan if cat == "event" else 0  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
                     df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=stop_seconds)
         # make sure start and stop seconds are numeric
         df["start_seconds"] = pd.to_numeric(df["start_seconds"], errors="coerce")
@@ -315,9 +310,7 @@ class Events(UserDict):
             name = None
         return name
 
-    def _get_index_of_nearest(
-        self, time: float, name: str, tol: float = 0, min_time: Optional[float] = None, max_time: Optional[float] = None
-    ):
+    def _get_index_of_nearest(self, time: float, name: str, tol: float = 0, min_time: Optional[float] = None, max_time: Optional[float] = None):
         within_range_indices = self.select_range(name, min_time, max_time, strict=False)
         if len(within_range_indices):
             nearest_start = self._find_nearest(self.start_seconds(name)[within_range_indices], time)
