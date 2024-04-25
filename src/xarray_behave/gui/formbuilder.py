@@ -26,6 +26,7 @@ is :py:method:`FormBuilderLayout.add_item()`. Look there if you want to know
 what's supported in the YAML file, what exactly each field type does, or if you
 want to add a new type of supported form field.
 """
+
 # modified from https://sleap.ai/_modules/sleap/gui/formbuilder.html
 import yaml
 from typing import Any, Dict, List, Optional, Union, Text

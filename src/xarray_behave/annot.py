@@ -2,6 +2,7 @@
 
 TODO: From/to traces
 """
+
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -166,7 +167,9 @@ class Events(UserDict):
             columns.append("channel")
         return pd.DataFrame(columns=columns)
 
-    def _append_row(self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None, channel: int = -1):
+    def _append_row(
+        self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None, channel: int = -1
+    ):
         if stop_seconds is None:
             stop_seconds = start_seconds
 
@@ -195,12 +198,16 @@ class Events(UserDict):
         """
         df = self._init_df()
         for name in self.names:
-            for start_second, stop_second, channel in zip(self.start_seconds(name), self.stop_seconds(name), self.channels(name)):
+            for start_second, stop_second, channel in zip(
+                self.start_seconds(name), self.stop_seconds(name), self.channels(name)
+            ):
                 df = self._append_row(df, name, start_second, stop_second, channel)
         if preserve_empty:  # ensure we keep events without annotations
             for name, cat in zip(self.names, self.categories.values()):
                 if name not in df.name.values:
-                    stop_seconds = np.nan if cat == "event" else 0  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
+                    stop_seconds = (
+                        np.nan if cat == "event" else 0
+                    )  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
                     df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=stop_seconds)
         # make sure start and stop seconds are numeric
         df["start_seconds"] = pd.to_numeric(df["start_seconds"], errors="coerce")
@@ -310,7 +317,9 @@ class Events(UserDict):
             name = None
         return name
 
-    def _get_index_of_nearest(self, time: float, name: str, tol: float = 0, min_time: Optional[float] = None, max_time: Optional[float] = None):
+    def _get_index_of_nearest(
+        self, time: float, name: str, tol: float = 0, min_time: Optional[float] = None, max_time: Optional[float] = None
+    ):
         within_range_indices = self.select_range(name, min_time, max_time, strict=False)
         if len(within_range_indices):
             nearest_start = self._find_nearest(self.start_seconds(name)[within_range_indices], time)

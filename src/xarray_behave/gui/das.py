@@ -394,7 +394,9 @@ def make(
     store.attrs["data_splits"] = data_split_dict
     logger.info("Done.")
     # report
-    logger.info(f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples.")
+    logger.info(
+        f"  Got {store['train']['x'].shape}, {store['val']['x'].shape}, {store['test']['x'].shape} train/val/test samples."
+    )
     if to_npy_dir:  # save as npy_dir
         logger.info(f"  Saving to {store_folder}.")
         das.npy_dir.save(store_folder, store)
@@ -409,7 +411,9 @@ def make(
         for key in store.keys():
             ann = event_utils.traces_to_eventtimes(store[key]["y"][:, 1:].T, names, types, events_are_binary=False)
             for k, v in ann.items():
-                if v.ndim == 1:  # add start/stop seconds for events - traces_to_eventtimes only returns event start times but annot expects both start and end
+                if (
+                    v.ndim == 1
+                ):  # add start/stop seconds for events - traces_to_eventtimes only returns event start times but annot expects both start and end
                     v = np.stack((v, v)).T
                 v = v / fs  # convert indices to seconds
                 ann[k] = v

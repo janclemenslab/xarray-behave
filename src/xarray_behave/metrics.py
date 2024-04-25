@@ -1,4 +1,5 @@
 """Calculate metrics from behavioral data."""
+
 import numpy as np
 import scipy.signal.windows
 

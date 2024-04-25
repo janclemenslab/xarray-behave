@@ -1,4 +1,5 @@
 """Create self-documenting xarray dataset from behavioral recordings and annotations."""
+
 import numpy as np
 from samplestamps.samplestamps import SampStamp, SimpleStamp
 import scipy.interpolate
