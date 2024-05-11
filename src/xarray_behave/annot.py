@@ -347,9 +347,9 @@ class Events(UserDict):
                 event_at_time = matching_start < time
         elif self.categories[name] == "event":
             if nearest_is_start:
-                event_at_time = np.abs(time - nearest_start) < tol
+                event_at_time = np.abs(time - nearest_start) <= tol
             else:
-                event_at_time = np.abs(time - nearest_stop) < tol
+                event_at_time = np.abs(time - nearest_stop) <= tol
         else:
             event_at_time = False
 
@@ -359,7 +359,13 @@ class Events(UserDict):
             return index
 
     def change_name(
-        self, time: float, new_name: str, tol: float = 0, min_time: Optional[float] = None, max_time: Optional[float] = None
+        self,
+        time: float,
+        new_name: str,
+        tol: float = 0,
+        min_time: Optional[float] = None,
+        max_time: Optional[float] = None,
+        old_name: Optional[str] = None,
     ) -> Tuple[Optional[List[int]], Optional[str], Optional[str]]:
         """Change the name of the annotation.
 
@@ -369,19 +375,21 @@ class Events(UserDict):
             tol (float, optional): Tolerance for matching events. Defaults to 0.
             min_time (Optional[float], optional): _description_. Defaults to None.
             max_time (Optional[float], optional): _description_. Defaults to None.
-
+            old_name (Optional[str]): name of event to move. Defaults to None.
         Returns:
             Tuple[List[int], str, str]: ([start_seconds, stop_seconds], old_name, new_name
             Tuple[None, None, None] if no event near time, or new_name is old_name
         """
-        name = self._get_name_of_nearest(time, min_time, max_time)
+        if old_name is None:
+            name = self._get_name_of_nearest(time, min_time, max_time)
+        else:
+            name = old_name
 
         # nothing to do
         if name is None or name == new_name or self.categories[name] != self.categories[new_name]:
             return None, None, None
 
         index = self._get_index_of_nearest(time, name, tol, min_time, max_time)
-        print(index)
         if index is not None:
             changed_time = self[name][index, :]
             old_name = name

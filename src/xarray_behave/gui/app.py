@@ -2304,13 +2304,14 @@ class PSV(MainWindow):
         )
 
         # FIXME for moving annotations in ethogram - fails in pyside6
-        # mp = self.annot_view.mousePoint.y()
-        # if mp > 0 and mp < 1:
-        #     new_event_idx = int(mp * self.nb_eventtypes)
-        #     new_event_name = self.event_times.names[new_event_idx]
-        #     _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
-        #     if old_name is not None:
-        #         logger.info(f"  Changed from {old_name} to {new_name}.")
+        if self.annot_view.mousePoint is not None:
+            mp = self.annot_view.mousePoint.y()
+            if mp > 0 and mp < 1:
+                new_event_idx = int(mp * self.nb_eventtypes)
+                new_event_name = self.event_times.names[new_event_idx]
+                _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
+                if old_name is not None:
+                    logger.info(f"  Changed from {old_name} to {new_name}.")
 
         self.update_xy()
 
@@ -2321,19 +2322,20 @@ class PSV(MainWindow):
         event_name_to_move = self.current_event_name
         if self.current_event_index != position.event_index:
             event_name_to_move = self.event_times.names[position.event_index]
-
+        print(position.pos(), position.position)
         new_position = position.pos()[0]
         self.event_times.move_time(event_name_to_move, position.position, new_position)
         logger.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
 
         # FIXME for moving annotations in ethogram - fails in pyside6
-        # mp = self.annot_view.mousePoint.y()
-        # if mp > 0 and mp < 1:
-        #     new_event_idx = int(mp * self.nb_eventtypes)
-        #     new_event_name = self.event_times.names[new_event_idx]
-        #     _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
-        #     if old_name is not None:
-        #         logger.info(f"  Changed from {old_name} to {new_name}.")
+        if self.annot_view.mousePoint is not None:
+            mp = self.annot_view.mousePoint.y()
+            if mp > 0 and mp < 1:
+                new_event_idx = int(mp * self.nb_eventtypes)
+                new_event_name = self.event_times.names[new_event_idx]
+                _, old_name, new_name = self.event_times.change_name(new_position, new_event_name, old_name=event_name_to_move)
+                if old_name is not None:
+                    logger.info(f"  Changed from {old_name} to {new_name}.")
 
         self.update_xy()
 

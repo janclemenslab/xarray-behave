@@ -658,7 +658,15 @@ class AnnotView(pg.PlotWidget):
         mouseT = self.getPlotItem().getViewBox().mapSceneToView(pos).x()
         self.callback(mouseT, event.button())
 
+    # def mouseMoveEvent(self, ev):
+    #     pos = ev.pos()
+    #     # print(pos)
+    #     if self.sceneBoundingRect().contains(pos):
+    #         self.mousePoint = self.getPlotItem().vb.mapSceneToView(pos)
+    #         print(self.mousePoint)
+
     def mouseMoved(self, pos):
+        # pass
         if self.sceneBoundingRect().contains(pos):
             self.mousePoint = self.getPlotItem().vb.mapSceneToView(pos)
 
