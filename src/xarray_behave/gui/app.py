@@ -1357,7 +1357,7 @@ class PSV(MainWindow):
         self.spec_win = 200
         self.show_songevents = True
         self.movable_events = True
-        self.edit_only_current_events = True
+        self.edit_only_current_events = False
         self.show_all_channels = True
         self.select_loudest_channel = False
         self.threshold_mode = False
@@ -2302,6 +2302,15 @@ class PSV(MainWindow):
         logger.info(
             f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
         )
+        print(self.annot_view.lastMousePos)
+        # FIXME for moving annotations in ethogram - fails in pyside6
+        # mp = self.annot_view.mousePoint.y()
+        # if mp > 0 and mp < 1:
+        #     new_event_idx = int(mp * self.nb_eventtypes)
+        #     new_event_name = self.event_times.names[new_event_idx]
+        #     _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
+        #     if old_name is not None:
+        #         logger.info(f"  Changed from {old_name} to {new_name}.")
 
         self.update_xy()
 
@@ -2316,6 +2325,15 @@ class PSV(MainWindow):
         new_position = position.pos()[0]
         self.event_times.move_time(event_name_to_move, position.position, new_position)
         logger.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
+
+        # FIXME for moving annotations in ethogram - fails in pyside6
+        # mp = self.annot_view.mousePoint.y()
+        # if mp > 0 and mp < 1:
+        #     new_event_idx = int(mp * self.nb_eventtypes)
+        #     new_event_name = self.event_times.names[new_event_idx]
+        #     _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
+        #     if old_name is not None:
+        #         logger.info(f"  Changed from {old_name} to {new_name}.")
 
         self.update_xy()
 

@@ -571,9 +571,8 @@ class AnnotView(pg.PlotWidget):
     def __init__(self, model, callback, ylim=None):
         # additionally make names of trace and event arrays in ds args?
         super().__init__()
-        self.setMouseEnabled(x=False, y=False)
-        # this should be just a link/ref so changes in ds made by the controller will propagate
-        # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
+        # self.setMouseEnabled(x=False, y=False)
+        self.enableMouse(True)
         self.disableAutoRange()
         self.enableAutoRange(False, False)
         self.setDefaultPadding(0.0)
@@ -655,7 +654,7 @@ class AnnotView(pg.PlotWidget):
         return np.interp(pos, self.xrange, self.m.trange)
 
     def _click(self, event):
-        event.accept()
+        # event.accept()
         pos = event.pos()
         mouseT = self.getPlotItem().getViewBox().mapSceneToView(pos).x()
         self.callback(mouseT, event.button())
