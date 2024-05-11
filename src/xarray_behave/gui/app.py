@@ -2302,7 +2302,7 @@ class PSV(MainWindow):
         logger.info(
             f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
         )
-        print(self.annot_view.lastMousePos)
+
         # FIXME for moving annotations in ethogram - fails in pyside6
         # mp = self.annot_view.mousePoint.y()
         # if mp > 0 and mp < 1:

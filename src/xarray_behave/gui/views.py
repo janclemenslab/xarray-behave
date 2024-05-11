@@ -571,8 +571,7 @@ class AnnotView(pg.PlotWidget):
     def __init__(self, model, callback, ylim=None):
         # additionally make names of trace and event arrays in ds args?
         super().__init__()
-        # self.setMouseEnabled(x=False, y=False)
-        self.enableMouse(True)
+        self.setMouseEnabled(x=False, y=False)
         self.disableAutoRange()
         self.enableAutoRange(False, False)
         self.setDefaultPadding(0.0)
