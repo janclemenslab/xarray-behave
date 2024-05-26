@@ -16,6 +16,7 @@ requirements:
   host:
     - python {{ python }}
     - pip
+    - numpy
   run:
     - python {{ python }}
     - defopt=6.3
