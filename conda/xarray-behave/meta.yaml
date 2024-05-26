@@ -34,7 +34,7 @@ requirements:
     - numba
     - xarray
     - dask
-    - conda-forge::pyside6>6.4
+    - conda-forge::pyside2
     # - conda-forge::pyside6 # [linux]
     # - conda-forge::pyside6 # [win]
     # - conda-forge::pyside2 # [osx or arm64]
