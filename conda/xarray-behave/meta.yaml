@@ -40,14 +40,13 @@ requirements:
     # - pyside6 # [win and py==310]
     # - pyside2 # [win and py>310]
     # - pyside2 # [win and py==39]
-    - pyqtgraph>0.12.2
+    - pyqtgraph
     - qtpy
     - superqt
     - rich
     - colorcet
     - python-sounddevice
     - scikit-image
-    # - opencv
     - ffmpeg
     - pyvideoreader
     - samplestamps>=0.6
