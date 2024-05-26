@@ -34,13 +34,10 @@ requirements:
     - numba
     - xarray
     - dask
-    - conda-forge::pyside2
-    # - conda-forge::pyside6 # [linux]
-    # - conda-forge::pyside6 # [win]
+    - conda-forge::pyside6 # [linux or osx or arm64]
+    - conda-forge::pyside6 # [win and py>39]
     # - conda-forge::pyside2 # [osx or arm64]
-    # - pyside6 # [win and py==310]
-    # - pyside2 # [win and py>310]
-    # - pyside2 # [win and py==39]
+    - pyside2 # [win and py==39]
     - pyqtgraph
     - qtpy
     - superqt
