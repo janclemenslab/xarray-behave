@@ -293,8 +293,12 @@ class Sleap(Poses, io.BaseProvider):
 
         # indices and coordinate logic for sleap tracks. This could be cleaned/simplified later
         nb_flies = tracks.shape[0]
-        thorax_idx = np.argwhere(pose_parts == b"thorax")[0][0]
-        head_idx = np.argwhere(pose_parts == b"head")[0][0]
+        try:
+            thorax_idx = np.argwhere(pose_parts == b"thorax")[0][0]
+            head_idx = np.argwhere(pose_parts == b"head")[0][0]
+        except IndexError:
+            thorax_idx = 0
+            head_idx = 1
         x_idx = 0
         y_idx = 1
 
