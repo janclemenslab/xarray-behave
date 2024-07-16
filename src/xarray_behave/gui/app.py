@@ -674,6 +674,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if form_data["segment_minlen"] is None:
                 form_data["segment_minlen"] = 0
 
+            if form_data["filter_song"] == "no":
+                form_data["bandpass_low_freq"] = None
+                form_data["bandpass_up_freq"] = None
+
             if form_data["file"] != "Current file":
                 if form_data["folder"] != " ":
                     file_path = form_data["folder"]
@@ -696,6 +700,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     segment_thres=form_data["event_thres"],
                     segment_fillgap=form_data["segment_fillgap"],
                     segment_minlen=form_data["segment_minlen"],
+                    bandpass_low_freq=form_data["bandpass_low_freq"],
+                    bandpass_up_freq=form_data["bandpass_up_freq"],
+                    resample=form_data["resample"],
                 )
                 return
             elif hasattr(self, "ds") and form_data["file"] == "Current file":
@@ -721,10 +728,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 # select batch size so that at least 10 batches are run
                 # minimizes loss of annotations from batch size "quantization" errors
                 batch_size = 32
-                nb_batches = lambda batch_size: int(
+                nb_batches = int(
                     np.floor((audio.shape[0] - ((batch_size - 1) + params["nb_hist"])) / (params["stride"] * (batch_size)))
                 )
-                while nb_batches(batch_size) < 10 and batch_size > 1:
+                while nb_batches < 10 and batch_size > 1:
                     batch_size -= 1
 
                 logger.info("   Running inference on audio.")
@@ -733,10 +740,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 fs_model = params["samplerate_x_Hz"]
                 fs_audio = self.ds.song_raw.attrs["sampling_rate_Hz"]
 
-                if form_data["resample_audio"] and fs_audio and fs_audio != fs_model:
+                if form_data["resample"] and fs_audio and fs_audio != fs_model:
                     logger.info(f"   Resampling. Audio rate is {fs_audio}Hz but model was trained on data with {fs_model}Hz.")
                     audio = das.utils.resample(audio, fs_audio, fs_model)
 
+                import rich
+
+                rich.print(form_data)
                 events, segments, _, _ = das.predict.predict(
                     audio,
                     model_path,
@@ -749,6 +759,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     segment_thres=form_data["event_thres"],
                     segment_fillgap=form_data["segment_fillgap"],
                     segment_minlen=form_data["segment_minlen"],
+                    bandpass_low_freq=form_data["bandpass_low_freq"],
+                    bandpass_up_freq=form_data["bandpass_up_freq"],
+                    resample=form_data["resample"],
+                    fs_audio=fs_audio,
                 )
 
                 # Process detected song
