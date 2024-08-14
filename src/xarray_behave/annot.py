@@ -87,7 +87,7 @@ class Events(UserDict):
     ):
         if possible_event_names is None:
             possible_event_names = []
-        unique_names = list(set(names))
+        unique_names = list(np.unique(names))  # use `np.unique` instead of `set` to have reproducible order of names for now
         unique_names.extend(possible_event_names)
         dct = {name: [] for name in unique_names}
 
