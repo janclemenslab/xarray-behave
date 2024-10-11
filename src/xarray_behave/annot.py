@@ -548,6 +548,18 @@ class Events(UserDict):
         self[name] = np.delete(self[name], indices, axis=0)
         return indices
 
+    def sort(self, names: Optional[List[str]] = None):
+        """Sort annotations by start time.
+
+        Args:
+            names (Optional[List[str]], optional): _description_. Defaults to None.
+        """
+        if names is None:
+            names = self.names
+
+        for name in names:
+            self[name] = self[name][np.argsort(self[name][:, 0]), :]
+
     def find_next(self, t: float, names: Optional[List[str]] = None):
         """Find event starting after `t` of type in names.
 
@@ -564,7 +576,9 @@ class Events(UserDict):
             names = self.names
 
         nxt = []
+
         for name in names:
+            self.sort([name])
             cmp = self[name][:, 0] > t
             if np.any(cmp):
                 nxt.append(self[name][np.argmax(cmp), 0])
@@ -588,6 +602,7 @@ class Events(UserDict):
 
         nxt = []
         for name in names:
+            self.sort([name])
             cmp = self[name][:, 1] < t
             if np.any(cmp):
                 nxt.append(self[name][np.argmin(cmp) - 1, 0])

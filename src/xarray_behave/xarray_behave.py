@@ -177,6 +177,7 @@ def assemble(
         ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps_ball, filepath_daq)
 
     filepath_timestamps_movie = Path(root, res_path, datename, f"{datename}_movieframes.csv")
+    ss_movie = None
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_movie):
         ss_movie, last_sample_number_movie, sampling_rate_movie = ld.load_movietimes(filepath_timestamps_movie, filepath_daq)
 
@@ -284,20 +285,23 @@ def assemble(
     with_movieparams = False
     if include_movieparams:
         logger.info("Loading movie params:")
-        movieparams_loader = io.get_loader(kind="movieparams", basename=os.path.join(root, dat_path, datename, datename))
-        if movieparams_loader:
-            try:
-                xr_movieparams = movieparams_loader.make(movieparams_loader.path)
-                xr_movieparams = add_time(xr_movieparams, ss_movie, dim="frame_number_movie", suffix="_movie")
-
-                logger.info(f"   {movieparams_loader.path} loaded.")
-                with_movieparams = True
-            except Exception as e:
-                logger.info(f"   Loading {movieparams_loader.path} failed.")
-                logger.exception(e)
+        if ss_movie is None:
+            logger.warning("   Failed loading movie params - no ss_movie")
         else:
-            logger.info("   Found no movie params data.")
-        logger.info("Done.")
+            movieparams_loader = io.get_loader(kind="movieparams", basename=os.path.join(root, dat_path, datename, datename))
+            if movieparams_loader:
+                try:
+                    xr_movieparams = movieparams_loader.make(movieparams_loader.path)
+                    xr_movieparams = add_time(xr_movieparams, ss_movie, dim="frame_number_movie", suffix="_movie")
+
+                    logger.info(f"   {movieparams_loader.path} loaded.")
+                    with_movieparams = True
+                except Exception as e:
+                    logger.info(f"   Loading {movieparams_loader.path} failed.")
+                    logger.exception(e)
+            else:
+                logger.warning("   Found no movie params data.")
+            logger.info("Done.")
 
     # Init empty and event data
     auto_event_seconds: Dict[str, Any] = {}

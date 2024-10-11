@@ -2084,24 +2084,26 @@ class PSV(MainWindow):
             self.update_frame()
 
     def set_prev_cuepoint(self, qt_keycode):
-        if self.edit_only_current_events:  # of the currently active type
-            names = [self.current_event_name]
-        else:  # of any type
-            names = self.event_times.names
-
+        # if self.edit_only_current_events:  # of the currently active type
+        #     names = [self.current_event_name]
+        # else:  # of any type
+        #     names = self.event_times.names
+        names = [self.current_event_name]
         t = (self.t0 - 1) / self.fs_song
         nxt = self.event_times.find_prev(t, names)
+
         if nxt is not None:
             self.t0 = nxt * self.fs_song
 
     def set_next_cuepoint(self, qt_keycode):
-        if self.edit_only_current_events:  # of the currently active type
-            names = [self.current_event_name]
-        else:  # of any type
-            names = self.event_times.names
-
+        # if self.edit_only_current_events:  # of the currently active type
+        #     names = [self.current_event_name]
+        # else:  # of any type
+        #     names = self.event_times.names
+        names = [self.current_event_name]
         t = (self.t0 + 1) / self.fs_song
         nxt = self.event_times.find_next(t, names)
+
         if nxt is not None:
             self.t0 = nxt * self.fs_song
 
