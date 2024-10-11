@@ -36,7 +36,7 @@ jobs:
         # miniforge-variant: Mambaforge
         # miniforge-version: latest
         channels: conda-forge,ncb,anaconda,defaults
-        python-version: 3.10
+        python-version: 3.11
         # mamba-version: "*"
         auto-activate-base: false
         activate-environment: anaconda-client-env
