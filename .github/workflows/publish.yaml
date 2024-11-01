@@ -50,9 +50,10 @@ jobs:
     - name: Test package
       shell: bash -l {0}
       run: |
-        conda create -n xb_test xarray-behave -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
+        conda create -n xb_test xarray-behave=0.35.7 -c file://$(pwd)/build -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
         conda activate xb_test
         python -c "import xarray_behave; print(xarray_behave.__version__)"
+        xb --help
       
         
  
