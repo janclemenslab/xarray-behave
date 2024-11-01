@@ -49,7 +49,7 @@ jobs:
     - name: Test package
       run: |
         conda deactivate
-        conda create -n xb_test xarray_behave=0.35.7 -c conda-forge -c ncb -y
+        conda create -n xb_test xarray_behave=0.35.7 -c local -c conda-forge -c ncb -y
         python -m "import xarray_behave; print(xarray_behave.__version__)"
       
         
