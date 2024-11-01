@@ -50,7 +50,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda deactivate
-        conda create -n xb_test xarray_behave=0.35.7 -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
+        conda create -n xb_test xarray_behave=0.35.7 -c local -c conda-forge -c ncb -c build -y
         python -m "import xarray_behave; print(xarray_behave.__version__)"
       
         
