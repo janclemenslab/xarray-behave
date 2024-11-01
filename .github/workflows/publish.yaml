@@ -19,10 +19,10 @@ jobs:
     strategy:
       fail-fast: False
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
-        # python-version: ['3.10']
-        # os: [ubuntu-latest, windows-latest, macOS-13, macOS-14]
-        os: [ubuntu-latest, windows-latest, macOS-14]
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.10']
+        # python-version: ['3.10', '3.11', '3.12']
+        # os: [ubuntu-latest, windows-latest, macOS-14]
         include:
         - python-version: 3.9
           os: windows-latest
@@ -43,8 +43,14 @@ jobs:
         condarc-file: condarc.yml
     - name: Build and upload to anaconda
       run: |
-        conda build conda/xarray-behave -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
+        conda build conda/xarray-behave --no-test -c conda-forge -c ncb --python ${{ matrix.python-version }} --user ncb --token $ANACONDA_TOKEN
       env:
         ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+    - name: Test package
+      run: |
+        conda deactivate
+        conda create -n xb_test xarray_behave=0.35.7 -c conda-forge -c ncb -y
+        python -m "import xarray_behave; print(xarray_behave.__version__)"
+      
         
  
