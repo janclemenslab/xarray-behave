@@ -52,7 +52,7 @@ jobs:
       run: |
         conda create -n xb_test xarray-behave -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
         conda activate xb_test
-        python -m "import xarray_behave; print(xarray_behave.__version__)"
+        python -c "import xarray_behave; print(xarray_behave.__version__)"
       
         
  
