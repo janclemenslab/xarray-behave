@@ -4,10 +4,10 @@ channels:
   - ncb
 dependencies:
   - conda
-  - mamba
+  # - mamba
   - anaconda-client
-  - boa
+  # - boa
   - conda-build
-  - conda-verify
+  # - conda-verify
   - pip
   - git
