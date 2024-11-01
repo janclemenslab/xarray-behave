@@ -43,7 +43,7 @@ jobs:
         condarc-file: condarc.yml
     - name: Build and upload to anaconda
       run: |
-        conda build conda/xarray-behave --no-test --no-anaconda-upload --python ${{ matrix.python-version }} --output-folder build
+        conda build conda/xarray-behave --no-anaconda-upload --python ${{ matrix.python-version }} --output-folder build
       env:
         ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
     - name: Test package
