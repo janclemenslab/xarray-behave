@@ -49,7 +49,9 @@ jobs:
         ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
     - name: Test package
       run: |
-        conda create -n xb_test xarray-behave=0.35.7 -c file://$(pwd)/build -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
+        conda deactivate
+        # conda create -n xb_test xarray-behave=0.35.7 -c file://$(pwd)/build -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
+        conda create -n xb_test xarray-behave=0.35.7 -c ./build -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
         conda activate xb_test
         python -c "import xarray_behave; print(xarray_behave.__version__)"
         xb --help
