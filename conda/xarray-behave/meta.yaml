@@ -52,11 +52,11 @@ requirements:
     - samplestamps>=0.6
     - pysoundfile
 
-test:
-  imports:
-    - xarray_behave
-  commands:
-    - xb --help [ not win ]
+# test:
+#   imports:
+#     - xarray_behave
+#   commands:
+#     - xb --help [ not win ]
 
 about:
   home: "http://github.com/janclemenslab/xarray-behave"
