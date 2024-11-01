@@ -43,13 +43,15 @@ jobs:
         condarc-file: condarc.yml
     - name: Build and upload to anaconda
       run: |
-        conda build conda/xarray-behave --no-anaconda-upload --python ${{ matrix.python-version }}
+        mkdir ./build
+        conda build conda/xarray-behave --no-anaconda-upload --python ${{ matrix.python-version }} --output-folder ./build
       env:
         ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
     - name: Test package
       shell: bash -l {0}
       run: |
-        conda create -n xb-test xarray-behave -c local -c conda-forge -c ncb -y
+        conda create -n xb_test xarray-behave -c local -c conda-forge -c ncb -c file://$(pwd)/build -y
+        conda activate xb_test
         python -m "import xarray_behave; print(xarray_behave.__version__)"
       
         
