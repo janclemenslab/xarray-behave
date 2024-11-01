@@ -2,6 +2,6 @@
 always_yes: yes
 changeps1: no
 channel_priority: flexible 
-# channels:
-# - conda-forge
-# - ncb
+channels:
+- conda-forge
+- ncb
