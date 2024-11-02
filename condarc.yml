@@ -5,3 +5,5 @@ channel_priority: flexible
 channels:
 - conda-forge
 - ncb
+onda-build:
+   pkg_format: 2
