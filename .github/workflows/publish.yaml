@@ -44,7 +44,7 @@ jobs:
     - name: Build
       run: |
         mkdir ./build
-        conda build conda/xarray-behave --no-anaconda-upload --python ${{ matrix.python-version }} --output-folder ./build
+        conda build conda/xarray-behave --no-test --no-anaconda-upload --python ${{ matrix.python-version }} --output-folder ./build
     - name: Test
       run: |
         conda deactivate
