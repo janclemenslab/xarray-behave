@@ -48,7 +48,7 @@ jobs:
     - name: Test
       run: |
         conda deactivate
-        conda create -n xb_test xarray-behave -c ./build -c local -c conda-forge -c ncb -y
+        conda create -n xb_test python=${{ matrix.python-version }} xarray-behave -c ./build -c local -c conda-forge -c ncb -y
         conda activate xb_test
         python -c "import xarray_behave; print(xarray_behave.__version__)"
         python -c "import xarray_behave.gui.app"
