@@ -1,7 +1,7 @@
 """Create self-documenting xarray dataset from behavioral recordings and annotations."""
 
 import numpy as np
-from samplestamps.samplestamps import SampStamp, SimpleStamp
+from .io.samplestamps import SampStamp, SimpleStamp
 import scipy.interpolate
 import scipy.stats
 import xarray as xr
@@ -145,7 +145,11 @@ def assemble(
         else:
             basename = filepath_daq
 
-        audio_loader = io.get_loader(kind="audio", basename=basename, basename_is_full_name=filepath_daq_is_custom)
+        audio_loader = io.get_loader(
+            kind="audio",
+            basename=basename,
+            basename_is_full_name=filepath_daq_is_custom,
+        )
         if not audio_loader and filepath_daq_is_custom:
             audio_loader = io.audio.AudioFile(basename)
 
@@ -288,11 +292,19 @@ def assemble(
         if ss_movie is None:
             logger.warning("   Failed loading movie params - no ss_movie")
         else:
-            movieparams_loader = io.get_loader(kind="movieparams", basename=os.path.join(root, dat_path, datename, datename))
+            movieparams_loader = io.get_loader(
+                kind="movieparams",
+                basename=os.path.join(root, dat_path, datename, datename),
+            )
             if movieparams_loader:
                 try:
                     xr_movieparams = movieparams_loader.make(movieparams_loader.path)
-                    xr_movieparams = add_time(xr_movieparams, ss_movie, dim="frame_number_movie", suffix="_movie")
+                    xr_movieparams = add_time(
+                        xr_movieparams,
+                        ss_movie,
+                        dim="frame_number_movie",
+                        suffix="_movie",
+                    )
 
                     logger.info(f"   {movieparams_loader.path} loaded.")
                     with_movieparams = True
@@ -356,7 +368,9 @@ def assemble(
         # load MANUAL SONG ANNOTATIONS
         logger.info("Loading manual annotations:")
         manual_annot_loader = io.get_loader(
-            kind="annotations_manual", basename=filepath_annotations, basename_is_full_name=custom_filepath_annotations
+            kind="annotations_manual",
+            basename=filepath_annotations,
+            basename_is_full_name=custom_filepath_annotations,
         )
         if manual_annot_loader:
             try:
@@ -381,7 +395,9 @@ def assemble(
             )  # or construct form audio file name - .ext + _definitions.csv
 
         definitions_loader = io.get_loader(
-            kind="definitions_manual", basename=filepath_definitions, basename_is_full_name=custom_filepath_definitions
+            kind="definitions_manual",
+            basename=filepath_definitions,
+            basename_is_full_name=custom_filepath_definitions,
         )
         if definitions_loader:
             try:
@@ -408,14 +424,20 @@ def assemble(
             else:
                 basename = filepath_daq
 
-            audio_loader = io.get_loader(kind="audio", basename=basename, basename_is_full_name=filepath_daq_is_custom)
+            audio_loader = io.get_loader(
+                kind="audio",
+                basename=basename,
+                basename_is_full_name=filepath_daq_is_custom,
+            )
             if not audio_loader and filepath_daq_is_custom:
                 audio_loader = io.audio.AudioFile(basename)
 
             if audio_loader:
                 try:
                     song_raw, non_song_raw, samplerate = audio_loader.load(
-                        audio_loader.path, return_nonsong_channels=True, lazy=lazy_load_song
+                        audio_loader.path,
+                        return_nonsong_channels=True,
+                        lazy=lazy_load_song,
                     )
                     logger.info(f"   {audio_loader.path} with shape {song_raw.shape} loaded using {audio_loader.NAME}.")
                 except Exception as e:
@@ -445,7 +467,10 @@ def assemble(
             f"No tracks - setting first/last tracked frame numbers to those of the first/last sample in the recording ({first_tracked_frame}, {last_tracked_frame})."
         )
     else:
-        first_tracked_frame, last_tracked_frame = int(xr_tracks.frame_number[0]), int(xr_tracks.frame_number[-1])
+        first_tracked_frame, last_tracked_frame = (
+            int(xr_tracks.frame_number[0]),
+            int(xr_tracks.frame_number[-1]),
+        )
         logger.info(f"Tracked frame {first_tracked_frame} to {last_tracked_frame}.")
 
     # construct desired sample grid for data
@@ -548,7 +573,14 @@ def assemble(
 
     if with_tracks:
         logger.info("   Tracking")
-        xr_tracks = align_time(xr_tracks, ss, target_samples, ref_time=ref_time, target_time=time, extrapolate=True)
+        xr_tracks = align_time(
+            xr_tracks,
+            ss,
+            target_samples,
+            ref_time=ref_time,
+            target_time=time,
+            extrapolate=True,
+        )
         xr_tracks.attrs.update(
             {
                 "description": 'coords are "allocentric" - rel. to the full frame',
@@ -599,7 +631,13 @@ def assemble(
     if with_balltracker:
         logger.info("   Balltracker")
         xr_balltracks = align_time(
-            xr_balltracks, ss_ball, target_samples, target_time=time, dim="frame_number_ball", suffix="_ball", ref_time=ref_time
+            xr_balltracks,
+            ss_ball,
+            target_samples,
+            target_time=time,
+            dim="frame_number_ball",
+            suffix="_ball",
+            ref_time=ref_time,
         )
         xr_balltracks.attrs.update(
             {
@@ -643,10 +681,17 @@ def assemble(
     if "sampletime" not in dataset:
         dataset.coords["sampletime"] = time
     if "nearest_frame" not in dataset:
-        dataset.coords["nearest_frame"] = (("time"), (ss.times2frames(dataset["time"] + ref_time).astype(np.intp)))
+        dataset.coords["nearest_frame"] = (
+            ("time"),
+            (ss.times2frames(dataset["time"] + ref_time).astype(np.intp)),
+        )
 
     # convert spatial units to mm using info in attrs
-    dataset = convert_spatial_units(dataset, to_units="mm", names=["body_positions", "pose_positions", "pose_positions_allo"])
+    dataset = convert_spatial_units(
+        dataset,
+        to_units="mm",
+        names=["body_positions", "pose_positions", "pose_positions_allo"],
+    )
 
     # save command line args
     dataset.attrs = {
@@ -692,7 +737,12 @@ def _interp(ds, dim, target_frames_float, interp_kwargs={}):
     # but now the first dim is size 1 - so we need to fix this
     coords = ds_new.coords
     # maps for the too short dims: dim name - ref dim
-    coords_map = {"flies": "flies", "chambers": "flies", "data_ball": "data_ball", "params_movie": "params_movie"}
+    coords_map = {
+        "flies": "flies",
+        "chambers": "flies",
+        "data_ball": "data_ball",
+        "params_movie": "params_movie",
+    }
     new_coords = {}
     for key in coords_map.keys():
         if key in coords:
@@ -714,7 +764,12 @@ def _interp(ds, dim, target_frames_float, interp_kwargs={}):
     # now interp all remaining dims
     for fly in range(1, new_shape[1]):
         interpolator = scipy.interpolate.interp1d(
-            ds[dim].data, ds.data[:, fly, ...], axis=0, bounds_error=False, assume_sorted=True, **interp_kwargs
+            ds[dim].data,
+            ds.data[:, fly, ...],
+            axis=0,
+            bounds_error=False,
+            assume_sorted=True,
+            **interp_kwargs,
         )
         ds_x.data[:, fly, ...] = interpolator(target_frames_float)
 
@@ -740,12 +795,23 @@ def align_time(
     ds = _interp(ds, dim, target_frames_float, interp_kwargs)
     # ds = ds.interp({dim: target_frames_float}, assume_sorted=True, kwargs=interp_kwargs)
 
-    ds = ds.drop_vars(["frame_number" + suffix, "frame_times" + suffix, "frame_samples" + suffix], errors="Ignore")
+    ds = ds.drop_vars(
+        ["frame_number" + suffix, "frame_times" + suffix, "frame_samples" + suffix],
+        errors="Ignore",
+    )
 
     # time_new = ds['frametimes' + suffix] - ref_time
     ds = ds.assign_coords({"time": ((dim), target_time)})
     ds = ds.swap_dims({dim: "time"})
-    ds = ds.assign_coords({"nearest_frame" + suffix: (("time"), np.round(target_frames_float).astype(np.intp))})
+    ds = ds.assign_coords(
+        {
+            "nearest_frame"
+            + suffix: (
+                ("time"),
+                np.round(target_frames_float).astype(np.intp),
+            )
+        }
+    )
 
     fps = 1 / np.nanmean(np.diff(ds["frametimes" + suffix]))
     ds.attrs.update({"video_fps": fps})
@@ -806,7 +872,12 @@ def assemble_metrics(
     time = dataset.time.data
     nearest_frame = dataset.nearest_frame.data
 
-    pose_names = {"thorax": "thorax", "head": "head", "left_wing": "left_wing", "right_wing": "right_wing"}
+    pose_names = {
+        "thorax": "thorax",
+        "head": "head",
+        "left_wing": "left_wing",
+        "right_wing": "right_wing",
+    }
     if custom_pose_names is not None:
         pose_names.update(custom_pose_names)
 
@@ -916,7 +987,11 @@ def assemble_metrics(
         ds_dict["abs_features"] = xr.DataArray(
             data=absolute.data,
             dims=["time", "flies", "absolute_features"],
-            coords={"time": time, "absolute_features": abs_feature_names, "nearest_frame": (("time"), nearest_frame)},
+            coords={
+                "time": time,
+                "absolute_features": abs_feature_names,
+                "nearest_frame": (("time"), nearest_frame),
+            },
             attrs={
                 "description": 'coords are "egocentric" - rel. to box',
                 "sampling_rate_Hz": sampling_rate,
@@ -936,7 +1011,14 @@ def assemble_metrics(
         )
         rel_velocities_mag = np.sqrt(rel_velocities_forward**2 + rel_velocities_lateral**2)
 
-        list_relative = [dis, rel_angles, rel_orientation, rel_velocities_mag, rel_velocities_forward, rel_velocities_lateral]
+        list_relative = [
+            dis,
+            rel_angles,
+            rel_orientation,
+            rel_velocities_mag,
+            rel_velocities_forward,
+            rel_velocities_lateral,
+        ]
 
         rel_feature_names = [
             "distance",
@@ -951,7 +1033,11 @@ def assemble_metrics(
         ds_dict["rel_features"] = xr.DataArray(
             data=relative.data,
             dims=["time", "flies", "relative_flies", "relative_features"],
-            coords={"time": time, "relative_features": rel_feature_names, "nearest_frame": (("time"), nearest_frame)},
+            coords={
+                "time": time,
+                "relative_features": rel_feature_names,
+                "nearest_frame": (("time"), nearest_frame),
+            },
             attrs={
                 "description": 'coords are "egocentric" - rel. to box',
                 "sampling_rate_Hz": sampling_rate,

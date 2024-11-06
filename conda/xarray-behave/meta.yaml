@@ -43,7 +43,6 @@ requirements:
     - superqt
     - ffmpeg
     - pyvideoreader
-    - samplestamps>=0.6
 
 about:
   home: "http://github.com/janclemenslab/xarray-behave"

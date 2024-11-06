@@ -7,7 +7,7 @@ import scipy.ndimage
 import scipy.signal
 import scipy.stats
 from scipy.ndimage import maximum_filter1d
-from samplestamps import SampStamp
+from .io.samplestamps import SampStamp
 from . import io
 
 
