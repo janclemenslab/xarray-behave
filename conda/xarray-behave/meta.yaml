@@ -37,6 +37,7 @@ requirements:
     - scikit-image
     - scikit-learn
     - peakutils
+    - pyside6
     - pyqtgraph>0.12
     - qtpy
     - superqt
