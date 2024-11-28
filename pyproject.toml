@@ -19,9 +19,6 @@ gui = ['pyside6', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy', 'superqt',
        'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet',
        'peakutils']
 
-[project.scripts]
-xb = "xarray_behave.gui.app:cli"
-
 [project.urls]
 source = "https://github.com/janclemenslab/xarray-behave"
 documentation = "https://janclemenslab.org/das/"
