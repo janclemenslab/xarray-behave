@@ -7,17 +7,20 @@ name = "xarray-behave"
 authors = [
        {name = "Jan Clemens", email = "clemensjan@googlemail.com"},
 ]
-classifiers = ["License :: OSI Approved :: MIT License"]
+classifiers = ["License :: OSI Approved :: Apache Software License"]
 dynamic = ["version", "description"]
-requires-python = ">3.6"
-dependencies = ['numpy', 'scipy', 'xarray', 'h5py', 'zarr', 'flammkuchen', 'rich',
-                'dask', 'toolz', 'pysoundfile', 'opencv-python-headless']
-readme = "README.md"
+requires-python = ">3.9"
+dependencies = ['defopt==6.3', 'rich', 'flammkuchen', 'h5py', 'pyyaml',
+                'zarr','numba', 'xarray', 'numpy', 'scipy>1.9',
+                'dask', 'pandas', 'scikit-image', 'scikit-learn',
+                'peakutils', 'librosa>0.8',
+                'sounddevice', 'soundfile',
+                'opencv-python-headless', 'pyvideoreader',
+                'PySide6-Essentials', 'pyqtgraph>0.12.2', 'qtpy', 'superqt',
+                'colorcet',
+                ]
 
-[project.optional-dependencies]
-gui = ['pyside6', 'pyqtgraph>0.12.2', 'pyvideoreader', 'qtpy', 'superqt',
-       'sounddevice', 'scikit-image', 'pyyaml', 'defopt', 'colorcet',
-       'peakutils']
+readme = "README.md"
 
 [project.urls]
 source = "https://github.com/janclemenslab/xarray-behave"

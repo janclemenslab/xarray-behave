@@ -32,7 +32,7 @@ import yaml
 from typing import Any, Dict, List, Optional, Union, Text
 
 try:
-    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
+    import PySide6  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
     pass
 from qtpy import QtWidgets, QtCore, QtGui

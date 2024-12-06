@@ -1,4 +1,7 @@
 import logging
+
+logger = logging.getLogger(__name__)
+
 import collections
 from glob import glob
 import os.path
@@ -11,11 +14,11 @@ import librosa
 import scipy
 import h5py
 
+from .. import annot, event_utils
+
 import das.make_dataset as dsm
 import das.npy_dir
 import das.annot
-
-from .. import annot, event_utils
 
 import das.make_dataset
 import das.npy_dir
@@ -23,10 +26,10 @@ import das.train
 import das.predict
 import das.block_stratify
 
+
 import xarray_behave
 
 package_dir = xarray_behave.__path__[0]
-logger = logging.getLogger(__name__)
 
 
 def data_loader_wav(filename: str, fs: Optional[float] = None, duration: Optional[float] = None):

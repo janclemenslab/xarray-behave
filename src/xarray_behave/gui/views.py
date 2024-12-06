@@ -1,5 +1,5 @@
 try:
-    import PySide2  # this will force pyqtgraph to use PySide instead of PyQt4/5
+    import PySide6  # this will force pyqtgraph to use PySide instead of PyQt4/5
 except ImportError:
     pass
 
