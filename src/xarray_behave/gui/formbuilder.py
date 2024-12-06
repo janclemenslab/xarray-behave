@@ -30,12 +30,7 @@ want to add a new type of supported form field.
 # modified from https://sleap.ai/_modules/sleap/gui/formbuilder.html
 import yaml
 from typing import Any, Dict, List, Optional, Union, Text
-
-try:
-    import PySide6  # this will force pyqtgraph to use PySide instead of PyQt4/5
-except ImportError:
-    pass
-from qtpy import QtWidgets, QtCore, QtGui
+from qtpy import QtWidgets, QtCore
 
 
 class YamlDialog(QtWidgets.QDialog):

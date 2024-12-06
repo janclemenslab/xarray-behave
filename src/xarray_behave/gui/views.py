@@ -1,16 +1,8 @@
-try:
-    import PySide6  # this will force pyqtgraph to use PySide instead of PyQt4/5
-except ImportError:
-    pass
-
+from qtpy import QtGui, QtCore
 import pyqtgraph as pg
-from qtpy import QtGui, QtCore, QtWidgets
 import numpy as np
 import skimage.draw
-import scipy.signal
-import time
 import logging
-from functools import partial, lru_cache
 from typing import Tuple
 
 from .. import xarray_behave as xb
