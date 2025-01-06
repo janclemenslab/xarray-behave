@@ -7,8 +7,7 @@ package:
   version: "{{ version }}"
 
 source:
-  url: "https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz"
-
+  url: https://pypi.org/packages/source/x/xarray-behave/xarray_behave-{{ version }}.tar.gz
 build:
   number: 0
 
