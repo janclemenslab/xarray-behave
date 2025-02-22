@@ -22,7 +22,7 @@ requirements:
     - flammkuchen
     - h5py
     - pyyaml
-    - zarr
+    - zarr<3
     - numba
     - xarray
     - dask
