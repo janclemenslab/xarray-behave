@@ -29,9 +29,9 @@ jobs:
       uses: conda-incubator/setup-miniconda@v3
       with:
         auto-update-conda: true
-        channels: conda-forge,ncb
-        python-version: 3.13
         auto-activate-base: true
+        channels: conda-forge
+        python-version: 3.13
     - name: Install OpenGL dependencies
       run: sudo apt-get update && sudo apt-get install -y libx11-dev libgl1-mesa-dev
       if: runner.os == 'Linux'
