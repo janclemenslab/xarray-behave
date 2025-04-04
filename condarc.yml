@@ -1,9 +1,0 @@
-anaconda_upload: yes
-always_yes: yes
-changeps1: no
-channel_priority: flexible 
-channels:
-- conda-forge
-- ncb
-conda-build:
-   pkg_format: 2
