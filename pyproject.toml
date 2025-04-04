@@ -4,19 +4,36 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "xarray-behave"
-authors = [
-       {name = "Jan Clemens", email = "clemensjan@googlemail.com"},
-]
+authors = [{ name = "Jan Clemens", email = "clemensjan@googlemail.com" }]
 classifiers = ["License :: OSI Approved :: Apache Software License"]
 dynamic = ["version", "description"]
 requires-python = ">3.9"
-dependencies = ['defopt==6.3', 'rich',
-                'flammkuchen', 'h5py', 'pyyaml', 'zarr', 'dask', 'pandas', 'xarray',
-                'scikit-image', 'peakutils', 'numba', 'numpy', 'scipy>1.9',
-                'sounddevice', 'soundfile', 'librosa>0.8',
-                'opencv-python-headless', 'pyvideoreader',
-                'PySide6-Essentials', 'pyqtgraph>0.12.2', 'qtpy', 'superqt', 'colorcet'
-                ]
+dependencies = [
+       'defopt==6.3',
+       'rich',
+       'flammkuchen',
+       'h5py',
+       'pyyaml',
+       'zarr<3',
+       'dask',
+       'pandas',
+       'xarray',
+       'scikit-image',
+       'peakutils',
+       'numba',
+       'numpy',
+       'scipy>1.9',
+       'sounddevice',
+       'soundfile',
+       'librosa>0.8',
+       'opencv-python-headless',
+       'pyvideoreader',
+       'PySide6-Essentials',
+       'pyqtgraph>0.12.2',
+       'qtpy',
+       'superqt',
+       'colorcet',
+]
 
 readme = "README.md"
 
@@ -29,7 +46,7 @@ name = "xarray_behave"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-testpaths = ["tests",]
+testpaths = ["tests"]
 
 [tool.ruff]
 extend-select = ["C4", "NPY", "PD", "TCH"]

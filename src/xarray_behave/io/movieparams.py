@@ -1,6 +1,4 @@
-"""Load parameters for DLP movies
-
-"""
+"""Load parameters for DLP movies"""
 
 import numpy as np
 import pandas as pd
