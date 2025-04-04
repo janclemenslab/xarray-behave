@@ -33,13 +33,10 @@ jobs:
         channels: conda-forge,ncb
         python-version: 3.13
         auto-activate-base: true
-        # activate-environment: anaconda-client-env
-        # environment-file: build_env.yml
-        # condarc-file: condarc.yml
-    # - name: Build
-    #   run: |
-    #     mkdir ./build
-    #     conda build conda/xarray-behave --no-test --no-anaconda-upload --python ${{ matrix.python-version }} --output-folder ./build
+    - name: linux deps
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update && sudo apt-get install -y libx11-dev libgl1-mesa-dev
     - name: Test
       run: |
         conda env create -n xb_test -y -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/refs/heads/master/env/xb.yml
