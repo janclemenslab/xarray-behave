@@ -1,9 +1,9 @@
 # xarray-behave
 
-Install a working conda installation (see [here](https://docs.conda.io/en/latest/miniconda.html)). 
+Install a working conda installation (see [here](https://docs.conda.io/en/latest/miniconda.html)).
 
 ```shell
-conda create -c conda-forge -c ncb -n xb python=3.12 xarray-behave
+conda env create -n xb -y -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/refs/heads/master/env/xb.yml
 ```
 
 See `demo.ipynb` for usage examples.
