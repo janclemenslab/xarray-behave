@@ -33,9 +33,8 @@ jobs:
         channels: conda-forge,ncb
         python-version: 3.13
         auto-activate-base: true
-        # sudo apt-get update && sudo apt-get install -y libx11-dev libgl1-mesa-dev
     - name: Install OpenGL dependencies
-      run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-glx libegl1-mesa
+      run: sudo apt-get update && sudo apt-get install -y libx11-dev libgl1-mesa-dev
       if: runner.os == 'Linux'
     - name: Test
       run: |
