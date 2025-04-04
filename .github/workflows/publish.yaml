@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: False
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12', '3.13']
         os: [ubuntu-latest, windows-latest, macOS-14]
     defaults:  # https://github.com/marketplace/actions/setup-miniconda#use-a-default-shell
       run:
@@ -31,7 +31,7 @@ jobs:
       with:
         auto-update-conda: true
         channels: conda-forge,ncb
-        python-version: 3.12
+        python-version: 3.13
         auto-activate-base: false
         activate-environment: anaconda-client-env
         environment-file: build_env.yml
