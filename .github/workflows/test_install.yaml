@@ -1,0 +1,48 @@
+name: Test install
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+      tags:
+        description: 'manual run'
+
+jobs:
+  publish:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: False
+      matrix:
+        # python-version: ['3.10', '3.11', '3.12', '3.13']
+        os: [ubuntu-latest, windows-latest, macOS-14]
+    defaults:  # https://github.com/marketplace/actions/setup-miniconda#use-a-default-shell
+      run:
+        shell: bash -l {0}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup miniconda # https://github.com/marketplace/actions/setup-miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        channels: conda-forge,ncb
+        python-version: 3.13
+        auto-activate-base: true
+        # activate-environment: anaconda-client-env
+        # environment-file: build_env.yml
+        # condarc-file: condarc.yml
+    # - name: Build
+    #   run: |
+    #     mkdir ./build
+    #     conda build conda/xarray-behave --no-test --no-anaconda-upload --python ${{ matrix.python-version }} --output-folder ./build
+    - name: Test
+      run: |
+        conda env create -n xb_test -y -f https://raw.githubusercontent.com/janclemenslab/xarray-behave/refs/heads/master/env/xb.yml
+        conda activate xb_test
+        python -c "import xarray_behave; print(xarray_behave.__version__)"
+        python -c "import xarray_behave.gui.app"
