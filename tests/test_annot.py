@@ -56,9 +56,7 @@ def test_from_ds(test_data):
         ],
     )
     names.attrs["allowed_names"] = list(set(names.data))
-    times = xr.DataArray(
-        name="event_times", data=times, dims=["index", "event_time"], coords={"event_time": ["start_seconds", "stop_seconds"]}
-    )
+    times = xr.DataArray(name="event_times", data=times, dims=["index", "event_time"], coords={"event_time": ["start_seconds", "stop_seconds"]})
     names, times
     ds = xr.Dataset({da.name: da for da in [names, times]})
     ds.attrs["pulse"] = "event"

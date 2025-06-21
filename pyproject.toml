@@ -28,7 +28,7 @@ dependencies = [
        'librosa>0.8',
        'opencv-python-headless',
        'pyvideoreader',
-       'PySide6-Essentials',
+       'PySide6-Essentials==6.8.*',
        'pyqtgraph>0.12.2',
        'qtpy',
        'superqt',

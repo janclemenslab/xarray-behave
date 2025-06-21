@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_imports():
     import xarray_behave as xb
     import xarray_behave.event_utils
