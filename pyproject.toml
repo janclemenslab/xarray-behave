@@ -37,7 +37,7 @@ dependencies = [
 readme = "README.md"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "flit"]
 
 [project.urls]
 source = "https://github.com/janclemenslab/xarray-behave"
