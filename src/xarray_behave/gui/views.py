@@ -402,6 +402,15 @@ class TrackView(TraceView):
         self.addItem(pos_line)
 
 
+def _lookup_colormap_lut(colormap: str):
+    cmap = pg.colormap.getFromMatplotlib(colormap)
+    if cmap is None:
+        cmap = pg.colormap.get(colormap)
+    if cmap is None:
+        cmap = pg.colormap.get("viridis")
+    return cmap.getLookupTable()
+
+
 class SpecView(pg.ImageView):
     def __init__(self, model, callback, colormap="turbo"):
         super().__init__(view=pg.PlotItem())
@@ -428,9 +437,7 @@ class SpecView(pg.ImageView):
         self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
         self.addItem(self.pos_line)
 
-        cmap = pg.colormap.getFromMatplotlib(colormap)
-        lut = cmap.getLookupTable()
-        self.imageItem.setLookupTable(lut)  # apply the colormap
+        self.imageItem.setLookupTable(_lookup_colormap_lut(colormap))  # apply the colormap
         self.old_items = []
 
     @property

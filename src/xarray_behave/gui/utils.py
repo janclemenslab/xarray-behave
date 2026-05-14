@@ -15,12 +15,40 @@ from typing import Union
 def make_colors(nb_colors: int) -> Iterable:
     colors = []
     if nb_colors > 0:
-        # cmap = colorcet.cm['glasbey_light']
-        # cmap = colorcet.cm['glasbey_bw_minc_20_minl_50']
-        cmap = colorcet.cm["glasbey_bw_minc_20_minl_30"]
-        # ignore first (red)
-        colors = (cmap(np.arange(1, nb_colors + 1)) * 255)[:, :3].astype(np.uint8)
+        for cmap_name in ["glasbey_bw_minc_20_minl_30", "glasbey_light", "glasbey"]:
+            palette = colorcet.palette.get(cmap_name)
+            if palette:
+                colors = np.array([_hex_to_rgb(color) for color in palette[1:]], dtype=np.uint8)  # ignore first red
+                if len(colors) < nb_colors:
+                    colors = np.resize(colors, (nb_colors, 3))
+                else:
+                    colors = colors[:nb_colors]
+                break
+        else:
+            cmap = colorcet.cm.get("glasbey_bw_minc_20_minl_30")
+            if callable(cmap):
+                colors = (cmap(np.linspace(0, 1, nb_colors + 1))[1:] * 255)[:, :3].astype(np.uint8)
+            else:
+                colors = np.resize(
+                    np.array(
+                        [
+                            [1, 135, 0],
+                            [181, 0, 255],
+                            [0, 172, 198],
+                            [255, 128, 0],
+                            [127, 78, 0],
+                            [255, 0, 110],
+                        ],
+                        dtype=np.uint8,
+                    ),
+                    (nb_colors, 3),
+                )
     return colors
+
+
+def _hex_to_rgb(color: str) -> tuple[int, int, int]:
+    color = color.lstrip("#")
+    return tuple(int(color[ii : ii + 2], 16) for ii in (0, 2, 4))
 
 
 def fast_plot(plot_widget, x, y, pen=None):
