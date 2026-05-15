@@ -6,6 +6,7 @@
 import os
 import sys
 import logging
+import inspect
 from pathlib import Path
 from functools import partial
 
@@ -318,6 +319,37 @@ class MainWindow(QtWidgets.QMainWindow):
             float(sampletime[start_index]),
         )
 
+    def _das_current_audio_duration(self) -> float:
+        if not self._has_current_das_audio():
+            raise ValueError("No current audio is loaded.")
+
+        sampletime = np.asarray(self.ds.sampletime.values)
+        if sampletime.size == 0:
+            raise ValueError("Current audio has no samples.")
+        if sampletime.size == 1:
+            return float(sampletime[0])
+
+        step = float(np.median(np.diff(sampletime)))
+        return float(sampletime[-1] + step)
+
+    def _das_annotated_regions(self) -> list[tuple[float, float]]:
+        if not hasattr(self, "event_times"):
+            raise ValueError("No annotations are loaded.")
+
+        rows = annot.Events(self.event_times).to_df(preserve_empty=False, with_channels=False)
+        regions: list[tuple[float, float]] = []
+        for row in rows.itertuples(index=False):
+            start_seconds = float(row.start_seconds)
+            stop_seconds = float(row.stop_seconds)
+            if not np.isfinite(start_seconds) or not np.isfinite(stop_seconds):
+                continue
+            start_seconds, stop_seconds = sorted((start_seconds, stop_seconds))
+            regions.append((start_seconds, stop_seconds))
+
+        if not regions:
+            raise ValueError("No annotated regions are available.")
+        return regions
+
     def _handle_das_predictions(self, annotations, time_offset_seconds: float):
         added = self._add_das_prediction_rows(
             annotations,
@@ -340,12 +372,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
         current_audio_provider = self._das_current_audio if use_current_audio and self._has_current_das_audio() else None
         on_predictions = self._handle_das_predictions if current_audio_provider is not None else None
-        window = DASConformerWindow(
-            initial_tab=initial_tab,
-            current_audio_provider=current_audio_provider,
-            on_predictions=on_predictions,
-            parent=self,
+        window_kwargs = {
+            "initial_tab": initial_tab,
+            "current_audio_provider": current_audio_provider,
+            "on_predictions": on_predictions,
+            "parent": self,
+        }
+        das_signature = inspect.signature(DASConformerWindow)
+        accepts_extra_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in das_signature.parameters.values()
         )
+        if current_audio_provider is not None and (
+            accepts_extra_kwargs or "current_duration_provider" in das_signature.parameters
+        ):
+            window_kwargs["current_duration_provider"] = self._das_current_audio_duration
+        if current_audio_provider is not None and (
+            accepts_extra_kwargs or "annotated_region_provider" in das_signature.parameters
+        ):
+            window_kwargs["annotated_region_provider"] = self._das_annotated_regions
+        window = DASConformerWindow(**window_kwargs)
         window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         if not hasattr(self, "_das_windows"):
             self._das_windows = []
@@ -398,7 +443,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def das_train(self, qt_keycode=None):
         del qt_keycode
-        self._open_das_window("train")
+        self._open_das_window("train", use_current_audio=True)
 
     def das_predict(self, qt_keycode=None):
         del qt_keycode

@@ -3,6 +3,7 @@ from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from xarray_behave import annot
 from xarray_behave.gui.app import MainWindow
@@ -71,6 +72,29 @@ def test_das_current_audio_slices_loaded_audio():
     assert offset == 0.002
 
 
+def test_das_current_audio_duration_uses_sample_times():
+    window = MainWindow.__new__(MainWindow)
+    window.ds = _Dataset(
+        sampletime=SimpleNamespace(values=np.arange(10) / 1_000),
+        song_raw=SimpleNamespace(data=np.zeros(10)),
+    )
+
+    assert window._das_current_audio_duration() == pytest.approx(0.01)
+
+
+def test_das_annotated_regions_uses_current_event_times():
+    window = MainWindow.__new__(MainWindow)
+    window.event_times = annot.Events(
+        {
+            "pulse": np.array([[0.5, 0.5]]),
+            "song": np.array([[0.2, 0.4], [0.8, 0.7]]),
+        },
+        categories={"pulse": "event", "song": "segment"},
+    )
+
+    assert window._das_annotated_regions() == [(0.5, 0.5), (0.2, 0.4), (0.7, 0.8)]
+
+
 def test_handle_das_predictions_adds_proposals_and_refreshes_state():
     window = MainWindow.__new__(MainWindow)
     window.event_times = annot.Events(categories={"song": "segment"})
@@ -122,3 +146,43 @@ def test_open_daws_window_uses_whisper_gui_and_current_audio(monkeypatch):
     assert calls["kwargs"]["on_predictions"] is window._handle_das_predictions
     assert calls["shown"] is True
     assert window._daws_windows == [daws_window]
+
+
+def test_open_das_train_window_uses_current_audio_and_duration(monkeypatch):
+    calls = {}
+
+    class _Destroyed:
+        def connect(self, callback):
+            calls["destroyed_callback"] = callback
+
+    class FakeDASConformerWindow:
+        destroyed = _Destroyed()
+
+        def __init__(self, **kwargs):
+            calls["kwargs"] = kwargs
+
+        def setAttribute(self, value):
+            calls["attribute"] = value
+
+        def show(self):
+            calls["shown"] = True
+
+    fake_module = ModuleType("das.gui_app")
+    fake_module.DASConformerWindow = FakeDASConformerWindow
+    monkeypatch.setitem(sys.modules, "das.gui_app", fake_module)
+
+    window = MainWindow.__new__(MainWindow)
+    window._has_current_das_audio = lambda: True
+    window._das_current_audio = lambda start, stop: (np.zeros(10), 1_000, start)
+    window._das_current_audio_duration = lambda: 0.01
+    window._das_annotated_regions = lambda: [(0.2, 0.4)]
+    window._handle_das_predictions = lambda annotations, time_offset_seconds: None
+
+    das_window = window._open_das_window("train", use_current_audio=True)
+
+    assert isinstance(das_window, FakeDASConformerWindow)
+    assert calls["kwargs"]["initial_tab"] == "train"
+    assert calls["kwargs"]["current_audio_provider"] is window._das_current_audio
+    assert calls["kwargs"]["current_duration_provider"] is window._das_current_audio_duration
+    assert calls["kwargs"]["annotated_region_provider"] is window._das_annotated_regions
+    assert calls["kwargs"]["on_predictions"] is window._handle_das_predictions
