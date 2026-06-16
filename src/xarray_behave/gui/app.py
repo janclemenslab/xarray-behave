@@ -379,16 +379,10 @@ class MainWindow(QtWidgets.QMainWindow):
             "parent": self,
         }
         das_signature = inspect.signature(DASConformerWindow)
-        accepts_extra_kwargs = any(
-            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in das_signature.parameters.values()
-        )
-        if current_audio_provider is not None and (
-            accepts_extra_kwargs or "current_duration_provider" in das_signature.parameters
-        ):
+        accepts_extra_kwargs = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in das_signature.parameters.values())
+        if current_audio_provider is not None and (accepts_extra_kwargs or "current_duration_provider" in das_signature.parameters):
             window_kwargs["current_duration_provider"] = self._das_current_audio_duration
-        if current_audio_provider is not None and (
-            accepts_extra_kwargs or "annotated_region_provider" in das_signature.parameters
-        ):
+        if current_audio_provider is not None and (accepts_extra_kwargs or "annotated_region_provider" in das_signature.parameters):
             window_kwargs["annotated_region_provider"] = self._das_annotated_regions
         window = DASConformerWindow(**window_kwargs)
         window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
@@ -493,15 +487,8 @@ class MainWindow(QtWidgets.QMainWindow):
                             except KeyError:
                                 pass
                 except KeyError:
-                    logger.info(
-                        f"{filename} no sample rate info in NPZ file.Need to save 'samplerate' variable with the audio data. Defaulting to {samplerate}"
-                    )
-            elif (
-                filename.endswith(".h5")
-                or filename.endswith(".hdfs")
-                or filename.endswith(".hdf5")
-                or filename.endswith(".mat")
-            ):
+                    logger.info(f"{filename} no sample rate info in NPZ file.Need to save 'samplerate' variable with the audio data. Defaulting to {samplerate}")
+            elif filename.endswith(".h5") or filename.endswith(".hdfs") or filename.endswith(".hdf5") or filename.endswith(".mat"):
                 # infer data set (for hdf5) and populate form
                 try:
                     # list all data sets in file and add to list
@@ -686,9 +673,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # add event categories if they are missing in the dataset
                 if "song_events" in ds and "event_categories" not in ds:
-                    event_categories = [
-                        "segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values
-                    ]
+                    event_categories = ["segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values]
                     ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
 
                 # add missing song types
@@ -787,9 +772,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # add event categories if they are missing in the dataset
                 if "song_events" in ds and "event_categories" not in ds:
-                    event_categories = [
-                        "segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values
-                    ]
+                    event_categories = ["segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values]
                     ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
                 logger.info(ds)
                 vr = None
@@ -1955,9 +1938,7 @@ class PSV(MainWindow):
                 i1 = int(self.time1 / self.fs_ratio)
 
                 self.x_tracks = self.ds.time.data[i0:i1]
-                self.y_tracks = self.ds.pose_positions_allo.data[
-                    i0:i1, self.focal_fly, self.track_sel_names, self.track_sel_coords
-                ]
+                self.y_tracks = self.ds.pose_positions_allo.data[i0:i1, self.focal_fly, self.track_sel_names, self.track_sel_coords]
                 self.tracks_view.update_trace()
                 self.tracks_view.show()
             else:
@@ -2099,9 +2080,7 @@ class PSV(MainWindow):
 
         new_region = region.getRegion()
         self.event_times.move_time(event_name_to_move, region.bounds, new_region)
-        logger.info(
-            f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
-        )
+        logger.info(f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.")
 
         # FIXME for moving annotations in ethogram - fails in pyside6
         if self.annot_view.mousePoint is not None:
@@ -2173,10 +2152,7 @@ class PSV(MainWindow):
                 fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.pose_center_index, :]
                 fly_pos = np.array(fly_pos)  # in case this is a dask.array
                 if self.crop:  # transform fly pos to coordinates of the cropped box
-                    box_center = (
-                        self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.pose_center_index]
-                        + self.box_size / 2
-                    )
+                    box_center = self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.pose_center_index] + self.box_size / 2
                     box_center = np.array(box_center)  # in case this is a dask.array
                     fly_pos = fly_pos - box_center
                 fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX])) ** 2, axis=-1)
@@ -2216,9 +2192,7 @@ class PSV(MainWindow):
                 if self.event_times.categories[self.current_event_name] == "event":
                     logger.info(f"  Changed event at {changed_time[0]:1.4f} from {old_name} to {new_name}.")
                 else:
-                    logger.info(
-                        f"  Changed segment at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}."
-                    )
+                    logger.info(f"  Changed segment at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}.")
                 self.update_xy()
         elif mouseButton == QtCore.Qt.MouseButton.LeftButton:  # add event
             if self.current_event_index is not None:
@@ -2238,9 +2212,7 @@ class PSV(MainWindow):
                             stop_seconds=mouseT,
                             channel=self.current_channel_index,
                         )
-                        logger.info(
-                            f"  Added {self.current_event_name} on channel {self.current_channel_index} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds."
-                        )
+                        logger.info(f"  Added {self.current_event_name} on channel {self.current_channel_index} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.")
                         self.sinet0 = None
                 if self.event_times.categories[self.current_event_name] == "event":
                     self.sinet0 = None
@@ -2249,9 +2221,7 @@ class PSV(MainWindow):
                         start_seconds=mouseT,
                         channel=self.current_channel_index,
                     )
-                    logger.info(
-                        f"  Added {self.current_event_name} on channel {self.current_channel_index} at t={mouseT:1.4f} seconds."
-                    )
+                    logger.info(f"  Added {self.current_event_name} on channel {self.current_channel_index} at t={mouseT:1.4f} seconds.")
                 self.update_xy()
             else:
                 self.sinet0 = None
@@ -2618,4 +2588,5 @@ def cli():
 
 
 if __name__ == "__main__":
-    main_das()
+    # main_das()
+    cli()
