@@ -24,6 +24,10 @@ future agents from re-parsing the whole codebase before small changes.
   `defopt.run(main)`
 - Internal GUI/data boundary: `src/xarray_behave/_dataset_service.py` contains
   non-Qt dataset orchestration used by the GUI.
+- GUI runtime uses full `PySide6>=6.10`. Qt Multimedia is imported directly from
+  `PySide6.QtMultimedia`; do not switch transport playback back to `qtpy`
+  multimedia wrappers or split `PySide6-Essentials/Addons` pins without testing
+  real audio output.
 - Build backend: `flit_core` in `pyproject.toml`; `setup.py` exists only to read
   the version for legacy setuptools use.
 - Version lives in `src/xarray_behave/__init__.py`.
@@ -190,18 +194,28 @@ alignment throughout the package.
   - Dataset assembly/loading/filtering/event extraction/save prep is delegated to
     `xarray_behave._dataset_service`; keep new non-Qt dataset orchestration
     there instead of adding it directly to GUI methods.
-  - `PSV` is the main viewer/controller for synchronized plots, spectrogram,
-    annotation view, event timeline/table widgets, and optional movie view.
+  - `PSV` is the main viewer/controller for synchronized waveform, spectrogram,
+    event timeline/table widgets, annotation view, transport controls, and
+    optional movie view.
+  - In the audio-focused layout the center stack is waveform, spectrogram,
+    event timeline, then event table, with initial splitter weights `1:4:1:2`.
+    Event presets live in the left preset panel. The current audio channel
+    selector lives above it in the left sidebar; there is intentionally no top
+    event/channel selector row.
   - Event table/timeline edits update the shared `annot.Events` instance.
     Keep table-row selection, timeline selection, and audio view synchronization
     in `PSV` rather than duplicating annotation mutation in widget classes.
+  - Transport playback is QMediaPlayer-backed when an audio source path is
+    available. Playback should run continuously; when the visible window flips,
+    update the displayed range without calling `setPosition()`/`play()` again.
   - DAS/DAWS helpers provide current-audio slices and prediction callbacks.
     Focused tests live in `tests/test_gui_das.py`.
 - `src/xarray_behave/gui/event_widgets.py`
-  - Qt/PyQtGraph widgets for the event table, waveform strip, and event
-    timeline. `EventsTableWidget` owns table UI only; `EventTimelineWidget`
-    owns waveform/event-bar display only. They emit signals and do not own
-    dataset save/load behavior.
+  - Qt/PyQtGraph widgets for the event table, waveform pane, event timeline, and
+    preset sidebar. `EventsTableWidget` owns table UI only; `WaveformPane` owns
+    the audio waveform display/playhead/annotation overlay; `EventTimelineWidget`
+    owns event-bar display and can optionally include an embedded waveform for
+    standalone use. They emit signals and do not own dataset save/load behavior.
   - Table cells allow event-name dropdown edits and start/stop second edits.
     Selection can be linked to the audio view; changing the audio range selects
     overlapping rows.
@@ -209,7 +223,12 @@ alignment throughout the package.
   - `EventTypePreset`, `EventPresetPanel`, and `EventTypePresetDialog` provide
     the audio-only preset sidebar. Presets are GUI metadata over event names:
     name, fixed-duration mode, default duration, editability after creation, and
-    color. They must not replace the `Events` start/stop/channel storage model.
+    color. `ChannelSelectorPanel` hosts the compact channel selector above the
+    preset panel. Presets must not replace the `Events` start/stop/channel
+    storage model.
+  - `WaveformPane` draws continuous traces for normal/default zooms and switches
+    to min/max overview pairs only for windows of at least 4 seconds. Keep this
+    threshold behavior in mind when changing waveform performance or appearance.
 - `src/xarray_behave/gui/views.py`
   - PyQtGraph view/items for traces, spectrograms, annotations, draggable body
     and pose points, and movie display.
@@ -227,7 +246,11 @@ alignment throughout the package.
     Prefer using these constants for new GUI widgets instead of introducing a
     separate look.
 - `src/xarray_behave/gui/audio_player.py`
-  - Runtime fallback between `sounddevice` and `simpleaudio`.
+  - Runtime fallback between `sounddevice` and `simpleaudio` for explicit short
+    audio playback commands. It is not the transport clock/audio path.
+- `src/xarray_behave/gui/debug_play_wav.py`
+  - Small diagnostic CLI for comparing QMediaPlayer and sounddevice playback:
+    `python -m xarray_behave.gui.debug_play_wav scratch/dat/Dmel_male.wav --backend qmedia`.
 
 GUI tests are written to avoid opening real windows where possible by using
 `__new__`, monkeypatching imported modules, and faking datasets.
@@ -275,6 +298,11 @@ creating an env from `env/xb.yml`.
 - Changing event table/timeline behavior: update `src/xarray_behave/gui/event_widgets.py`
   and `tests/test_gui_event_widgets.py`. Keep widgets signal-driven and keep
   dataset mutation in `PSV`.
+- Changing waveform, transport, side-panel, or audio-channel UI behavior usually
+  touches `gui.app`, `gui.event_widgets`, `gui.style_profile`, and
+  `tests/test_gui_event_widgets.py` together. Smoke launch the audio GUI after
+  such changes:
+  `conda run -n das-conformer python -m xarray_behave.gui.app scratch/dat/Dmel_male.wav --skip-dialog`.
 - Changing GUI DAS/DAWS behavior: update `tests/test_gui_das.py`; the tests
   intentionally monkeypatch external `das` and `das_whisper` modules.
 - Changing color maps or GUI helper behavior: update `tests/test_gui_utils.py`.
@@ -298,9 +326,17 @@ creating an env from `env/xb.yml`.
 - Fixed-duration presets are enforced in `PSV`, not in `Events`. For locked
   fixed-duration event types, table edits and timeline edge drags should move
   the whole event while preserving the preset duration.
+- The active event type is stored in `PSV._current_event_name` and mirrored by
+  the preset side panel. Do not reintroduce a hidden or visible top combo box as
+  the source of truth.
+- The current audio channel selector lives in `ChannelSelectorPanel.channel_combo`;
+  `PSV.cb2` is a compatibility alias used by existing channel-selection methods.
 - The linked table/audio behavior is optional. Respect
   `EventsTableWidget.sync_enabled` before changing the audio range in response
   to table selection.
+- The waveform panel and event timeline both use seconds. `WaveformPane` is the
+  top audio panel; do not replace it with the legacy `views.TraceView` unless
+  restoring all playhead, annotation overlay, click, and threshold behavior.
 - Some loader code catches broad exceptions and logs instead of failing. When
   debugging assembly, inspect logs and the final dataset variables.
 - `pixel_size_mm` can be `nan`; conversion should be skipped when there is no

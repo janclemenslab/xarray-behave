@@ -1230,18 +1230,24 @@ class PSV(MainWindow):
         self.annot_view = views.AnnotView(model=self, callback=self.on_trace_clicked)
         self.event_timeline = event_widgets.EventTimelineWidget(show_waveform=False)
         self.events_table = event_widgets.EventsTableWidget()
+        self.channel_panel = event_widgets.ChannelSelectorPanel()
+        self.channel_panel.set_channels(self._channel_labels())
         self.preset_panel = event_widgets.EventPresetPanel()
-        self.preset_panel.set_channels(self._channel_labels())
-        self.cb2 = self.preset_panel.channel_combo
+        self.cb2 = self.channel_panel.channel_combo
         for widget in (self.slice_view, self.tracks_view, self.annot_view, self.event_timeline, self.events_table):
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.channel_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
         self._syncing_event_selection = False
+        self.channel_panel.channel_changed.connect(self.update_xy)
         self.preset_panel.selection_changed.connect(self._on_preset_selected)
         self.preset_panel.create_requested.connect(self._create_preset_from_panel)
         self.preset_panel.edit_requested.connect(self._edit_preset_from_panel)
         self.preset_panel.delete_requested.connect(self._delete_preset_from_panel)
-        self.preset_panel.channel_changed.connect(self.update_xy)
+        self.preset_panel.visibility_changed.connect(self._set_preset_visibility)
+        self.preset_panel.editability_changed.connect(self._set_preset_editability)
+        self.preset_panel.visibility_all_changed.connect(self._set_all_preset_visibility)
+        self.preset_panel.editability_all_changed.connect(self._set_all_preset_editability)
         self.events_table.selection_changed.connect(self._on_events_table_selection)
         self.events_table.type_changed.connect(self._on_events_table_type_changed)
         self.events_table.time_changed.connect(self._on_events_table_time_changed)
@@ -1287,7 +1293,15 @@ class PSV(MainWindow):
             splitter.setStretchFactor(index, splitter_sizes[index])
         splitter.setSizes(splitter_sizes)
 
-        outer_splitter.addWidget(self.preset_panel)
+        left_sidebar = QtWidgets.QWidget()
+        left_sidebar.setObjectName("leftSidebar")
+        left_sidebar_layout = QtWidgets.QVBoxLayout(left_sidebar)
+        left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        left_sidebar_layout.setSpacing(8)
+        left_sidebar_layout.addWidget(self.channel_panel)
+        left_sidebar_layout.addWidget(self.preset_panel, 1)
+
+        outer_splitter.addWidget(left_sidebar)
         outer_splitter.addWidget(splitter)
         outer_splitter.setCollapsible(0, False)
         outer_splitter.setCollapsible(1, False)
@@ -1887,6 +1901,37 @@ class PSV(MainWindow):
     def _event_presets_in_order(self):
         return [self._event_preset(name) for name in self.event_times.names]
 
+    def _event_type_visible(self, name: str) -> bool:
+        if not name:
+            return False
+        return bool(self._event_preset(name).visible)
+
+    def _event_type_editable(self, name: str) -> bool:
+        if not name:
+            return False
+        return bool(self._event_preset(name).editable)
+
+    def _event_type_can_edit(self, name: str) -> bool:
+        return self._event_type_visible(name) and self._event_type_editable(name)
+
+    def _visible_event_names(self) -> list[str]:
+        return [name for name in self.event_times.names if self._event_type_visible(name)]
+
+    def _editable_visible_event_names(self) -> list[str]:
+        return [name for name in self.event_times.names if self._event_type_can_edit(name)]
+
+    def _event_times_for_names(self, names):
+        names = [name for name in names if name in self.event_times]
+        data = {name: self.event_times[name].copy() for name in names}
+        categories = {name: "event" for name in names}
+        return annot.Events(data, categories=categories, add_names_from_categories=False)
+
+    def _visible_event_times(self):
+        return self._event_times_for_names(self._visible_event_names())
+
+    def _locked_event_type_names(self):
+        return [name for name in self.event_times.names if not self._event_type_editable(name)]
+
     def _locked_duration_record_ids(self):
         locked = []
         for record in event_widgets.records_from_events(self.event_times):
@@ -1894,6 +1939,33 @@ class PSV(MainWindow):
             if preset.fixed_duration and not preset.duration_editable:
                 locked.append(record.id)
         return locked
+
+    def _set_preset_visibility(self, name: str, visible: bool):
+        if name not in self.event_times.names:
+            return
+        self.event_presets[name] = self._event_preset(name).with_visibility(visible)
+        self._after_preset_layer_change()
+
+    def _set_preset_editability(self, name: str, editable: bool):
+        if name not in self.event_times.names:
+            return
+        self.event_presets[name] = self._event_preset(name).with_editability(editable)
+        self._after_preset_layer_change()
+
+    def _set_all_preset_visibility(self, visible: bool):
+        for name in self.event_times.names:
+            self.event_presets[name] = self._event_preset(name).with_visibility(visible)
+        self._after_preset_layer_change()
+
+    def _set_all_preset_editability(self, editable: bool):
+        for name in self.event_times.names:
+            self.event_presets[name] = self._event_preset(name).with_editability(editable)
+        self._after_preset_layer_change()
+
+    def _after_preset_layer_change(self):
+        self._refresh_preset_panel(selected_name=self.current_event_name)
+        if getattr(self, "STOP", True):
+            self.update_xy()
 
     def _clamp_event_bounds(self, start_seconds: float, stop_seconds: float):
         start = max(0.0, float(start_seconds))
@@ -2052,13 +2124,16 @@ class PSV(MainWindow):
             return
         selected_ids = self.events_table.selected_record_ids()
         colors = self._event_color_map()
+        visible_events = self._visible_event_times()
+        locked_event_names = self._locked_event_type_names()
         self.event_timeline.set_events(
-            self.event_times,
+            visible_events,
             colors=colors,
             selected_ids=selected_ids,
             locked_duration_ids=self._locked_duration_record_ids(),
+            locked_event_names=locked_event_names,
         )
-        self.events_table.set_events(self.event_times, selected_ids=selected_ids)
+        self.events_table.set_events(visible_events, selected_ids=selected_ids, locked_event_names=locked_event_names)
         self.event_timeline.set_selected_ids(self.events_table.selected_record_ids())
         self.event_timeline.set_playhead(float(self.t0) / self.fs_song)
         if sync_table_to_view and self.events_table.sync_enabled and not self._syncing_event_selection:
@@ -2106,10 +2181,16 @@ class PSV(MainWindow):
             self._syncing_event_selection = False
 
     def _on_events_table_type_changed(self, records, new_name: str):
-        self._move_event_records(records, new_name=new_name)
+        records = [record for record in records if self._event_type_can_edit(record.name)]
+        if records and self._event_type_can_edit(new_name):
+            self._move_event_records(records, new_name=new_name)
 
     def _on_events_table_time_changed(self, record, start_seconds: float, stop_seconds: float, changed_edge: str):
-        if record.name in self.event_times and record.index < len(self.event_times[record.name]):
+        if (
+            self._event_type_can_edit(record.name)
+            and record.name in self.event_times
+            and record.index < len(self.event_times[record.name])
+        ):
             start_seconds, stop_seconds = self._bounds_for_event_edit(
                 record.name,
                 record.start_seconds,
@@ -2124,6 +2205,8 @@ class PSV(MainWindow):
     def _on_events_table_delete(self, records):
         by_name = {}
         for record in records:
+            if not self._event_type_can_edit(record.name):
+                continue
             by_name.setdefault(record.name, []).append(record.index)
         for name, indices in by_name.items():
             if name not in self.event_times:
@@ -2134,6 +2217,8 @@ class PSV(MainWindow):
         self._after_event_edit()
 
     def _on_timeline_event_created(self, name: str, start_seconds: float, stop_seconds: float):
+        if not self._event_type_can_edit(name):
+            return
         channel = self.current_channel_index
         if channel is None:
             channel = -1
@@ -2142,6 +2227,8 @@ class PSV(MainWindow):
         self._after_event_edit()
 
     def _on_timeline_event_changed(self, record, new_name: str, start_seconds: float, stop_seconds: float):
+        if not self._event_type_can_edit(record.name) or not self._event_type_can_edit(new_name):
+            return
         if new_name != record.name:
             self._move_event_records([record], new_name=new_name, start_seconds=start_seconds, stop_seconds=stop_seconds)
             return
@@ -2170,10 +2257,14 @@ class PSV(MainWindow):
         return True
 
     def _move_event_records(self, records, new_name: str, start_seconds: float = None, stop_seconds: float = None):
+        if not self._event_type_can_edit(new_name):
+            return
         if new_name not in self.event_times:
             self.event_times.add_name(new_name, category="event")
         by_name = {}
         for record in records:
+            if not self._event_type_can_edit(record.name):
+                continue
             by_name.setdefault(record.name, []).append(record)
         for old_name, grouped in by_name.items():
             if old_name not in self.event_times:
@@ -2241,6 +2332,9 @@ class PSV(MainWindow):
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
+            if not self._event_type_can_edit(self.current_event_name):
+                logger.info(f"   Event type {self.current_event_name} is hidden or locked. Not deleting anything.")
+                return
             deleted_events = self.event_times.delete_range(
                 self.current_event_name,
                 self.time0 / self.fs_song,
@@ -2256,6 +2350,8 @@ class PSV(MainWindow):
 
     def delete_all_events(self, qt_keycode):
         for event_name in self.event_times.names:
+            if not self._event_type_can_edit(event_name):
+                continue
             deleted_events = self.event_times.delete_range(event_name, self.time0 / self.fs_song, self.time1 / self.fs_song)
             nb_deleted_events = len(deleted_events)
             if nb_deleted_events:
@@ -2265,7 +2361,7 @@ class PSV(MainWindow):
             self.update_xy()
 
     def threshold(self, qt_keycode):
-        if self.STOP and self.current_event_name is not None:
+        if self.STOP and self.current_event_name is not None and self._event_type_can_edit(self.current_event_name):
             indexes = peakutils.indexes(
                 self.envelope,
                 thres=self.slice_view.threshold,
@@ -2523,8 +2619,10 @@ class PSV(MainWindow):
 
     def plot_song_events(self, x):
         for event_index in range(self.nb_eventtypes):
-            movable = self.STOP and self.movable_events
             event_name = self.event_times.names[event_index]
+            if not self._event_type_visible(event_name):
+                continue
+            movable = self.STOP and self.movable_events and self._event_type_editable(event_name)
             if self.edit_only_current_events:
                 movable = movable and self.current_event_index == event_index
 
@@ -2629,6 +2727,8 @@ class PSV(MainWindow):
         event_name_to_move = self.current_event_name
         if self.current_event_index != region.event_index:
             event_name_to_move = self.event_times.names[region.event_index]
+        if not self._event_type_can_edit(event_name_to_move):
+            return
 
         new_region = region.getRegion()
         changed_edge = "move"
@@ -2665,7 +2765,10 @@ class PSV(MainWindow):
             if mp > 0 and mp < 1:
                 new_event_idx = int(mp * self.nb_eventtypes)
                 new_event_name = self.event_times.names[new_event_idx]
-                _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
+                if self._event_type_can_edit(new_event_name):
+                    _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
+                else:
+                    old_name = None
                 if old_name is not None:
                     logger.info(f"  Changed from {old_name} to {new_name}.")
 
@@ -2678,6 +2781,8 @@ class PSV(MainWindow):
         event_name_to_move = self.current_event_name
         if self.current_event_index != position.event_index:
             event_name_to_move = self.event_times.names[position.event_index]
+        if not self._event_type_can_edit(event_name_to_move):
+            return
         new_point = position.pos()
         new_position = new_point.x() if hasattr(new_point, "x") else new_point[0]
         new_position, new_stop = self._bounds_for_event_edit(
@@ -2704,7 +2809,12 @@ class PSV(MainWindow):
             if mp > 0 and mp < 1:
                 new_event_idx = int(mp * self.nb_eventtypes)
                 new_event_name = self.event_times.names[new_event_idx]
-                _, old_name, new_name = self.event_times.change_name(new_position, new_event_name, old_name=event_name_to_move)
+                if self._event_type_can_edit(new_event_name):
+                    _, old_name, new_name = self.event_times.change_name(
+                        new_position, new_event_name, old_name=event_name_to_move
+                    )
+                else:
+                    old_name = None
                 if old_name is not None:
                     logger.info(f"  Changed from {old_name} to {new_name}.")
 
@@ -2771,23 +2881,32 @@ class PSV(MainWindow):
         if mouseButton == QtCore.Qt.MouseButton.LeftButton and modifiers == QtCore.Qt.ControlModifier:  # change event type
             self.sinet0 = None
 
-            if not self.edit_only_current_events:
+            if not self.edit_only_current_events or not self._event_type_can_edit(self.current_event_name):
                 return
             else:
                 current_event_name = self.current_event_name
 
+            editable_events = self._event_times_for_names(self._editable_visible_event_names())
+            old_name = editable_events._get_name_of_nearest(
+                mouseT,
+                min_time=self.time0 / self.fs_song,
+                max_time=self.time1 / self.fs_song,
+            )
+            if old_name is None:
+                return
             changed_time, old_name, new_name = self.event_times.change_name(
                 time=mouseT,
                 new_name=current_event_name,
                 tol=0.05,
                 min_time=self.time0 / self.fs_song,
                 max_time=self.time1 / self.fs_song,
+                old_name=old_name,
             )
             if changed_time is not None:
                 logger.info(f"  Changed event at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}.")
                 self.update_xy()
         elif mouseButton == QtCore.Qt.MouseButton.LeftButton:  # add event
-            if self.current_event_index is not None:
+            if self.current_event_index is not None and self._event_type_can_edit(self.current_event_name):
                 self.sinet0 = None
                 start_seconds, stop_seconds = self._bounds_for_event_creation(self.current_event_name, mouseT)
                 self.event_times.add_time(
@@ -2810,10 +2929,17 @@ class PSV(MainWindow):
             self.sinet0 = None
 
             if not self.edit_only_current_events:
-                current_event_name = None
+                editable_events = self._event_times_for_names(self._editable_visible_event_names())
+                current_event_name = editable_events._get_name_of_nearest(
+                    mouseT,
+                    min_time=self.time0 / self.fs_song,
+                    max_time=self.time1 / self.fs_song,
+                )
             else:
                 current_event_name = self.current_event_name
 
+            if current_event_name is None or not self._event_type_can_edit(current_event_name):
+                return
             deleted_name, deleted_time = self.event_times.delete_time(
                 time=mouseT,
                 name=current_event_name,

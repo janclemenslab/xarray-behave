@@ -30,7 +30,16 @@ QLabel[role="inspectorTitle"] {{
     font-size: 13px;
     font-weight: 600;
 }}
+QLabel[role="presetName"] {{
+    color: {TEXT_PRIMARY};
+    font-weight: 600;
+}}
 QWidget#presetPanel {{
+    background-color: {SURFACE_ELEVATED};
+    border: 1px solid {BORDER_SUBTLE};
+    border-radius: 8px;
+}}
+QWidget#channelPanel {{
     background-color: {SURFACE_ELEVATED};
     border: 1px solid {BORDER_SUBTLE};
     border-radius: 8px;
@@ -113,6 +122,23 @@ QToolButton[role="transport"]:hover {{
 }}
 QToolButton[role="transport"]:pressed {{
     background-color: #52627c;
+}}
+QToolButton[role="presetIcon"], QToolButton[role="presetGlobal"] {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    min-width: 20px;
+    min-height: 20px;
+    max-width: 22px;
+    max-height: 22px;
+    padding: 0;
+}}
+QToolButton[role="presetIcon"]:hover, QToolButton[role="presetGlobal"]:hover {{
+    background-color: {SURFACE_INTERACTIVE};
+    border-color: {BORDER_SUBTLE};
+}}
+QToolButton[role="presetIcon"]:pressed, QToolButton[role="presetGlobal"]:pressed {{
+    background-color: {SURFACE_ALT};
 }}
 QToolButton#transportPlayButton {{
     min-width: 20px;

@@ -59,6 +59,8 @@ class EventTypePreset:
     duration_seconds: float = 0.0
     duration_editable: bool = False
     color_hex: str = "#35b7ff"
+    visible: bool = True
+    editable: bool = True
 
     def color_tuple(self) -> tuple[int, int, int]:
         color = QtGui.QColor(self.color_hex)
@@ -73,6 +75,30 @@ class EventTypePreset:
             duration_seconds=self.duration_seconds,
             duration_editable=self.duration_editable,
             color_hex=self.color_hex,
+            visible=self.visible,
+            editable=self.editable,
+        )
+
+    def with_visibility(self, visible: bool) -> "EventTypePreset":
+        return EventTypePreset(
+            name=self.name,
+            fixed_duration=self.fixed_duration,
+            duration_seconds=self.duration_seconds,
+            duration_editable=self.duration_editable,
+            color_hex=self.color_hex,
+            visible=bool(visible),
+            editable=self.editable,
+        )
+
+    def with_editability(self, editable: bool) -> "EventTypePreset":
+        return EventTypePreset(
+            name=self.name,
+            fixed_duration=self.fixed_duration,
+            duration_seconds=self.duration_seconds,
+            duration_editable=self.duration_editable,
+            color_hex=self.color_hex,
+            visible=self.visible,
+            editable=bool(editable),
         )
 
 
@@ -142,6 +168,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         self._events = Events()
         self._records_by_id: dict[str, EventRecord] = {}
         self._event_names: list[str] = []
+        self._locked_event_names: set[str] = set()
         self._sync_enabled = True
         self._blocked = False
 
@@ -180,11 +207,17 @@ class EventsTableWidget(QtWidgets.QWidget):
     def sync_enabled(self) -> bool:
         return bool(self._sync_enabled)
 
-    def set_events(self, events: Events, selected_ids: Iterable[str] | None = None) -> None:
+    def set_events(
+        self,
+        events: Events,
+        selected_ids: Iterable[str] | None = None,
+        locked_event_names: Iterable[str] | None = None,
+    ) -> None:
         selected = set(selected_ids or self.selected_record_ids())
         self._blocked = True
         self._events = Events(events)
         self._event_names = list(self._events.names)
+        self._locked_event_names = set(locked_event_names or set())
         records = records_from_events(self._events)
         self._records_by_id = {record.id: record for record in records}
         sort_state = self._sort_state()
@@ -227,7 +260,7 @@ class EventsTableWidget(QtWidgets.QWidget):
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         if event.key() in (QtCore.Qt.Key_Delete, QtCore.Qt.Key_Backspace):
-            records = self.selected_records()
+            records = [record for record in self.selected_records() if record.name not in self._locked_event_names]
             if records:
                 self.delete_requested.emit(records)
                 event.accept()
@@ -235,6 +268,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         super().keyPressEvent(event)
 
     def _populate_row(self, row: int, record: EventRecord) -> None:
+        locked = record.name in self._locked_event_names
         type_item = self._item(record.name, record.name.lower(), record.id)
         self.table.setItem(row, self._COL_TYPE, type_item)
         combo = QtWidgets.QComboBox(self.table)
@@ -242,14 +276,19 @@ class EventsTableWidget(QtWidgets.QWidget):
         combo.addItems(self._event_names)
         idx = combo.findText(record.name)
         combo.setCurrentIndex(max(0, idx))
+        combo.setEnabled(not locked)
         combo.activated.connect(lambda _idx, rid=record.id, source=combo: self._on_type_combo(rid, source.currentText()))
         self.table.setCellWidget(row, self._COL_TYPE, combo)
 
         self.table.setItem(
-            row, self._COL_START, self._item(f"{record.start_seconds:.6f}", record.start_seconds, record.id, editable=True)
+            row,
+            self._COL_START,
+            self._item(f"{record.start_seconds:.6f}", record.start_seconds, record.id, editable=not locked),
         )
         self.table.setItem(
-            row, self._COL_STOP, self._item(f"{record.stop_seconds:.6f}", record.stop_seconds, record.id, editable=True)
+            row,
+            self._COL_STOP,
+            self._item(f"{record.stop_seconds:.6f}", record.stop_seconds, record.id, editable=not locked),
         )
         self.table.setItem(
             row, self._COL_DURATION, self._item(f"{record.duration_seconds:.6f}", record.duration_seconds, record.id)
@@ -272,8 +311,11 @@ class EventsTableWidget(QtWidgets.QWidget):
             return
         selected = self.selected_records()
         source = self._records_by_id.get(record_id)
+        if source is not None and source.name in self._locked_event_names:
+            return
         if source is not None and record_id not in {record.id for record in selected}:
             selected = [source]
+        selected = [record for record in selected if record.name not in self._locked_event_names]
         if selected:
             self.type_changed.emit(selected, new_name)
 
@@ -282,12 +324,12 @@ class EventsTableWidget(QtWidgets.QWidget):
             return
         record_id = item.data(QtCore.Qt.UserRole)
         record = self._records_by_id.get(record_id)
-        if record is None:
+        if record is None or record.name in self._locked_event_names:
             return
         try:
             value = float(item.text())
         except ValueError:
-            self.set_events(self._events)
+            self.set_events(self._events, locked_event_names=self._locked_event_names)
             return
         start = value if item.column() == self._COL_START else record.start_seconds
         stop = value if item.column() == self._COL_STOP else record.stop_seconds
@@ -356,6 +398,53 @@ def _color_swatch_icon(color_hex: str) -> QtGui.QIcon:
     painter.drawRoundedRect(1, 1, 12, 12, 3, 3)
     painter.end()
     return QtGui.QIcon(pixmap)
+
+
+def _visibility_icon(visible: bool) -> QtGui.QIcon:
+    pixmap = QtGui.QPixmap(18, 18)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+    pen_color = QtGui.QColor(TEXT_PRIMARY if visible else TEXT_MUTED)
+    painter.setPen(QtGui.QPen(pen_color, 1.7))
+    painter.setBrush(QtCore.Qt.NoBrush)
+    painter.drawEllipse(QtCore.QRectF(2.5, 5.0, 13.0, 8.0))
+    if visible:
+        painter.setBrush(QtGui.QBrush(pen_color))
+        painter.drawEllipse(QtCore.QRectF(7.0, 7.0, 4.0, 4.0))
+    else:
+        painter.drawLine(QtCore.QPointF(4.0, 14.0), QtCore.QPointF(14.0, 4.0))
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+def _editability_icon(editable: bool) -> QtGui.QIcon:
+    pixmap = QtGui.QPixmap(18, 18)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+    pen_color = QtGui.QColor(TEXT_PRIMARY if editable else TEXT_MUTED)
+    painter.setPen(QtGui.QPen(pen_color, 1.7))
+    painter.setBrush(QtCore.Qt.NoBrush)
+    if editable:
+        painter.drawArc(QtCore.QRectF(3.5, 2.5, 8.0, 8.0), 35 * 16, 240 * 16)
+    else:
+        painter.drawArc(QtCore.QRectF(5.0, 2.5, 8.0, 8.0), 0, 180 * 16)
+    painter.setBrush(QtGui.QBrush(pen_color))
+    painter.drawRoundedRect(QtCore.QRectF(4.0, 8.0, 10.0, 7.5), 1.4, 1.4)
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+def _compact_tool_button(icon: QtGui.QIcon, tooltip: str, parent=None) -> QtWidgets.QToolButton:
+    button = QtWidgets.QToolButton(parent)
+    button.setProperty("role", "presetIcon")
+    button.setAutoRaise(True)
+    button.setIcon(icon)
+    button.setIconSize(QtCore.QSize(18, 18))
+    button.setToolTip(tooltip)
+    button.setFocusPolicy(QtCore.Qt.NoFocus)
+    return button
 
 
 class EventTypePresetDialog(QtWidgets.QDialog):
@@ -478,8 +567,115 @@ class EventTypePresetDialog(QtWidgets.QDialog):
             duration_seconds=float(self.duration_spin.value()) if fixed_duration else 0.0,
             duration_editable=bool(self.duration_editable_checkbox.isChecked()) if fixed_duration else True,
             color_hex=color_hex,
+            visible=self._preset.visible if self._preset is not None else True,
+            editable=self._preset.editable if self._preset is not None else True,
         )
         self.accept()
+
+
+class ChannelSelectorPanel(QtWidgets.QWidget):
+    channel_changed = QtCore.Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("channelPanel")
+        self.setMinimumWidth(220)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
+
+        channel_label = QtWidgets.QLabel("Channel")
+        channel_label.setProperty("role", "inspectorTitle")
+        layout.addWidget(channel_label)
+
+        self.channel_combo = QtWidgets.QComboBox(self)
+        self.channel_combo.setObjectName("channelSelector")
+        self.channel_combo.currentIndexChanged.connect(lambda _index: self.channel_changed.emit())
+        layout.addWidget(self.channel_combo)
+
+    def set_channels(self, labels: Iterable[str]) -> None:
+        current = self.channel_combo.currentText()
+        self.channel_combo.blockSignals(True)
+        self.channel_combo.clear()
+        self.channel_combo.addItems(list(labels))
+        index = self.channel_combo.findText(current)
+        self.channel_combo.setCurrentIndex(max(0, index))
+        self.channel_combo.setEnabled(self.channel_combo.count() > 1)
+        self.channel_combo.blockSignals(False)
+
+
+class _PresetRowWidget(QtWidgets.QWidget):
+    selection_requested = QtCore.Signal(str)
+    edit_requested = QtCore.Signal(str)
+    visibility_changed = QtCore.Signal(str, bool)
+    editability_changed = QtCore.Signal(str, bool)
+
+    def __init__(self, preset: EventTypePreset, detail_text: str, parent=None) -> None:
+        super().__init__(parent)
+        self._preset_name = preset.name
+
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(4, 3, 4, 3)
+        layout.setSpacing(5)
+
+        self.visibility_button = _compact_tool_button(_visibility_icon(preset.visible), "", self)
+        self.visibility_button.setCheckable(True)
+        self.visibility_button.setChecked(bool(preset.visible))
+        self.visibility_button.clicked.connect(self._on_visibility_clicked)
+        layout.addWidget(self.visibility_button)
+
+        self.editability_button = _compact_tool_button(_editability_icon(preset.editable), "", self)
+        self.editability_button.setCheckable(True)
+        self.editability_button.setChecked(bool(preset.editable))
+        self.editability_button.clicked.connect(self._on_editability_clicked)
+        layout.addWidget(self.editability_button)
+
+        swatch = QtWidgets.QLabel(self)
+        swatch.setPixmap(_color_swatch_icon(preset.color_hex).pixmap(14, 14))
+        layout.addWidget(swatch)
+
+        text_layout = QtWidgets.QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(0)
+        self.name_label = QtWidgets.QLabel(preset.name)
+        self.name_label.setProperty("role", "presetName")
+        self.name_label.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        self.detail_label = QtWidgets.QLabel(detail_text)
+        self.detail_label.setProperty("role", "muted")
+        self.detail_label.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        text_layout.addWidget(self.name_label)
+        text_layout.addWidget(self.detail_label)
+        layout.addLayout(text_layout, 1)
+
+        self._sync_visibility_button()
+        self._sync_editability_button()
+
+    def mousePressEvent(self, event) -> None:
+        self.selection_requested.emit(self._preset_name)
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        self.edit_requested.emit(self._preset_name)
+        super().mouseDoubleClickEvent(event)
+
+    def _on_visibility_clicked(self, checked: bool) -> None:
+        self._sync_visibility_button()
+        self.visibility_changed.emit(self._preset_name, bool(checked))
+
+    def _on_editability_clicked(self, checked: bool) -> None:
+        self._sync_editability_button()
+        self.editability_changed.emit(self._preset_name, bool(checked))
+
+    def _sync_visibility_button(self) -> None:
+        visible = bool(self.visibility_button.isChecked())
+        self.visibility_button.setIcon(_visibility_icon(visible))
+        self.visibility_button.setToolTip(f"Hide {self._preset_name}" if visible else f"Show {self._preset_name}")
+
+    def _sync_editability_button(self) -> None:
+        editable = bool(self.editability_button.isChecked())
+        self.editability_button.setIcon(_editability_icon(editable))
+        self.editability_button.setToolTip(f"Lock {self._preset_name}" if editable else f"Unlock {self._preset_name}")
 
 
 class EventPresetPanel(QtWidgets.QWidget):
@@ -487,7 +683,10 @@ class EventPresetPanel(QtWidgets.QWidget):
     create_requested = QtCore.Signal()
     edit_requested = QtCore.Signal(str)
     delete_requested = QtCore.Signal(str)
-    channel_changed = QtCore.Signal()
+    visibility_changed = QtCore.Signal(str, bool)
+    editability_changed = QtCore.Signal(str, bool)
+    visibility_all_changed = QtCore.Signal(bool)
+    editability_all_changed = QtCore.Signal(bool)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -495,28 +694,31 @@ class EventPresetPanel(QtWidgets.QWidget):
         self.setMinimumWidth(220)
         self._presets: list[EventTypePreset] = []
         self._blocked = False
+        self._visibility_all_target = True
+        self._editability_all_target = True
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(6)
 
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(4)
         title = QtWidgets.QLabel("Presets")
         title.setProperty("role", "inspectorTitle")
-        layout.addWidget(title)
+        header.addWidget(title)
+        header.addStretch(1)
 
-        summary = QtWidgets.QLabel("Pick the active event type for click and drag creation.")
-        summary.setProperty("role", "muted")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
+        self.visibility_all_button = _compact_tool_button(_visibility_icon(True), "Hide all", self)
+        self.visibility_all_button.setProperty("role", "presetGlobal")
+        self.visibility_all_button.clicked.connect(self._emit_visibility_all)
+        header.addWidget(self.visibility_all_button)
 
-        channel_label = QtWidgets.QLabel("Channel")
-        channel_label.setProperty("role", "muted")
-        layout.addWidget(channel_label)
-
-        self.channel_combo = QtWidgets.QComboBox(self)
-        self.channel_combo.setObjectName("channelSelector")
-        self.channel_combo.currentIndexChanged.connect(lambda _index: self.channel_changed.emit())
-        layout.addWidget(self.channel_combo)
+        self.editability_all_button = _compact_tool_button(_editability_icon(True), "Lock all", self)
+        self.editability_all_button.setProperty("role", "presetGlobal")
+        self.editability_all_button.clicked.connect(self._emit_editability_all)
+        header.addWidget(self.editability_all_button)
+        layout.addLayout(header)
 
         self.list_widget = QtWidgets.QListWidget(self)
         self.list_widget.setObjectName("presetList")
@@ -540,16 +742,6 @@ class EventPresetPanel(QtWidgets.QWidget):
         controls.addStretch(1)
         layout.addLayout(controls)
 
-    def set_channels(self, labels: Iterable[str]) -> None:
-        current = self.channel_combo.currentText()
-        self.channel_combo.blockSignals(True)
-        self.channel_combo.clear()
-        self.channel_combo.addItems(list(labels))
-        index = self.channel_combo.findText(current)
-        self.channel_combo.setCurrentIndex(max(0, index))
-        self.channel_combo.setEnabled(self.channel_combo.count() > 1)
-        self.channel_combo.blockSignals(False)
-
     def set_presets(self, presets: Iterable[EventTypePreset], selected_name: str | None = None) -> None:
         self._blocked = True
         self._presets = list(presets)
@@ -560,20 +752,28 @@ class EventPresetPanel(QtWidgets.QWidget):
             self.list_widget.addItem(placeholder)
             self.edit_button.setEnabled(False)
             self.delete_button.setEnabled(False)
+            self._sync_global_buttons()
             self._blocked = False
             return
         selected_row = 0
         for row, preset in enumerate(self._presets):
-            item = QtWidgets.QListWidgetItem(self._format_preset_label(preset))
+            item = QtWidgets.QListWidgetItem()
             item.setData(QtCore.Qt.UserRole, preset.name)
-            item.setIcon(_color_swatch_icon(preset.color_hex))
             item.setToolTip(self._format_preset_tooltip(preset))
             self.list_widget.addItem(item)
+            row_widget = _PresetRowWidget(preset, self._format_preset_detail(preset), self.list_widget)
+            row_widget.selection_requested.connect(self._select_name)
+            row_widget.edit_requested.connect(self.edit_requested.emit)
+            row_widget.visibility_changed.connect(self.visibility_changed.emit)
+            row_widget.editability_changed.connect(self.editability_changed.emit)
+            item.setSizeHint(row_widget.sizeHint())
+            self.list_widget.setItemWidget(item, row_widget)
             if preset.name == selected_name:
                 selected_row = row
         self.list_widget.setCurrentRow(selected_row)
         self.edit_button.setEnabled(True)
         self.delete_button.setEnabled(True)
+        self._sync_global_buttons()
         self._blocked = False
 
     def set_current_name(self, name: str | None) -> None:
@@ -616,17 +816,50 @@ class EventPresetPanel(QtWidgets.QWidget):
         if name:
             self.delete_requested.emit(name)
 
-    def _format_preset_label(self, preset: EventTypePreset) -> str:
+    def _select_name(self, name: str) -> None:
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            item_name = item.data(QtCore.Qt.UserRole) if item is not None else None
+            if item_name != name:
+                continue
+            if self.list_widget.currentRow() == row:
+                self.selection_changed.emit(name)
+                return
+            self.list_widget.setCurrentRow(row)
+            return
+
+    def _emit_visibility_all(self) -> None:
+        self.visibility_all_changed.emit(bool(self._visibility_all_target))
+
+    def _emit_editability_all(self) -> None:
+        self.editability_all_changed.emit(bool(self._editability_all_target))
+
+    def _sync_global_buttons(self) -> None:
+        has_presets = bool(self._presets)
+        all_visible = has_presets and all(preset.visible for preset in self._presets)
+        all_editable = has_presets and all(preset.editable for preset in self._presets)
+        self._visibility_all_target = not all_visible
+        self._editability_all_target = not all_editable
+        self.visibility_all_button.setEnabled(has_presets)
+        self.editability_all_button.setEnabled(has_presets)
+        self.visibility_all_button.setIcon(_visibility_icon(self._visibility_all_target))
+        self.editability_all_button.setIcon(_editability_icon(self._editability_all_target))
+        self.visibility_all_button.setToolTip("Show all" if self._visibility_all_target else "Hide all")
+        self.editability_all_button.setToolTip("Unlock all" if self._editability_all_target else "Lock all")
+
+    def _format_preset_detail(self, preset: EventTypePreset) -> str:
         if not preset.fixed_duration:
-            return f"{preset.name}  free"
-        edit_text = "editable" if preset.duration_editable else "locked"
-        return f"{preset.name}  fixed {preset.duration_seconds:g}s {edit_text}"
+            return "free"
+        edit_text = "duration editable" if preset.duration_editable else "duration locked"
+        return f"fixed {preset.duration_seconds:g}s, {edit_text}"
 
     def _format_preset_tooltip(self, preset: EventTypePreset) -> str:
+        visibility_text = "visible" if preset.visible else "hidden"
+        editability_text = "editable" if preset.editable else "locked"
         if not preset.fixed_duration:
-            return f"{preset.name}: free-duration event"
+            return f"{preset.name}: free-duration event, {visibility_text}, {editability_text}"
         edit_text = "duration editable after creation" if preset.duration_editable else "duration locked after creation"
-        return f"{preset.name}: fixed duration {preset.duration_seconds:g}s, {edit_text}"
+        return f"{preset.name}: fixed duration {preset.duration_seconds:g}s, {edit_text}, {visibility_text}, {editability_text}"
 
 
 class WaveformPane(pg.PlotWidget):
@@ -764,6 +997,7 @@ class EventBarsView(pg.PlotWidget):
         self._items: list[pg.BarGraphItem] = []
         self._selected_ids: set[str] = set()
         self._locked_duration_ids: set[str] = set()
+        self._locked_event_names: set[str] = set()
         self._colors: dict[str, tuple[int, int, int]] = {}
         self._drag = None
         self._playhead = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
@@ -775,6 +1009,7 @@ class EventBarsView(pg.PlotWidget):
         colors: dict[str, tuple[int, int, int]] | None = None,
         selected_ids: Iterable[str] | None = None,
         locked_duration_ids: Iterable[str] | None = None,
+        locked_event_names: Iterable[str] | None = None,
     ) -> None:
         self._events = Events(events)
         self._records = records_from_events(self._events)
@@ -783,6 +1018,7 @@ class EventBarsView(pg.PlotWidget):
         self._colors = dict(colors or {})
         self._selected_ids = set(selected_ids or self._selected_ids)
         self._locked_duration_ids = set(locked_duration_ids or set())
+        self._locked_event_names = set(locked_event_names or set())
         self._redraw()
 
     def set_selected_ids(self, selected_ids: Iterable[str]) -> None:
@@ -799,6 +1035,10 @@ class EventBarsView(pg.PlotWidget):
         point = self._event_point(event)
         record = self._pick_record(float(point.x()), float(point.y()))
         if record is not None:
+            if record.name in self._locked_event_names:
+                self.event_selected.emit([record])
+                event.accept()
+                return
             self._drag = {
                 "record": record,
                 "mode": self._drag_mode(record, float(point.x())),
@@ -812,6 +1052,9 @@ class EventBarsView(pg.PlotWidget):
             return
         row = self._row_for_y(float(point.y()))
         if row is not None:
+            if self._rows[row] in self._locked_event_names:
+                event.accept()
+                return
             self._drag = {"record": None, "mode": "create", "anchor": float(point.x()), "row": row}
             event.accept()
             return
@@ -866,7 +1109,10 @@ class EventBarsView(pg.PlotWidget):
                 continue
             color = self._colors.get(record.name, (100, 180, 255))
             selected = record.id in self._selected_ids
+            locked = record.name in self._locked_event_names
             alpha = 210 if selected else 120
+            if locked and not selected:
+                alpha = 70
             pen_width = 2.2 if selected else 1.0
             start = record.start_seconds
             stop = record.stop_seconds
@@ -981,8 +1227,15 @@ class EventTimelineWidget(QtWidgets.QWidget):
         colors: dict[str, tuple[int, int, int]] | None = None,
         selected_ids: Iterable[str] | None = None,
         locked_duration_ids: Iterable[str] | None = None,
+        locked_event_names: Iterable[str] | None = None,
     ) -> None:
-        self.events.set_events(events, colors=colors, selected_ids=selected_ids, locked_duration_ids=locked_duration_ids)
+        self.events.set_events(
+            events,
+            colors=colors,
+            selected_ids=selected_ids,
+            locked_duration_ids=locked_duration_ids,
+            locked_event_names=locked_event_names,
+        )
 
     def set_selected_ids(self, selected_ids: Iterable[str]) -> None:
         self.events.set_selected_ids(selected_ids)

@@ -5,6 +5,7 @@ from qtpy import QtCore, QtWidgets
 from xarray_behave.annot import Events
 from xarray_behave.gui.app import PSV
 from xarray_behave.gui.event_widgets import (
+    ChannelSelectorPanel,
     EventBarsView,
     EventPresetPanel,
     EventRecord,
@@ -138,18 +139,77 @@ def test_preset_panel_emits_selection_and_formats_fixed_duration():
     panel.set_presets([EventTypePreset("pulse", fixed_duration=True, duration_seconds=0.0)], selected_name="pulse")
 
     assert panel.current_name() == "pulse"
-    assert "fixed 0s" in panel.list_widget.item(0).text()
+    assert panel.list_widget.item(0).text() == ""
+    row = panel.list_widget.itemWidget(panel.list_widget.item(0))
+    assert row.name_label.text() == "pulse"
+    assert "fixed 0s" in row.detail_label.text()
 
 
-def test_preset_panel_hosts_channel_selector():
+def test_channel_selector_panel_hosts_channel_selector():
     _app()
-    panel = EventPresetPanel()
+    panel = ChannelSelectorPanel()
 
     panel.set_channels(["Merged channels", "Channel 0"])
 
     assert panel.channel_combo.count() == 2
     assert panel.channel_combo.currentText() == "Merged channels"
     assert panel.channel_combo.isEnabled()
+
+
+def test_preset_panel_emits_row_and_global_layer_toggles():
+    _app()
+    panel = EventPresetPanel()
+    visibility_changes = []
+    editability_changes = []
+    all_visibility_changes = []
+    all_editability_changes = []
+    panel.visibility_changed.connect(lambda name, visible: visibility_changes.append((name, visible)))
+    panel.editability_changed.connect(lambda name, editable: editability_changes.append((name, editable)))
+    panel.visibility_all_changed.connect(all_visibility_changes.append)
+    panel.editability_all_changed.connect(all_editability_changes.append)
+
+    panel.set_presets(
+        [
+            EventTypePreset("pulse", visible=True, editable=True),
+            EventTypePreset("song", visible=False, editable=False),
+        ],
+        selected_name="pulse",
+    )
+    row = panel.list_widget.itemWidget(panel.list_widget.item(0))
+
+    row.visibility_button.click()
+    row.editability_button.click()
+    panel.visibility_all_button.click()
+    panel.editability_all_button.click()
+
+    assert visibility_changes == [("pulse", False)]
+    assert editability_changes == [("pulse", False)]
+    assert all_visibility_changes == [True]
+    assert all_editability_changes == [True]
+
+
+def test_preset_panel_selects_rows_by_name_after_refresh():
+    _app()
+    panel = EventPresetPanel()
+    selected = []
+    panel.selection_changed.connect(selected.append)
+    panel.set_presets([EventTypePreset("pulse"), EventTypePreset("song")], selected_name="song")
+    stale_row = panel.list_widget.itemWidget(panel.list_widget.item(0))
+
+    panel.set_presets([EventTypePreset("pulse", color_hex="#d7263d"), EventTypePreset("song")], selected_name="song")
+    stale_row.selection_requested.emit("pulse")
+
+    assert panel.current_name() == "pulse"
+    assert selected[-1] == "pulse"
+
+
+def test_events_table_locks_rows_by_event_name():
+    _app()
+    widget = EventsTableWidget()
+    widget.set_events(Events({"pulse": np.array([[0.1, 0.1, -1]])}), locked_event_names=["pulse"])
+
+    assert not widget.table.cellWidget(0, widget._COL_TYPE).isEnabled()
+    assert not (widget.table.item(0, widget._COL_START).flags() & QtCore.Qt.ItemIsEditable)
 
 
 def test_waveform_pane_updates_playhead():
@@ -218,6 +278,29 @@ def test_numeric_event_shortcut_sets_current_event_without_top_combo():
     assert window.current_event_name == "song"
     assert refreshed[-1] == "song"
     assert updates[-1] is True
+
+
+def test_visible_event_times_filters_hidden_presets():
+    window = PSV.__new__(PSV)
+    window.event_times = Events({"pulse": np.array([[0.1, 0.1, -1]]), "song": np.array([[0.2, 0.3, -1]])})
+    window.event_presets = {
+        "pulse": EventTypePreset("pulse", visible=False),
+        "song": EventTypePreset("song", visible=True),
+    }
+
+    visible = window._visible_event_times()
+
+    assert visible.names == ["song"]
+
+
+def test_locked_preset_blocks_timeline_creation():
+    window = PSV.__new__(PSV)
+    window.event_times = Events({"pulse": np.zeros((0, 3))})
+    window.event_presets = {"pulse": EventTypePreset("pulse", visible=True, editable=False)}
+
+    window._on_timeline_event_created("pulse", 0.1, 0.2)
+
+    assert len(window.event_times["pulse"]) == 0
 
 
 def test_fixed_duration_creation_uses_click_as_onset():
