@@ -805,6 +805,7 @@ class PSV(MainWindow):
         # detect all event times
         self.event_times = dataset_service.event_times_from_dataset(ds)
         self.event_presets = self._initial_event_presets()
+        self._current_event_name = self.event_times.names[-1] if self.event_times.names else None
         self._sync_event_colors_from_presets()
 
         self.box_size = box_size
@@ -1188,50 +1189,8 @@ class PSV(MainWindow):
                 checked=self.show_movie,
             )
 
-        self.hl = QtWidgets.QHBoxLayout()
-
-        # EVENT TYPE selector
-        self.cb = QtWidgets.QComboBox()
-        self.cb.setCurrentIndex(0)
-        self.cb.currentIndexChanged.connect(self.update_xy)
-
-        def ta():
-            if self.cb.currentText() == "Initialize events":
-                self.edit_annotation_types()
-
-        self.cb.activated.connect(ta)
-
-        event_sel_label = QtWidgets.QLabel("Events:")
-        event_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
-        event_sel_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.hl.addWidget(event_sel_label, stretch=1)
-        self.hl.addWidget(self.cb, stretch=4)
-
-        event_edit_button = QtWidgets.QPushButton("Add/Edit")
-        event_edit_button.clicked.connect(functools.partial(self.edit_annotation_types, dialog=None))
-        self.hl.addWidget(event_edit_button, stretch=1)
-
         view_audio.addSeparator()
         self.view_audio = view_audio
-
-        # CHANNEL selector
-        self.cb2 = QtWidgets.QComboBox()
-        if "song" in self.ds:
-            self.cb2.addItem("Merged channels")
-
-        if "song_raw" in self.ds:
-            for chan in range(self.ds.song_raw.shape[1]):
-                self.cb2.addItem("Channel " + str(chan))
-
-        def on_channel_changed():
-            self.update_xy()
-
-        self.cb2.currentIndexChanged.connect(on_channel_changed)
-        self.cb2.setCurrentIndex(0)
-        channel_sel_label = QtWidgets.QLabel("Audio channels:")
-        channel_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
-        self.hl.addWidget(channel_sel_label, stretch=1)
-        self.hl.addWidget(self.cb2, stretch=4)
 
         # TRACKS selector
         if "pose_positions_allo" in self.ds and self.bodyparts is not None:
@@ -1239,7 +1198,7 @@ class PSV(MainWindow):
             items = [f"{b}, {c}" for b in self.bodyparts for c in ["x", "y"]]
             self.cb3.addItems(items)
 
-            # color events in combobox as in slice_view and spec_view
+            # color selected track parts in the combo box
             children = self.cb3.children()
             itemList = children[0]
             # repeat colors since we have x and y values for each
@@ -1252,11 +1211,6 @@ class PSV(MainWindow):
             for ii, col in zip(range(0, itemList.rowCount()), self.tracks_colors):
                 itemList.item(ii).setForeground(QtGui.QColor(*col))
 
-            track_sel_label = QtWidgets.QLabel("Track parts:")
-            track_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
-            self.hl.addWidget(track_sel_label, stretch=1)
-            self.hl.addWidget(self.cb3, stretch=4)
-
             def on_tracksel_changed(source):
                 if source.STOP:
                     source.update_xy()
@@ -1267,12 +1221,18 @@ class PSV(MainWindow):
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
 
-        self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
+        self.slice_view = event_widgets.WaveformPane(
+            callback=self.on_trace_clicked,
+            region_changed_callback=self.on_region_change_finished,
+            position_changed_callback=self.on_position_change_finished,
+        )
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
         self.annot_view = views.AnnotView(model=self, callback=self.on_trace_clicked)
         self.event_timeline = event_widgets.EventTimelineWidget(show_waveform=False)
         self.events_table = event_widgets.EventsTableWidget()
         self.preset_panel = event_widgets.EventPresetPanel()
+        self.preset_panel.set_channels(self._channel_labels())
+        self.cb2 = self.preset_panel.channel_combo
         for widget in (self.slice_view, self.tracks_view, self.annot_view, self.event_timeline, self.events_table):
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
@@ -1281,6 +1241,7 @@ class PSV(MainWindow):
         self.preset_panel.create_requested.connect(self._create_preset_from_panel)
         self.preset_panel.edit_requested.connect(self._edit_preset_from_panel)
         self.preset_panel.delete_requested.connect(self._delete_preset_from_panel)
+        self.preset_panel.channel_changed.connect(self.update_xy)
         self.events_table.selection_changed.connect(self._on_events_table_selection)
         self.events_table.type_changed.connect(self._on_events_table_type_changed)
         self.events_table.time_changed.connect(self._on_events_table_time_changed)
@@ -1292,10 +1253,8 @@ class PSV(MainWindow):
         self.spec_mel = False
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=cmap_name)
         self.spec_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self._slice_view_in_layout = False
 
         self.ly = QtWidgets.QVBoxLayout()
-        self.ly.addLayout(self.hl)
 
         outer_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         outer_splitter.setHandleWidth(8)
@@ -1322,7 +1281,6 @@ class PSV(MainWindow):
         add_splitter_panel(self.spec_view, 400)
         add_splitter_panel(self.event_timeline, 100)
         add_splitter_panel(self.events_table, 200)
-        self._slice_view_in_layout = True
 
         for index in range(splitter.count()):
             splitter.setCollapsible(index, False)
@@ -1486,33 +1444,33 @@ class PSV(MainWindow):
         transport_box = QtWidgets.QWidget(panel)
         transport_box.setObjectName("transportBox")
         transport_box_layout = QtWidgets.QHBoxLayout(transport_box)
-        transport_box_layout.setContentsMargins(6, 4, 6, 4)
-        transport_box_layout.setSpacing(4)
+        transport_box_layout.setContentsMargins(3, 2, 3, 2)
+        transport_box_layout.setSpacing(2)
 
         buttons = (
             self._build_transport_button(
-                QtWidgets.QStyle.SP_MediaSeekBackward,
+                "<<",
                 "Fast Reverse",
                 lambda: self._transport_fast_seek(-1),
             ),
             self._build_transport_button(
-                QtWidgets.QStyle.SP_MediaSkipBackward,
+                "|<",
                 "Reverse",
                 lambda: self._transport_frame_seek(-1),
             ),
             self._build_transport_button(
-                QtWidgets.QStyle.SP_MediaPlay,
+                ">",
                 "Play/Pause",
                 self._toggle_playback,
                 object_name="transportPlayButton",
             ),
             self._build_transport_button(
-                QtWidgets.QStyle.SP_MediaSkipForward,
+                ">|",
                 "Forward",
                 lambda: self._transport_frame_seek(1),
             ),
             self._build_transport_button(
-                QtWidgets.QStyle.SP_MediaSeekForward,
+                ">>",
                 "Fast Forward",
                 lambda: self._transport_fast_seek(1),
             ),
@@ -1542,24 +1500,22 @@ class PSV(MainWindow):
         self._set_play_button_state(playing=False)
         return panel
 
-    def _build_transport_button(self, icon, tooltip: str, callback: Callable[[], None], object_name: str = None):
+    def _build_transport_button(self, label: str, tooltip: str, callback: Callable[[], None], object_name: str = None):
         button = QtWidgets.QToolButton()
         button.setProperty("role", "transport")
         if object_name is not None:
             button.setObjectName(object_name)
-        button.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
-        button.setIcon(self.style().standardIcon(icon))
+        button.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
         button.setToolTip(tooltip)
-        button.setText(tooltip)
+        button.setText(label)
+        button.setFixedSize(22, 22)
         button.clicked.connect(lambda _checked=False: callback())
         return button
 
     def _set_play_button_state(self, *, playing: bool) -> None:
         if not hasattr(self, "_play_button"):
             return
-        icon = QtWidgets.QStyle.SP_MediaPause if playing else QtWidgets.QStyle.SP_MediaPlay
-        self._play_button.setIcon(self.style().standardIcon(icon))
-        self._play_button.setText("Pause" if playing else "Play")
+        self._play_button.setText("||" if playing else ">")
         self._play_button.setToolTip("Pause playback" if playing else "Start playback")
 
     def _format_seconds(self, seconds: float) -> str:
@@ -1586,6 +1542,8 @@ class PSV(MainWindow):
 
     def _sync_playhead_only(self) -> None:
         seconds = float(self.t0) / self.fs_song
+        if hasattr(self, "slice_view") and hasattr(self.slice_view, "set_playhead"):
+            self.slice_view.set_playhead(seconds)
         if hasattr(self, "event_timeline"):
             self.event_timeline.set_playhead(seconds)
         if hasattr(self, "spec_view") and hasattr(self.spec_view, "pos_line"):
@@ -1876,17 +1834,17 @@ class PSV(MainWindow):
 
     @property
     def current_event_index(self):
-        if self.cb.currentIndex() - 1 < 0:
+        name = getattr(self, "_current_event_name", None)
+        if name is None or name not in self.event_times.names:
             return None
-        else:
-            return self.eventList[self.cb.currentIndex() - 1][0]
+        return self.event_times.names.index(name)
 
     @property
     def current_event_name(self):
-        if self.current_event_index is None:
+        index = self.current_event_index
+        if index is None:
             return None
-        else:
-            return self.event_times.names[self.current_event_index]
+        return self.event_times.names[index]
 
     def _initial_event_presets(self):
         colors = utils.make_colors(max(1, len(self.event_times.names)))
@@ -1989,10 +1947,10 @@ class PSV(MainWindow):
     def _on_preset_selected(self, name: str):
         if name not in self.event_times.names:
             return
-        for row, (_index, event_name) in enumerate(self.eventList, start=1):
-            if event_name == name:
-                self.cb.setCurrentIndex(row)
-                return
+        if getattr(self, "_current_event_name", None) == name:
+            return
+        self._current_event_name = name
+        self.update_xy()
 
     def _create_preset_from_panel(self):
         dialog = event_widgets.EventTypePresetDialog(
@@ -2066,6 +2024,14 @@ class PSV(MainWindow):
             return int(self.current_channel_name.split(" ")[-1])  # "Channel XX"
         else:
             return None
+
+    def _channel_labels(self) -> list[str]:
+        labels = []
+        if "song" in self.ds:
+            labels.append("Merged channels")
+        if "song_raw" in self.ds:
+            labels.extend(f"Channel {chan}" for chan in range(self.ds.song_raw.shape[1]))
+        return labels
 
     @property
     def index_other(self):
@@ -2252,9 +2218,17 @@ class PSV(MainWindow):
         """Select event to annotate using key presses (0-nb_events)."""
         key_pressed = QtGui.QKeySequence(qt_keycode).toString()  # numeric key code to actual char pressed
         try:
-            self.cb.setCurrentIndex(int(key_pressed))
+            key_index = int(key_pressed)
         except ValueError:  # if non-int pressed or int too large for index
-            pass
+            return
+        if key_index == 0:
+            self._current_event_name = None
+        elif 0 < key_index <= len(self.eventList):
+            self._current_event_name = self.eventList[key_index - 1][1]
+        else:
+            return
+        self._refresh_preset_panel(selected_name=self.current_event_name)
+        self.update_xy()
 
     def toggle(self, var_name, qt_keycode):
         try:
@@ -2481,17 +2455,20 @@ class PSV(MainWindow):
         else:
             self.envelope = None
 
-        if hasattr(self, "event_timeline"):
-            self.event_timeline.set_waveform(self.x, self.y)
         if hasattr(self, "preset_panel"):
             self.preset_panel.set_current_name(self.current_event_name)
 
-        if getattr(self, "_slice_view_in_layout", False) and self.show_trace:
-            self.slice_view.update_trace()
+        if self.show_trace:
+            self.slice_view.set_waveform(self.x, self.y)
+            self.slice_view.set_playhead(float(self.t0) / self.fs_song)
+            self.slice_view.clear_annotations()
             self.slice_view.show()
         else:
-            self.slice_view.clear()
+            self.slice_view.clear_annotations()
             self.slice_view.hide()
+
+        if hasattr(self, "event_timeline"):
+            self.event_timeline.set_waveform(self.x, self.y)
 
         if self.show_annot:
             self.annot_view.update_trace()
@@ -2531,9 +2508,7 @@ class PSV(MainWindow):
             self.spec_view.clear()
             self.spec_view.hide()
 
-        if self.show_songevents and (
-            self.show_tracks or self.show_spec or self.show_annot or getattr(self, "_slice_view_in_layout", False)
-        ):
+        if self.show_songevents and (self.show_tracks or self.show_spec or self.show_annot or self.show_trace):
             self.plot_song_events(self.x)
 
         self._refresh_event_widgets(sync_table_to_view=True)
@@ -2569,7 +2544,7 @@ class PSV(MainWindow):
             point_events = events_in_view[point_like] if len(events_in_view) else []
             if len(interval_events):
                 for onset, offset in zip(interval_events[:, 0], interval_events[:, 1]):
-                    if getattr(self, "_slice_view_in_layout", False) and self.show_trace:
+                    if self.show_trace:
                         self.slice_view.add_segment(
                             onset,
                             offset,
@@ -2610,7 +2585,7 @@ class PSV(MainWindow):
                             text=event_text,
                         )
             if len(point_events):
-                if getattr(self, "_slice_view_in_layout", False) and self.show_trace:
+                if self.show_trace:
                     self.slice_view.add_event(
                         point_events[:, 0],
                         event_index,
@@ -3013,10 +2988,6 @@ class PSV(MainWindow):
                 selected_name = self.current_event_name
             except Exception:
                 selected_name = None
-        self.cb.blockSignals(True)
-        # delete all existing entries
-        while self.cb.count() > 0:
-            self.cb.removeItem(0)
 
         if hasattr(self, "event_times"):
             self.eventList = [(cnt, evt) for cnt, evt in enumerate(self.event_times.names)]
@@ -3024,22 +2995,11 @@ class PSV(MainWindow):
         else:
             self.eventList = []
 
-        if not len(self.eventList):
-            self.cb.addItem("Initialize events")
-            self.cb.blockSignals(False)
-            return
-
-        self.cb.addItem("No annotation")
-        for event_type in self.eventList:
-            self.cb.addItem("Add " + event_type[1])
-
-        selected_index = len(self.eventList)
-        if selected_name is not None:
-            for row, (_event_index, event_name) in enumerate(self.eventList, start=1):
-                if event_name == selected_name:
-                    selected_index = row
-                    break
-        self.cb.setCurrentIndex(selected_index)
+        names = [event_name for _event_index, event_name in self.eventList]
+        if selected_name in names:
+            self._current_event_name = selected_name
+        elif getattr(self, "_current_event_name", None) not in names:
+            self._current_event_name = names[-1] if names else None
 
         # update menus
         # remove associated menu items
@@ -3054,19 +3014,13 @@ class PSV(MainWindow):
 
         # add new ones (make this function)
         self.event_items = []
-        for ii in range(self.cb.count()):
+        menu_labels = ["No annotation", *[f"Add {event_name}" for event_name in names]]
+        for ii, label in enumerate(menu_labels):
             key = str(ii) if ii < 10 else None
             key_label = f"({key})" if key is not None else ""
-            self.cb.setItemText(ii, f"{self.cb.itemText(ii)} {key_label}")
-            menu_item = self._add_keyed_menuitem(self.view_audio, self.cb.itemText(ii), self.change_event_type, key)
+            menu_item = self._add_keyed_menuitem(self.view_audio, f"{label} {key_label}", self.change_event_type, key)
             self.event_items.append(menu_item)
 
-        # color events in combobox as in slice_view and spec_view
-        children = self.cb.children()
-        itemList = children[0]
-        for ii, col in zip(range(1, itemList.rowCount()), self.eventtype_colors):
-            itemList.item(ii).setForeground(QtGui.QColor(*col))
-        self.cb.blockSignals(False)
         self._refresh_preset_panel(selected_name=self.current_event_name)
 
 

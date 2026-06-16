@@ -21,6 +21,7 @@ EVENT_COLOR_PALETTE: tuple[tuple[str, str], ...] = (
     ("Red", "#ff6a74"),
 )
 Y_AXIS_WIDTH = 72
+WAVEFORM_OVERVIEW_MIN_SECONDS = 4.0
 
 
 def _configure_y_axis_inside(axis, label: str) -> None:
@@ -486,6 +487,7 @@ class EventPresetPanel(QtWidgets.QWidget):
     create_requested = QtCore.Signal()
     edit_requested = QtCore.Signal(str)
     delete_requested = QtCore.Signal(str)
+    channel_changed = QtCore.Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -506,6 +508,15 @@ class EventPresetPanel(QtWidgets.QWidget):
         summary.setProperty("role", "muted")
         summary.setWordWrap(True)
         layout.addWidget(summary)
+
+        channel_label = QtWidgets.QLabel("Channel")
+        channel_label.setProperty("role", "muted")
+        layout.addWidget(channel_label)
+
+        self.channel_combo = QtWidgets.QComboBox(self)
+        self.channel_combo.setObjectName("channelSelector")
+        self.channel_combo.currentIndexChanged.connect(lambda _index: self.channel_changed.emit())
+        layout.addWidget(self.channel_combo)
 
         self.list_widget = QtWidgets.QListWidget(self)
         self.list_widget.setObjectName("presetList")
@@ -528,6 +539,16 @@ class EventPresetPanel(QtWidgets.QWidget):
         controls.addWidget(self.delete_button)
         controls.addStretch(1)
         layout.addLayout(controls)
+
+    def set_channels(self, labels: Iterable[str]) -> None:
+        current = self.channel_combo.currentText()
+        self.channel_combo.blockSignals(True)
+        self.channel_combo.clear()
+        self.channel_combo.addItems(list(labels))
+        index = self.channel_combo.findText(current)
+        self.channel_combo.setCurrentIndex(max(0, index))
+        self.channel_combo.setEnabled(self.channel_combo.count() > 1)
+        self.channel_combo.blockSignals(False)
 
     def set_presets(self, presets: Iterable[EventTypePreset], selected_name: str | None = None) -> None:
         self._blocked = True
@@ -609,7 +630,7 @@ class EventPresetPanel(QtWidgets.QWidget):
 
 
 class WaveformPane(pg.PlotWidget):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, callback=None, region_changed_callback=None, position_changed_callback=None) -> None:
         super().__init__(parent=parent)
         self.setMinimumHeight(60)
         self.setBackground(TIMELINE_BACKGROUND)
@@ -624,9 +645,27 @@ class WaveformPane(pg.PlotWidget):
             axis = self.getAxis(axis_name)
             axis.setPen(axis_pen)
             axis.setTextPen(pg.mkPen(TEXT_MUTED))
-        self._curve = self.plot(pen=pg.mkPen("#36cfc9", width=1.1))
+        self.callback = callback
+        self.region_changed_callback = region_changed_callback
+        self.position_changed_callback = position_changed_callback
+        self._curve = self.plot(pen=pg.mkPen("#36cfc9", width=1.6))
         self._playhead = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
         self.addItem(self._playhead)
+        self._annotation_items: list[pg.GraphicsObject] = []
+        self.threshold_line = pg.InfiniteLine(
+            movable=True,
+            angle=0,
+            pos=0,
+            pen=pg.mkPen(color="r", width=2, alpha=0.25),
+            bounds=[0, None],
+            label="Threshold",
+            labelOpts={"position": 0.9},
+        )
+        self.getPlotItem().mouseClickEvent = self._click
+
+    @property
+    def threshold(self) -> float:
+        return float(self.threshold_line.value())
 
     def set_waveform(self, x: np.ndarray, y: np.ndarray, max_points: int = 6000) -> None:
         if x is None or y is None or len(x) == 0 or len(y) == 0:
@@ -636,7 +675,8 @@ class WaveformPane(pg.PlotWidget):
         y = np.asarray(y, dtype=float)
         if y.ndim > 1:
             y = y.mean(axis=1)
-        if len(y) > max_points:
+        span_seconds = float(x[-1] - x[0]) if len(x) else 0.0
+        if span_seconds >= WAVEFORM_OVERVIEW_MIN_SECONDS and len(y) > max_points:
             stride = int(np.ceil(len(y) / max_points))
             usable = (len(y) // stride) * stride
             y_block = y[:usable].reshape(-1, stride)
@@ -654,6 +694,47 @@ class WaveformPane(pg.PlotWidget):
 
     def set_playhead(self, seconds: float) -> None:
         self._playhead.setPos(float(seconds))
+
+    def clear_annotations(self) -> None:
+        for item in self._annotation_items:
+            self.removeItem(item)
+        self._annotation_items = []
+
+    def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None) -> None:
+        region = pg.LinearRegionItem(values=(onset, offset), movable=movable, brush=brush)
+        region.event_index = region_typeindex
+        region.bounds = (onset, offset)
+        if pen is not None:
+            for line in region.lines:
+                line.setPen(pen)
+        if text is not None:
+            pg.InfLineLabel(region.lines[1], text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
+        self.addItem(region)
+        self._annotation_items.append(region)
+        if movable and self.region_changed_callback is not None:
+            region.sigRegionChangeFinished.connect(self.region_changed_callback)
+
+    def add_event(self, xx, event_type, pen, movable=False, text=None) -> None:
+        if not len(xx):
+            return
+        for x in xx:
+            line = pg.InfiniteLine(pos=x, angle=90, movable=movable, pen=pen)
+            line.event_index = event_type
+            line.position = x
+            if text is not None:
+                pg.InfLineLabel(line, text, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
+            self.addItem(line)
+            self._annotation_items.append(line)
+            if movable and self.position_changed_callback is not None:
+                line.sigPositionChangeFinished.connect(self.position_changed_callback)
+
+    def _click(self, event) -> None:
+        event.accept()
+        if self.callback is None:
+            return
+        pos = event.pos()
+        seconds = self.getPlotItem().getViewBox().mapSceneToView(pos).x()
+        self.callback(seconds, event.button())
 
 
 class EventBarsView(pg.PlotWidget):
@@ -865,12 +946,11 @@ class EventTimelineWidget(QtWidgets.QWidget):
     def __init__(self, parent=None, *, show_waveform: bool = True) -> None:
         super().__init__(parent)
         self.setMinimumHeight(130 if show_waveform else 70)
-        self._show_waveform = bool(show_waveform)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
         self.events = EventBarsView()
-        self.waveform = WaveformPane() if self._show_waveform else None
+        self.waveform = WaveformPane() if show_waveform else None
         self.splitter = None
         if self.waveform is None:
             layout.addWidget(self.events)

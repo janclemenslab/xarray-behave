@@ -95,13 +95,30 @@ QToolButton:pressed {{
     background-color: {SURFACE_ALT};
 }}
 QToolButton[role="transport"] {{
-    min-width: 28px;
-    min-height: 28px;
-    padding: 2px;
+    background-color: #2f3a4d;
+    color: #ffffff;
+    border: 1px solid #7f91ad;
+    border-radius: 4px;
+    min-width: 18px;
+    min-height: 18px;
+    max-width: 22px;
+    max-height: 22px;
+    padding: 0;
+    font-size: 11px;
+    font-weight: 700;
+}}
+QToolButton[role="transport"]:hover {{
+    background-color: #3d4b62;
+    border-color: #b5c7e2;
+}}
+QToolButton[role="transport"]:pressed {{
+    background-color: #52627c;
 }}
 QToolButton#transportPlayButton {{
-    min-width: 34px;
-    min-height: 30px;
+    min-width: 20px;
+    min-height: 18px;
+    max-width: 24px;
+    max-height: 22px;
 }}
 QSlider::groove:horizontal {{
     background: {SURFACE_INTERACTIVE};

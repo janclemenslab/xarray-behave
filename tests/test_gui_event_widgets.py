@@ -11,6 +11,7 @@ from xarray_behave.gui.event_widgets import (
     EventTimelineWidget,
     EventTypePreset,
     EventsTableWidget,
+    WaveformPane,
     records_from_events,
 )
 from xarray_behave.gui.table import Table
@@ -138,6 +139,85 @@ def test_preset_panel_emits_selection_and_formats_fixed_duration():
 
     assert panel.current_name() == "pulse"
     assert "fixed 0s" in panel.list_widget.item(0).text()
+
+
+def test_preset_panel_hosts_channel_selector():
+    _app()
+    panel = EventPresetPanel()
+
+    panel.set_channels(["Merged channels", "Channel 0"])
+
+    assert panel.channel_combo.count() == 2
+    assert panel.channel_combo.currentText() == "Merged channels"
+    assert panel.channel_combo.isEnabled()
+
+
+def test_waveform_pane_updates_playhead():
+    _app()
+    widget = WaveformPane()
+    widget.set_waveform(np.array([1.0, 2.0]), np.array([0.0, 1.0]))
+
+    widget.set_playhead(1.5)
+
+    assert widget._playhead.value() == 1.5
+
+
+def test_waveform_pane_uses_continuous_trace_below_four_seconds():
+    _app()
+    widget = WaveformPane()
+    calls = []
+    widget._curve.setData = lambda *args, **kwargs: calls.append((args, kwargs))
+
+    widget.set_waveform(np.linspace(0.0, 1.0, 10_000), np.sin(np.linspace(0.0, 100.0, 10_000)))
+
+    assert len(calls[-1][0][0]) == 10_000
+    assert calls[-1][1]["connect"] == "finite"
+
+
+def test_waveform_pane_uses_overview_pairs_at_four_seconds():
+    _app()
+    widget = WaveformPane()
+    calls = []
+    widget._curve.setData = lambda *args, **kwargs: calls.append((args, kwargs))
+
+    widget.set_waveform(
+        np.linspace(0.0, 4.0, 10_000),
+        np.sin(np.linspace(0.0, 100.0, 10_000)),
+        max_points=1000,
+    )
+
+    assert len(calls[-1][0][0]) == 2000
+    assert calls[-1][1]["connect"] == "pairs"
+
+
+def test_preset_selection_sets_current_event_without_top_combo():
+    window = PSV.__new__(PSV)
+    window.event_times = Events({"pulse": np.array([[0.1, 0.1, -1]]), "song": np.array([[0.2, 0.3, -1]])})
+    window._current_event_name = "pulse"
+    updates = []
+    window.update_xy = lambda: updates.append(True)
+
+    window._on_preset_selected("song")
+
+    assert window.current_event_name == "song"
+    assert updates == [True]
+
+
+def test_numeric_event_shortcut_sets_current_event_without_top_combo():
+    window = PSV.__new__(PSV)
+    window.event_times = Events({"pulse": np.array([[0.1, 0.1, -1]]), "song": np.array([[0.2, 0.3, -1]])})
+    window.eventList = [(0, "pulse"), (1, "song")]
+    window._current_event_name = "pulse"
+    refreshed = []
+    updates = []
+    window._refresh_preset_panel = lambda selected_name=None: refreshed.append(selected_name)
+    window.update_xy = lambda: updates.append(True)
+
+    window.change_event_type("2")
+
+    assert window.current_event_name == "song"
+    assert refreshed[-1] == "song"
+    assert updates[-1] is True
 
 
 def test_fixed_duration_creation_uses_click_as_onset():
@@ -341,11 +421,7 @@ def test_locked_fixed_duration_table_start_edit_moves_whole_event():
     assert window._bounds_for_event_edit("pulse", 1.0, 1.25, 1.0, 2.0, changed_edge="stop") == (1.75, 2.0)
 
 
-def test_legacy_point_event_drag_accepts_qpointf_and_persists():
-    class Combo:
-        def currentIndex(self):
-            return 1
-
+def test_point_event_drag_accepts_qpointf_and_persists():
     class Position:
         event_index = 0
         position = 1.0
@@ -360,7 +436,7 @@ def test_legacy_point_event_drag_accepts_qpointf_and_persists():
         "pulse": EventTypePreset("pulse", fixed_duration=True, duration_seconds=0.0, duration_editable=False)
     }
     window.eventList = [(0, "pulse")]
-    window.cb = Combo()
+    window._current_event_name = "pulse"
     window.tmax = 10_000
     window.fs_song = 1_000
     window.annot_view = type("AnnotView", (), {"mousePoint": None})()
