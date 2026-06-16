@@ -4,9 +4,10 @@ from types import ModuleType, SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 
 from xarray_behave import annot
-from xarray_behave.gui.app import MainWindow
+from xarray_behave.gui.app import MainWindow, _num_flies
 
 
 class _ComputedSlice:
@@ -34,6 +35,12 @@ class _Dataset(SimpleNamespace):
         return hasattr(self, key)
 
 
+def test_num_flies_uses_dimension_size_not_coordinate_values():
+    assert _num_flies(xr.Dataset(coords={"flies": ["chamber0", "chamber1"]})) == 2
+    assert _num_flies(xr.Dataset(coords={"flies": [2, 5]})) == 2
+    assert _num_flies(xr.Dataset(coords={"time": [0.0]})) == 1
+
+
 def test_add_das_prediction_rows_preserves_known_categories():
     window = MainWindow.__new__(MainWindow)
     window.event_times = annot.Events(categories={"pulse": "event", "sine": "segment"})
@@ -49,8 +56,8 @@ def test_add_das_prediction_rows_preserves_known_categories():
 
     assert added == 2
     assert window.event_times.categories["pulse_proposals"] == "event"
-    assert window.event_times.categories["sine_proposals"] == "segment"
-    assert window.event_times["pulse_proposals"][0, 0] == window.event_times["pulse_proposals"][0, 1]
+    assert window.event_times.categories["sine_proposals"] == "event"
+    np.testing.assert_allclose(window.event_times["pulse_proposals"][0, :2], [0.6, 0.601])
     np.testing.assert_allclose(window.event_times["sine_proposals"][0, :2], [0.7, 0.8])
 
 

@@ -20,7 +20,6 @@ import logging
 from .. import io
 from typing import Optional, Sequence
 
-
 logger = logging.getLogger(__name__)
 
 

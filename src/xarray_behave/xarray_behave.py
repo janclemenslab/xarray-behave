@@ -69,7 +69,7 @@ def assemble(
         audio_channels (List[int], optional): Defaults to None (all channels).
         audio_dataset (str, optional): Name of the dataset in NPZ and H5 files that contains the audio data. Defaults to 'data'.
         event_names (List[str], optional): List of event names to initialize dataset with. Defaults to [].
-        event_categories (List[str], optional): 'segment' or 'event' for each item in `event_names`. Defaults to 'segment'.
+        event_categories (List[str], optional): Legacy category labels. All values are normalized to 'event'.
         resample_video_data (bool, optional): Or keep video with original frame times. Defaults to True.
         include_song (bool, optional): [description]. Defaults to True.
         include_tracks (bool, optional): [description]. Defaults to True.
@@ -331,8 +331,8 @@ def assemble(
         event_categories = []
 
     if event_names and not event_categories:
-        logger.info("No event_categories specified - defaulting to segments")
-        event_categories = ["segment"] * len(event_names)
+        logger.info("No event_categories specified - defaulting to events")
+        event_categories = ["event"] * len(event_names)
     manual_event_seconds: Dict[str, Any] = {name: np.zeros((0,)) for name in event_names}
     manual_event_categories: Dict[str, Any] = {nam: cat for nam, cat in zip(event_names, event_categories)}
 
@@ -457,7 +457,9 @@ def assemble(
     event_categories.update(manual_event_categories)
 
     event_seconds = ld.fix_keys(event_seconds)
-    event_categories = ld.fix_keys(event_categories)
+    event_categories = {name: "event" for name in ld.fix_keys(event_categories).keys()}
+    for name in event_seconds:
+        event_categories.setdefault(name, "event")
 
     # PREPARE sample/time/framenumber grids
     if not with_tracks:

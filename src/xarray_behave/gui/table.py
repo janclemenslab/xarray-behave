@@ -9,7 +9,7 @@ class Table(QtWidgets.QDialog):
             data = []
 
         super().__init__(**kwargs)
-        self.title = "Edit song definitions"
+        self.title = "Edit event names"
 
         self.data = data
         self.model = model
@@ -52,8 +52,8 @@ class Table(QtWidgets.QDialog):
         if len(self.data) > 0:
             self.table.setColumnCount(len(self.data[0]))
         else:
-            self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Name", "Category"])
+            self.table.setColumnCount(1)
+        self.table.setHorizontalHeaderLabels(["Name", "Category"][: self.table.columnCount()])
 
         for row_index, row_data in enumerate(self.data):
             self._make_row(row_index, row_data, editable_categories=False)
@@ -71,34 +71,38 @@ class Table(QtWidgets.QDialog):
         Args:
             row_index ([type], optional): If None or omitted, will add row at end of table.
                                           Defaults to None.
-            row_data (list, optional): [description]. Defaults to ['', 'segment'].
-            row_items (list, optional): Dropdown items for second columns. Defaults to ["segment", "event"].
+            row_data (list, optional): [description]. Defaults to [''].
+            row_items (list, optional): Dropdown items for second columns. Defaults to ["event"].
         """
         if row_index is None:
             row_index = self.table.rowCount()
             self.table.insertRow(row_index)
         if row_data is None:
-            row_data = ["", "segment"]
+            row_data = [""]
         if row_items is None:
-            row_items = ["segment", "event"]
+            row_items = ["event"]
         item = QtWidgets.QTableWidgetItem(row_data[0])
         item.original_text = row_data[0]
         self.table.setItem(row_index, 0, item)
 
+        if self.table.columnCount() < 2:
+            return
+
+        category = row_data[1] if len(row_data) > 1 else "event"
         if editable_categories:
             cb = QtWidgets.QComboBox()
             cb.addItems(row_items)
-            if row_data[1] in row_items:
-                cb.setCurrentText(row_data[1])
-                cb.original_text = row_data[1]
+            if category in row_items:
+                cb.setCurrentText(category)
+                cb.original_text = category
             else:
                 cb.original_text = ""
 
             self.table.setCellWidget(row_index, 1, cb)
         else:
-            item = QtWidgets.QTableWidgetItem(row_data[1])
+            item = QtWidgets.QTableWidgetItem(category)
             item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEnabled & ~QtCore.Qt.ItemIsEditable)
-            item.original_text = row_data[1]
+            item.original_text = category
             self.table.setItem(row_index, 1, item)
 
     def get_cell_data(self, row: int, col: int):
@@ -139,7 +143,7 @@ class Table(QtWidgets.QDialog):
 
     @QtCore.Slot()
     def add_event(self):
-        self.data.append(["", "segment"])
+        self.data.append([""])
         self._make_row()
 
     @QtCore.Slot()
@@ -157,15 +161,25 @@ class Table(QtWidgets.QDialog):
         if len(filename):
             # load data
             data = np.loadtxt(filename, dtype=str, delimiter=",")
+            if data.ndim == 0:
+                rows = [[str(data)]]
+            elif data.ndim == 1:
+                if len(data) == 2 and data[1] in ("event", "segment"):
+                    rows = [data.tolist()]
+                else:
+                    rows = [[item] for item in data.tolist()]
+            else:
+                rows = data.tolist()
             # delete existing data
             self.data = []
             # clear table
             while self.table.rowCount() > 0:
                 self.table.removeRow(self.table.currentRow())
             # replace with loaded data
-            for d in data:
-                self.data.append(d)
-                self._make_row(row_data=d)
+            for d in rows:
+                row = [d[0]]
+                self.data.append(row)
+                self._make_row(row_data=row)
 
     @QtCore.Slot()
     def save(self):
@@ -178,6 +192,6 @@ class Table(QtWidgets.QDialog):
         if len(savefilename):
             # sanitize data
             data = self.get_table_data()
-            data = [[d[0][0], d[1][0]] for d in data]
+            data = [d[0][0] for d in data]
             # save to csv
             np.savetxt(savefilename, data, delimiter=",", fmt="%s")

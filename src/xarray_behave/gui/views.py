@@ -7,8 +7,25 @@ from typing import Tuple
 
 from .. import xarray_behave as xb
 from . import utils
+from .style_profile import TIMELINE_BACKGROUND, TIMELINE_GRID, TIMELINE_PLAYHEAD, TEXT_MUTED
 
 logger = logging.getLogger(__name__)
+
+Y_AXIS_WIDTH = 72
+
+
+def _configure_y_axis_inside(axis, label: str) -> None:
+    axis.setWidth(Y_AXIS_WIDTH)
+    axis.setLabel(label)
+    axis.setStyle(
+        tickLength=-7,
+        tickTextOffset=-44,
+        tickTextWidth=42,
+        autoExpandTextSpace=False,
+        autoReduceTextSpace=False,
+    )
+    axis.setPen(pg.mkPen(TIMELINE_GRID, width=1))
+    axis.setTextPen(pg.mkPen(TEXT_MUTED))
 
 
 class Model:
@@ -269,6 +286,8 @@ class TraceView(pg.PlotWidget):
     def __init__(self, model, callback, ylim=None):
         # additionally make names of trace and event arrays in ds args?
         super().__init__()
+        self.setMinimumHeight(100)
+        self.setBackground(TIMELINE_BACKGROUND)
         self.setMouseEnabled(x=False, y=False)
         # this should be just a link/ref so changes in ds made by the controller will propagate
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
@@ -277,7 +296,12 @@ class TraceView(pg.PlotWidget):
         self.setDefaultPadding(0.0)
         # leave enought space so axes are aligned aligned
         y_axis = self.getAxis("left")
-        y_axis.setWidth(50)
+        _configure_y_axis_inside(y_axis, "Waveform")
+        axis_pen = pg.mkPen(TIMELINE_GRID, width=1)
+        for axis_name in ("bottom",):
+            axis = self.getAxis(axis_name)
+            axis.setPen(axis_pen)
+            axis.setTextPen(pg.mkPen(TEXT_MUTED))
 
         self._m = model
         self.callback = callback
@@ -341,7 +365,9 @@ class TraceView(pg.PlotWidget):
             self.setXRange(np.min(x), np.max(x))
 
         # time of current frame in trace
-        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
+        pos_line = pg.InfiniteLine(
+            self.m.t0 / self.m.fs_song, movable=False, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1)
+        )
         self.addItem(pos_line)
 
         # draw actice envelope and threshold
@@ -414,6 +440,7 @@ def _lookup_colormap_lut(colormap: str):
 class SpecView(pg.ImageView):
     def __init__(self, model, callback, colormap="turbo"):
         super().__init__(view=pg.PlotItem())
+        self.setMinimumHeight(140)
         self.ui.histogram.hide()
         self.ui.roiBtn.hide()
         self.ui.menuBtn.hide()
@@ -421,12 +448,18 @@ class SpecView(pg.ImageView):
         self.view.setAspectLocked(False)
         self.view.getViewBox().invertY(False)
         self.view.setMouseEnabled(x=False, y=False)
+        self.view.setMenuEnabled(False)
+        self.view.getViewBox().setBackgroundColor(TIMELINE_BACKGROUND)
 
         # leave enough space so axes are aligned aligned
         self.y_axis = self.getView().getAxis("left")
-        self.y_axis.setWidth(50)
-        self.y_axis.setLabel("Frequency", units="Hz")
+        _configure_y_axis_inside(self.y_axis, "Frequency (Hz)")
         self.y_axis.enableAutoSIPrefix()
+        axis_pen = pg.mkPen(TIMELINE_GRID, width=1)
+        for axis_name in ("bottom",):
+            axis = self.getView().getAxis(axis_name)
+            axis.setPen(axis_pen)
+            axis.setTextPen(pg.mkPen(TEXT_MUTED))
 
         self._m = model
         self.callback = callback
@@ -434,7 +467,7 @@ class SpecView(pg.ImageView):
         self.t_step = 1
         self.max_pix = 6_000
 
-        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
+        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
         self.addItem(self.pos_line)
 
         self.imageItem.setLookupTable(_lookup_colormap_lut(colormap))  # apply the colormap
@@ -479,7 +512,7 @@ class SpecView(pg.ImageView):
             pos=[self.m.x[0], f[0]],
         )
         self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
-        self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
+        self.pos_line.setValue(self.m.t0 / self.m.fs_song)
 
     def _calc_spec(self, y, spec_win, spec_compression_ratio, fmin, fmax, spec_denoise: bool, mel: bool):
         y = np.array(y).astype(float)

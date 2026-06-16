@@ -1,0 +1,177 @@
+"""Internal dataset helpers used by the GUI without depending on Qt."""
+
+import logging
+import os
+from typing import Optional
+
+import scipy.signal as ss
+
+from . import annot, event_utils, xarray_behave as xb
+
+logger = logging.getLogger(__name__)
+
+
+def assemble_from_file(filename: str, form_data: dict):
+    ds = xb.assemble(
+        filepath_daq=filename,
+        filepath_annotations=form_data["annotation_path"],
+        filepath_definitions=form_data["definition_path"],
+        audio_sampling_rate=form_data["samplerate"],
+        target_sampling_rate=form_data["target_samplingrate"],
+        audio_dataset=form_data["data_set"],
+    )
+
+    if form_data["filter_song"] == "yes":
+        ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
+
+    ds.attrs["filename"] = filename
+    ds.attrs["filebase"] = os.path.splitext(filename)[0]
+    ds.attrs["datename"] = ""
+    ds.attrs["res_path"] = ""
+    ds.attrs["dat_path"] = ""
+    return ds
+
+
+def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[float] = None):
+    if form_data["target_samplingrate"] == 0 or form_data["target_samplingrate"] is None:
+        resample_video_data = False
+    else:
+        resample_video_data = True
+
+    filter_song_requested = form_data["filter_song"] == "yes"
+    include_tracks = not form_data["ignore_tracks"]
+    include_poses = not form_data["ignore_tracks"]
+    lazy_load_song = not filter_song_requested
+    base, datename = os.path.split(os.path.normpath(dirname))
+    root, dat_path = os.path.split(base)
+    annotation_path = None if not len(form_data["annotation_path"]) else form_data["annotation_path"]
+    filepath_video = None if not len(form_data["video_filename"]) else form_data["video_filename"]
+    filepath_daq = None if not len(form_data["daq_filename"]) else form_data["daq_filename"]
+
+    ds = xb.assemble(
+        datename,
+        root,
+        dat_path,
+        res_path="res",
+        filepath_annotations=annotation_path,
+        filepath_video=filepath_video,
+        filepath_daq=filepath_daq,
+        fix_fly_indices=form_data["fix_fly_indices"],
+        include_song=~int(form_data["ignore_song"]),
+        target_sampling_rate=form_data["target_samplingrate"],
+        resample_video_data=resample_video_data,
+        pixel_size_mm=pixel_size_mm,
+        lazy_load_song=lazy_load_song,
+        include_tracks=include_tracks,
+        include_poses=include_poses,
+    )
+
+    if filter_song_requested:
+        ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
+
+    event_names = []
+    if form_data["init_annotations"] and len(form_data["events_string"]):
+        for pair in form_data["events_string"].split(";"):
+            items = pair.strip().split(",")
+            if len(items) > 0 and len(items[0].strip()):
+                event_names.append(items[0].strip())
+
+    ds = ensure_event_categories(ds)
+
+    if "song_events" not in ds or len(ds.event_types) == 0:
+        cats = {event_name: "event" for event_name in event_names}
+        ds.attrs["event_times"] = annot.Events(categories=cats)
+
+    return ds
+
+
+def load_from_zarr(filename: str, form_data: dict):
+    ds = xb.load(filename, lazy=True, use_temp=True)
+    if "song_events" in ds:
+        ds.song_events.load()
+    if not form_data["lazy"]:
+        logger.info("   Loading data from ds.")
+        if "song" in ds:
+            ds.song.load()
+        if "pose_positions_allo" in ds:
+            ds.pose_positions_allo.load()
+        if "sampletime" in ds:
+            ds.sampletime.load()
+        if "song_raw" in ds:
+            ds.song_raw.load()
+
+    if form_data["filter_song"] == "yes":
+        ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
+
+    ds = ensure_event_categories(ds)
+    logger.info(ds)
+    return ds
+
+
+def filter_song(ds, f_low, f_high):
+    if f_low is None:
+        f_low = 1.0
+    if "song_raw" in ds:
+        if f_high is None:
+            f_high = ds.song_raw.attrs["sampling_rate_Hz"] / 2 - 1
+        else:
+            f_high = min(f_high, ds.song_raw.attrs["sampling_rate_Hz"] / 2 - 1)
+        sos_bp = ss.butter(
+            5,
+            [f_low, f_high],
+            "bandpass",
+            output="sos",
+            fs=ds.song_raw.attrs["sampling_rate_Hz"],
+        )
+        logger.info(f"Filtering `song_raw` between {f_low} and {f_high} Hz.")
+        ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
+    return ds
+
+
+def ensure_event_categories(ds):
+    if "song_events" in ds and "event_categories" not in ds:
+        event_categories = ["event" for _evt in ds.event_types.values]
+        ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
+    elif "song_events" in ds and "event_categories" in ds:
+        event_categories = ["event" for _evt in ds.event_types.values]
+        ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
+    return ds
+
+
+def event_times_from_dataset(ds):
+    if "event_times" in ds and "event_names" in ds and len(ds["event_names"]) > 0:
+        event_times = annot.Events.from_dataset(ds)
+    elif "event_times" in ds.attrs:
+        event_times = ds.attrs["event_times"].copy()
+    elif "song_events" in ds:
+        event_times = event_utils.detect_events(ds)
+    else:
+        event_times = dict()
+    return annot.Events(event_times)
+
+
+def prepare_for_display(ds):
+    original_spatial_units = None
+    for name in ["body_positions", "pose_positions", "pose_positions_allo"]:
+        if name in ds:
+            original_spatial_units = ds[name].attrs["spatial_units"]
+    ds = xb.convert_spatial_units(ds, to_units="pixels")
+    return ds, original_spatial_units
+
+
+def prepare_for_save(ds, event_times, original_spatial_units=None):
+    if "song_events" in ds:
+        logger.info("   Updating song events")
+        ds = event_utils.eventtimes_to_traces(ds, event_times)
+
+    if original_spatial_units is not None:
+        logger.info(f"Converting spatial units back to {original_spatial_units} if required.")
+        ds = xb.convert_spatial_units(ds, to_units=original_spatial_units)
+
+    event_times = annot.Events(event_times)
+    ds_event_times = event_times.to_dataset()
+    if "index" in ds.dims and "event_time" in ds.dims:
+        ds = ds.drop_dims(["index", "event_time"])
+        ds = ds.combine_first(ds_event_times)
+
+    return ds

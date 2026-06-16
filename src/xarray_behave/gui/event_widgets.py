@@ -1,0 +1,913 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable
+
+import numpy as np
+from qtpy import QtCore, QtGui, QtWidgets
+import pyqtgraph as pg
+
+from ..annot import Events
+from .style_profile import TIMELINE_BACKGROUND, TIMELINE_GRID, TIMELINE_PLAYHEAD, TEXT_PRIMARY, TEXT_MUTED
+
+EVENT_COLOR_PALETTE: tuple[tuple[str, str], ...] = (
+    ("Blue", "#35b7ff"),
+    ("Gold", "#ffd166"),
+    ("Gray", "#8d99ae"),
+    ("Coral", "#ff7f50"),
+    ("Teal", "#2dd4bf"),
+    ("Purple", "#9b5de5"),
+    ("Green", "#42c68d"),
+    ("Red", "#ff6a74"),
+)
+Y_AXIS_WIDTH = 72
+
+
+def _configure_y_axis_inside(axis, label: str) -> None:
+    axis.setWidth(Y_AXIS_WIDTH)
+    axis.setLabel(label)
+    axis.setStyle(
+        tickLength=-7,
+        tickTextOffset=-44,
+        tickTextWidth=42,
+        autoExpandTextSpace=False,
+        autoReduceTextSpace=False,
+    )
+    axis.setPen(pg.mkPen(TIMELINE_GRID, width=1))
+    axis.setTextPen(pg.mkPen(TEXT_MUTED))
+
+
+@dataclass(frozen=True)
+class EventRecord:
+    id: str
+    name: str
+    index: int
+    start_seconds: float
+    stop_seconds: float
+    channel: int
+
+    @property
+    def duration_seconds(self) -> float:
+        return float(self.stop_seconds - self.start_seconds)
+
+
+@dataclass(frozen=True)
+class EventTypePreset:
+    name: str
+    fixed_duration: bool = True
+    duration_seconds: float = 0.0
+    duration_editable: bool = False
+    color_hex: str = "#35b7ff"
+
+    def color_tuple(self) -> tuple[int, int, int]:
+        color = QtGui.QColor(self.color_hex)
+        if not color.isValid():
+            color = QtGui.QColor("#35b7ff")
+        return color.red(), color.green(), color.blue()
+
+    def with_name(self, name: str) -> "EventTypePreset":
+        return EventTypePreset(
+            name=name,
+            fixed_duration=self.fixed_duration,
+            duration_seconds=self.duration_seconds,
+            duration_editable=self.duration_editable,
+            color_hex=self.color_hex,
+        )
+
+
+def color_hex_from_rgb(rgb: Iterable[int]) -> str:
+    values = [int(np.clip(value, 0, 255)) for value in rgb]
+    while len(values) < 3:
+        values.append(0)
+    return "#{:02x}{:02x}{:02x}".format(values[0], values[1], values[2])
+
+
+def _record_id(name: str, index: int) -> str:
+    return f"{name}\x1f{int(index)}"
+
+
+def records_from_events(events: Events) -> list[EventRecord]:
+    records: list[EventRecord] = []
+    for name in events.names:
+        values = np.asarray(events[name])
+        if values.size == 0:
+            continue
+        for index, row in enumerate(values):
+            start, stop = sorted([float(row[0]), float(row[1])])
+            if not np.isfinite(start) or not np.isfinite(stop):
+                continue
+            channel = int(row[2]) if row.shape[0] > 2 and np.isfinite(row[2]) else -1
+            records.append(
+                EventRecord(
+                    id=_record_id(name, index),
+                    name=name,
+                    index=index,
+                    start_seconds=start,
+                    stop_seconds=stop,
+                    channel=channel,
+                )
+            )
+    records.sort(key=lambda record: (record.start_seconds, record.stop_seconds, record.name, record.index))
+    return records
+
+
+class _NumericItem(QtWidgets.QTableWidgetItem):
+    def __init__(self, text: str, sort_value: object, record_id: str) -> None:
+        super().__init__(text)
+        self._sort_value = sort_value
+        self.setData(QtCore.Qt.UserRole, record_id)
+
+    def __lt__(self, other: QtWidgets.QTableWidgetItem) -> bool:
+        if isinstance(other, _NumericItem):
+            return self._sort_value < other._sort_value
+        return super().__lt__(other)
+
+
+class EventsTableWidget(QtWidgets.QWidget):
+    selection_changed = QtCore.Signal(object)
+    type_changed = QtCore.Signal(object, str)
+    time_changed = QtCore.Signal(object, float, float, str)
+    delete_requested = QtCore.Signal(object)
+
+    _COL_TYPE = 0
+    _COL_START = 1
+    _COL_STOP = 2
+    _COL_DURATION = 3
+    _COL_CHANNEL = 4
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setMinimumHeight(120)
+        self._events = Events()
+        self._records_by_id: dict[str, EventRecord] = {}
+        self._event_names: list[str] = []
+        self._sync_enabled = True
+        self._blocked = False
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.table = QtWidgets.QTableWidget(0, 5)
+        self.table.setObjectName("xarrayEventsTable")
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.table.setAlternatingRowColors(True)
+        self.table.setWordWrap(False)
+        self.table.setShowGrid(False)
+        self.table.setHorizontalHeaderLabels(["Event", "Start (s)", "Stop (s)", "Duration (s)", "Channel"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(22)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionsClickable(True)
+        self.table.setSortingEnabled(True)
+        self.table.sortByColumn(self._COL_START, QtCore.Qt.AscendingOrder)
+        self.table.itemSelectionChanged.connect(self._emit_selection)
+        self.table.itemChanged.connect(self._on_item_changed)
+        layout.addWidget(self.table)
+
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        self.link_checkbox = QtWidgets.QCheckBox("link table/audio views")
+        self.link_checkbox.setChecked(True)
+        self.link_checkbox.toggled.connect(lambda checked: setattr(self, "_sync_enabled", bool(checked)))
+        row.addWidget(self.link_checkbox)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+    @property
+    def sync_enabled(self) -> bool:
+        return bool(self._sync_enabled)
+
+    def set_events(self, events: Events, selected_ids: Iterable[str] | None = None) -> None:
+        selected = set(selected_ids or self.selected_record_ids())
+        self._blocked = True
+        self._events = Events(events)
+        self._event_names = list(self._events.names)
+        records = records_from_events(self._events)
+        self._records_by_id = {record.id: record for record in records}
+        sort_state = self._sort_state()
+        self.table.setSortingEnabled(False)
+        self.table.blockSignals(True)
+        self.table.setRowCount(len(records))
+        for row, record in enumerate(records):
+            self._populate_row(row, record)
+        self.table.blockSignals(False)
+        self._restore_sort_state(sort_state)
+        self._select_ids(selected & set(self._records_by_id), emit=False)
+        self._blocked = False
+
+    def selected_records(self) -> list[EventRecord]:
+        ids = self.selected_record_ids()
+        return [self._records_by_id[record_id] for record_id in ids if record_id in self._records_by_id]
+
+    def selected_record_ids(self) -> list[str]:
+        ids: list[str] = []
+        for index in self.table.selectionModel().selectedRows():
+            record_id = self._record_id_for_row(index.row())
+            if record_id is not None:
+                ids.append(record_id)
+        return ids
+
+    def select_ids(self, record_ids: Iterable[str]) -> None:
+        self._select_ids(set(record_ids), emit=True)
+
+    def select_overlapping_range(self, start_seconds: float, stop_seconds: float) -> None:
+        selected = {
+            record.id
+            for record in self._records_by_id.values()
+            if not (record.stop_seconds < start_seconds or record.start_seconds > stop_seconds)
+        }
+        if not selected:
+            after = [record for record in self._records_by_id.values() if record.start_seconds >= start_seconds]
+            if after:
+                selected = {min(after, key=lambda record: record.start_seconds).id}
+        self._select_ids(selected, emit=True, scroll=True)
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        if event.key() in (QtCore.Qt.Key_Delete, QtCore.Qt.Key_Backspace):
+            records = self.selected_records()
+            if records:
+                self.delete_requested.emit(records)
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def _populate_row(self, row: int, record: EventRecord) -> None:
+        type_item = self._item(record.name, record.name.lower(), record.id)
+        self.table.setItem(row, self._COL_TYPE, type_item)
+        combo = QtWidgets.QComboBox(self.table)
+        combo.setFrame(False)
+        combo.addItems(self._event_names)
+        idx = combo.findText(record.name)
+        combo.setCurrentIndex(max(0, idx))
+        combo.activated.connect(lambda _idx, rid=record.id, source=combo: self._on_type_combo(rid, source.currentText()))
+        self.table.setCellWidget(row, self._COL_TYPE, combo)
+
+        self.table.setItem(
+            row, self._COL_START, self._item(f"{record.start_seconds:.6f}", record.start_seconds, record.id, editable=True)
+        )
+        self.table.setItem(
+            row, self._COL_STOP, self._item(f"{record.stop_seconds:.6f}", record.stop_seconds, record.id, editable=True)
+        )
+        self.table.setItem(
+            row, self._COL_DURATION, self._item(f"{record.duration_seconds:.6f}", record.duration_seconds, record.id)
+        )
+        self.table.setItem(row, self._COL_CHANNEL, self._item(str(record.channel), record.channel, record.id))
+
+    def _item(self, text: str, sort_value: object, record_id: str, editable: bool = False) -> QtWidgets.QTableWidgetItem:
+        item = _NumericItem(text, sort_value, record_id)
+        flags = item.flags()
+        if editable:
+            item.setFlags(flags | QtCore.Qt.ItemIsEditable)
+        else:
+            item.setFlags(flags & ~QtCore.Qt.ItemIsEditable)
+        if isinstance(sort_value, (int, float)):
+            item.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        return item
+
+    def _on_type_combo(self, record_id: str, new_name: str) -> None:
+        if self._blocked or not new_name:
+            return
+        selected = self.selected_records()
+        source = self._records_by_id.get(record_id)
+        if source is not None and record_id not in {record.id for record in selected}:
+            selected = [source]
+        if selected:
+            self.type_changed.emit(selected, new_name)
+
+    def _on_item_changed(self, item: QtWidgets.QTableWidgetItem) -> None:
+        if self._blocked or item.column() not in (self._COL_START, self._COL_STOP):
+            return
+        record_id = item.data(QtCore.Qt.UserRole)
+        record = self._records_by_id.get(record_id)
+        if record is None:
+            return
+        try:
+            value = float(item.text())
+        except ValueError:
+            self.set_events(self._events)
+            return
+        start = value if item.column() == self._COL_START else record.start_seconds
+        stop = value if item.column() == self._COL_STOP else record.stop_seconds
+        start, stop = sorted([start, stop])
+        changed_edge = "start" if item.column() == self._COL_START else "stop"
+        self.time_changed.emit(record, start, stop, changed_edge)
+
+    def _emit_selection(self) -> None:
+        if not self._blocked:
+            self.selection_changed.emit(self.selected_records())
+
+    def _record_id_for_row(self, row: int) -> str | None:
+        if row < 0 or row >= self.table.rowCount():
+            return None
+        for column in range(self.table.columnCount()):
+            item = self.table.item(row, column)
+            if item is None:
+                continue
+            record_id = item.data(QtCore.Qt.UserRole)
+            if isinstance(record_id, str):
+                return record_id
+        return None
+
+    def _select_ids(self, selected: set[str], emit: bool, scroll: bool = False) -> None:
+        self.table.blockSignals(True)
+        self.table.clearSelection()
+        model = self.table.selectionModel()
+        first_item = None
+        for row in range(self.table.rowCount()):
+            record_id = self._record_id_for_row(row)
+            if record_id in selected:
+                if model is not None:
+                    index = self.table.model().index(row, 0)
+                    model.select(index, QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
+                else:
+                    self.table.selectRow(row)
+                if first_item is None:
+                    first_item = self.table.item(row, 0)
+        self.table.blockSignals(False)
+        if scroll and first_item is not None:
+            self.table.scrollToItem(first_item, QtWidgets.QAbstractItemView.PositionAtTop)
+        if emit:
+            self._emit_selection()
+
+    def _sort_state(self):
+        header = self.table.horizontalHeader()
+        return self.table.isSortingEnabled(), header.sortIndicatorSection(), header.sortIndicatorOrder()
+
+    def _restore_sort_state(self, sort_state) -> None:
+        enabled, section, order = sort_state
+        self.table.setSortingEnabled(enabled)
+        if enabled and section >= 0:
+            self.table.sortItems(section, order)
+
+
+def _color_swatch_icon(color_hex: str) -> QtGui.QIcon:
+    color = QtGui.QColor(color_hex)
+    if not color.isValid():
+        color = QtGui.QColor("#8d99ae")
+    pixmap = QtGui.QPixmap(14, 14)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+    painter.setPen(QtGui.QPen(QtGui.QColor("#2c3748")))
+    painter.setBrush(QtGui.QBrush(color))
+    painter.drawRoundedRect(1, 1, 12, 12, 3, 3)
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+class EventTypePresetDialog(QtWidgets.QDialog):
+    def __init__(
+        self,
+        *,
+        title: str,
+        preset: EventTypePreset | None = None,
+        used_names: Iterable[str] | None = None,
+        used_color_hexes: Iterable[str] | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self._preset = preset
+        self._used_names = {name for name in (used_names or []) if name}
+        if preset is not None:
+            self._used_names.discard(preset.name)
+        self._used_color_hexes = {str(color).strip().lower() for color in (used_color_hexes or []) if str(color).strip()}
+        if preset is not None:
+            self._used_color_hexes.discard(preset.color_hex.strip().lower())
+        self._result: EventTypePreset | None = None
+
+        layout = QtWidgets.QVBoxLayout(self)
+        form = QtWidgets.QFormLayout()
+        form.setLabelAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(8)
+
+        self.name_edit = QtWidgets.QLineEdit()
+        form.addRow("Name", self.name_edit)
+
+        self.fixed_checkbox = QtWidgets.QCheckBox("Fixed duration")
+        form.addRow("Fixed", self.fixed_checkbox)
+
+        self.duration_spin = QtWidgets.QDoubleSpinBox()
+        self.duration_spin.setRange(0.0, 3600.0)
+        self.duration_spin.setDecimals(6)
+        self.duration_spin.setSingleStep(0.01)
+        self.duration_spin.setSuffix(" s")
+        form.addRow("Duration", self.duration_spin)
+
+        self.duration_editable_checkbox = QtWidgets.QCheckBox("Editable after create")
+        form.addRow("Editable", self.duration_editable_checkbox)
+
+        self.color_combo = QtWidgets.QComboBox()
+        for color_name, color_hex in EVENT_COLOR_PALETTE:
+            self.color_combo.addItem(_color_swatch_icon(color_hex), color_name, color_hex)
+        form.addRow("Color", self.color_combo)
+        layout.addLayout(form)
+
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.fixed_checkbox.toggled.connect(self._sync_fixed_controls)
+        self._seed(preset)
+        self.adjustSize()
+        self.resize(min(360, self.sizeHint().width()), self.sizeHint().height())
+
+    def value(self) -> EventTypePreset | None:
+        return self._result
+
+    def _seed(self, preset: EventTypePreset | None) -> None:
+        if preset is None:
+            self.name_edit.setText(self._next_default_name())
+            self.fixed_checkbox.setChecked(True)
+            self.duration_spin.setValue(0.0)
+            self.duration_editable_checkbox.setChecked(False)
+            self._select_first_unused_color()
+        else:
+            self.name_edit.setText(preset.name)
+            self.fixed_checkbox.setChecked(bool(preset.fixed_duration))
+            self.duration_spin.setValue(max(0.0, float(preset.duration_seconds)))
+            self.duration_editable_checkbox.setChecked(bool(preset.duration_editable))
+            color_index = self.color_combo.findData(preset.color_hex)
+            if color_index >= 0:
+                self.color_combo.setCurrentIndex(color_index)
+        self._sync_fixed_controls()
+
+    def _next_default_name(self) -> str:
+        base = "new_event"
+        if base not in self._used_names:
+            return base
+        index = 2
+        while f"{base}_{index}" in self._used_names:
+            index += 1
+        return f"{base}_{index}"
+
+    def _select_first_unused_color(self) -> None:
+        for idx in range(self.color_combo.count()):
+            color_hex = str(self.color_combo.itemData(idx) or "").lower()
+            if color_hex and color_hex not in self._used_color_hexes:
+                self.color_combo.setCurrentIndex(idx)
+                return
+
+    def _sync_fixed_controls(self) -> None:
+        enabled = self.fixed_checkbox.isChecked()
+        self.duration_spin.setEnabled(enabled)
+        self.duration_editable_checkbox.setEnabled(enabled)
+        if not enabled:
+            self.duration_editable_checkbox.setChecked(True)
+
+    def _on_accept(self) -> None:
+        name = self.name_edit.text().strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Invalid Event", "Name is required.")
+            return
+        if name in self._used_names:
+            QtWidgets.QMessageBox.warning(self, "Invalid Event", f"Event '{name}' already exists.")
+            return
+        color_hex = str(self.color_combo.currentData() or "#35b7ff")
+        if not QtGui.QColor(color_hex).isValid():
+            color_hex = "#35b7ff"
+        fixed_duration = bool(self.fixed_checkbox.isChecked())
+        self._result = EventTypePreset(
+            name=name,
+            fixed_duration=fixed_duration,
+            duration_seconds=float(self.duration_spin.value()) if fixed_duration else 0.0,
+            duration_editable=bool(self.duration_editable_checkbox.isChecked()) if fixed_duration else True,
+            color_hex=color_hex,
+        )
+        self.accept()
+
+
+class EventPresetPanel(QtWidgets.QWidget):
+    selection_changed = QtCore.Signal(str)
+    create_requested = QtCore.Signal()
+    edit_requested = QtCore.Signal(str)
+    delete_requested = QtCore.Signal(str)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("presetPanel")
+        self.setMinimumWidth(220)
+        self._presets: list[EventTypePreset] = []
+        self._blocked = False
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        title = QtWidgets.QLabel("Presets")
+        title.setProperty("role", "inspectorTitle")
+        layout.addWidget(title)
+
+        summary = QtWidgets.QLabel("Pick the active event type for click and drag creation.")
+        summary.setProperty("role", "muted")
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        self.list_widget = QtWidgets.QListWidget(self)
+        self.list_widget.setObjectName("presetList")
+        self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.list_widget.currentItemChanged.connect(self._on_current_item_changed)
+        self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
+        layout.addWidget(self.list_widget, 1)
+
+        controls = QtWidgets.QHBoxLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(6)
+        self.new_button = QtWidgets.QPushButton("New")
+        self.edit_button = QtWidgets.QPushButton("Edit")
+        self.delete_button = QtWidgets.QPushButton("Delete")
+        self.new_button.clicked.connect(self.create_requested.emit)
+        self.edit_button.clicked.connect(self._emit_edit)
+        self.delete_button.clicked.connect(self._emit_delete)
+        controls.addWidget(self.new_button)
+        controls.addWidget(self.edit_button)
+        controls.addWidget(self.delete_button)
+        controls.addStretch(1)
+        layout.addLayout(controls)
+
+    def set_presets(self, presets: Iterable[EventTypePreset], selected_name: str | None = None) -> None:
+        self._blocked = True
+        self._presets = list(presets)
+        self.list_widget.clear()
+        if not self._presets:
+            placeholder = QtWidgets.QListWidgetItem("No event presets")
+            placeholder.setFlags(QtCore.Qt.NoItemFlags)
+            self.list_widget.addItem(placeholder)
+            self.edit_button.setEnabled(False)
+            self.delete_button.setEnabled(False)
+            self._blocked = False
+            return
+        selected_row = 0
+        for row, preset in enumerate(self._presets):
+            item = QtWidgets.QListWidgetItem(self._format_preset_label(preset))
+            item.setData(QtCore.Qt.UserRole, preset.name)
+            item.setIcon(_color_swatch_icon(preset.color_hex))
+            item.setToolTip(self._format_preset_tooltip(preset))
+            self.list_widget.addItem(item)
+            if preset.name == selected_name:
+                selected_row = row
+        self.list_widget.setCurrentRow(selected_row)
+        self.edit_button.setEnabled(True)
+        self.delete_button.setEnabled(True)
+        self._blocked = False
+
+    def set_current_name(self, name: str | None) -> None:
+        if name is None:
+            return
+        self._blocked = True
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            if item is not None and item.data(QtCore.Qt.UserRole) == name:
+                self.list_widget.setCurrentRow(row)
+                break
+        self._blocked = False
+
+    def current_name(self) -> str | None:
+        item = self.list_widget.currentItem()
+        if item is None:
+            return None
+        name = item.data(QtCore.Qt.UserRole)
+        return name if isinstance(name, str) and name else None
+
+    def _on_current_item_changed(self, current, _previous) -> None:
+        if self._blocked:
+            return
+        name = current.data(QtCore.Qt.UserRole) if current is not None else None
+        if isinstance(name, str) and name:
+            self.selection_changed.emit(name)
+
+    def _on_item_double_clicked(self, item) -> None:
+        name = item.data(QtCore.Qt.UserRole) if item is not None else None
+        if isinstance(name, str) and name:
+            self.edit_requested.emit(name)
+
+    def _emit_edit(self) -> None:
+        name = self.current_name()
+        if name:
+            self.edit_requested.emit(name)
+
+    def _emit_delete(self) -> None:
+        name = self.current_name()
+        if name:
+            self.delete_requested.emit(name)
+
+    def _format_preset_label(self, preset: EventTypePreset) -> str:
+        if not preset.fixed_duration:
+            return f"{preset.name}  free"
+        edit_text = "editable" if preset.duration_editable else "locked"
+        return f"{preset.name}  fixed {preset.duration_seconds:g}s {edit_text}"
+
+    def _format_preset_tooltip(self, preset: EventTypePreset) -> str:
+        if not preset.fixed_duration:
+            return f"{preset.name}: free-duration event"
+        edit_text = "duration editable after creation" if preset.duration_editable else "duration locked after creation"
+        return f"{preset.name}: fixed duration {preset.duration_seconds:g}s, {edit_text}"
+
+
+class WaveformPane(pg.PlotWidget):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent=parent)
+        self.setMinimumHeight(60)
+        self.setBackground(TIMELINE_BACKGROUND)
+        self.setMouseEnabled(x=False, y=False)
+        self.setMenuEnabled(False)
+        self.showGrid(x=True, y=True, alpha=0.16)
+        self.hideAxis("bottom")
+        self.setDefaultPadding(0)
+        _configure_y_axis_inside(self.getAxis("left"), "Waveform")
+        axis_pen = pg.mkPen(TIMELINE_GRID, width=1)
+        for axis_name in ("bottom",):
+            axis = self.getAxis(axis_name)
+            axis.setPen(axis_pen)
+            axis.setTextPen(pg.mkPen(TEXT_MUTED))
+        self._curve = self.plot(pen=pg.mkPen("#36cfc9", width=1.1))
+        self._playhead = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
+        self.addItem(self._playhead)
+
+    def set_waveform(self, x: np.ndarray, y: np.ndarray, max_points: int = 6000) -> None:
+        if x is None or y is None or len(x) == 0 or len(y) == 0:
+            self._curve.setData([], [])
+            return
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        if y.ndim > 1:
+            y = y.mean(axis=1)
+        if len(y) > max_points:
+            stride = int(np.ceil(len(y) / max_points))
+            usable = (len(y) // stride) * stride
+            y_block = y[:usable].reshape(-1, stride)
+            x_block = x[:usable:stride]
+            y_min = y_block.min(axis=1)
+            y_max = y_block.max(axis=1)
+            x_plot = np.repeat(x_block, 2)
+            y_plot = np.empty(y_min.size * 2, dtype=float)
+            y_plot[0::2] = y_min
+            y_plot[1::2] = y_max
+            self._curve.setData(x_plot, y_plot, connect="pairs")
+        else:
+            self._curve.setData(x, y, connect="finite")
+        self.setXRange(float(x[0]), float(x[-1]), padding=0)
+
+    def set_playhead(self, seconds: float) -> None:
+        self._playhead.setPos(float(seconds))
+
+
+class EventBarsView(pg.PlotWidget):
+    event_selected = QtCore.Signal(object)
+    event_changed = QtCore.Signal(object, str, float, float)
+    event_created = QtCore.Signal(str, float, float)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent=parent)
+        self.setMinimumHeight(70)
+        self.setBackground(TIMELINE_BACKGROUND)
+        self.setMouseEnabled(x=False, y=False)
+        self.setMenuEnabled(False)
+        self.showGrid(x=True, y=True, alpha=0.16)
+        self.setDefaultPadding(0)
+        self.setLabel("bottom", "Time", units="s")
+        _configure_y_axis_inside(self.getAxis("left"), "Events")
+        axis_pen = pg.mkPen(TIMELINE_GRID, width=1)
+        for axis_name in ("bottom",):
+            axis = self.getAxis(axis_name)
+            axis.setPen(axis_pen)
+            axis.setTextPen(pg.mkPen(TEXT_MUTED))
+        self._events = Events()
+        self._records: list[EventRecord] = []
+        self._rows: list[str] = []
+        self._row_index: dict[str, int] = {}
+        self._items: list[pg.BarGraphItem] = []
+        self._selected_ids: set[str] = set()
+        self._locked_duration_ids: set[str] = set()
+        self._colors: dict[str, tuple[int, int, int]] = {}
+        self._drag = None
+        self._playhead = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
+        self.addItem(self._playhead)
+
+    def set_events(
+        self,
+        events: Events,
+        colors: dict[str, tuple[int, int, int]] | None = None,
+        selected_ids: Iterable[str] | None = None,
+        locked_duration_ids: Iterable[str] | None = None,
+    ) -> None:
+        self._events = Events(events)
+        self._records = records_from_events(self._events)
+        self._rows = list(self._events.names)
+        self._row_index = {name: index for index, name in enumerate(self._rows)}
+        self._colors = dict(colors or {})
+        self._selected_ids = set(selected_ids or self._selected_ids)
+        self._locked_duration_ids = set(locked_duration_ids or set())
+        self._redraw()
+
+    def set_selected_ids(self, selected_ids: Iterable[str]) -> None:
+        self._selected_ids = set(selected_ids)
+        self._redraw()
+
+    def set_playhead(self, seconds: float) -> None:
+        self._playhead.setPos(float(seconds))
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() != QtCore.Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+        point = self._event_point(event)
+        record = self._pick_record(float(point.x()), float(point.y()))
+        if record is not None:
+            self._drag = {
+                "record": record,
+                "mode": self._drag_mode(record, float(point.x())),
+                "anchor": float(point.x()),
+                "start": record.start_seconds,
+                "stop": record.stop_seconds,
+                "row": self._row_index.get(record.name, 0),
+            }
+            self.event_selected.emit([record])
+            event.accept()
+            return
+        row = self._row_for_y(float(point.y()))
+        if row is not None:
+            self._drag = {"record": None, "mode": "create", "anchor": float(point.x()), "row": row}
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._drag is None:
+            super().mouseReleaseEvent(event)
+            return
+        point = self._event_point(event)
+        end_time = max(0.0, float(point.x()))
+        row = self._row_for_y(float(point.y()))
+        if row is None:
+            row = int(self._drag["row"])
+        name = self._rows[row]
+        record = self._drag["record"]
+        if record is None:
+            start, stop = sorted([float(self._drag["anchor"]), end_time])
+            self.event_created.emit(name, start, stop)
+        else:
+            mode = self._drag["mode"]
+            if mode == "resize_start":
+                start, stop = sorted([end_time, float(self._drag["stop"])])
+                start = max(0.0, start)
+                stop = max(start, stop)
+            elif mode == "resize_stop":
+                start, stop = sorted([float(self._drag["start"]), end_time])
+                start = max(0.0, start)
+                stop = max(start, stop)
+            else:
+                delta = end_time - float(self._drag["anchor"])
+                start = max(0.0, float(self._drag["start"]) + delta)
+                stop = max(start, float(self._drag["stop"]) + delta)
+            self.event_changed.emit(record, name, start, stop)
+        self._drag = None
+        event.accept()
+
+    def _redraw(self) -> None:
+        for item in self._items:
+            self.removeItem(item)
+        self._items.clear()
+        if self._rows:
+            ticks = [[(index, name) for name, index in self._row_index.items()]]
+            self.getAxis("left").setTicks(ticks)
+            self.setYRange(-0.6, len(self._rows) - 0.4, padding=0)
+        else:
+            self.getAxis("left").setTicks([[]])
+            self.setYRange(-0.5, 0.5, padding=0)
+        for record in self._records:
+            row = self._row_index.get(record.name)
+            if row is None:
+                continue
+            color = self._colors.get(record.name, (100, 180, 255))
+            selected = record.id in self._selected_ids
+            alpha = 210 if selected else 120
+            pen_width = 2.2 if selected else 1.0
+            start = record.start_seconds
+            stop = record.stop_seconds
+            if start == stop:
+                width = max(0.002, self._marker_width())
+                start -= width / 2
+                stop += width / 2
+            bar = pg.BarGraphItem(
+                x0=[start],
+                x1=[max(stop, start + 1e-6)],
+                y=[row - 0.34],
+                height=[0.68],
+                pen=pg.mkPen(color=color, width=pen_width),
+                brush=pg.mkBrush(*color, alpha),
+            )
+            self.addItem(bar)
+            self._items.append(bar)
+
+    def _pick_record(self, seconds: float, y_value: float) -> EventRecord | None:
+        row = self._row_for_y(y_value)
+        if row is None:
+            return None
+        candidates = [record for record in self._records if self._row_index.get(record.name) == row]
+        tol = self._hit_tolerance()
+        best = None
+        best_span = None
+        for record in candidates:
+            start, stop = record.start_seconds, record.stop_seconds
+            if start == stop:
+                hit = abs(seconds - start) <= tol
+                span = 0
+            else:
+                hit = (start <= seconds <= stop) or min(abs(seconds - start), abs(seconds - stop)) <= tol
+                span = stop - start
+            if hit and (best_span is None or span < best_span):
+                best = record
+                best_span = span
+        return best
+
+    def _row_for_y(self, y_value: float) -> int | None:
+        if not self._rows:
+            return None
+        row = int(round(y_value))
+        if row < 0 or row >= len(self._rows):
+            return None
+        return row
+
+    def _hit_tolerance(self) -> float:
+        x_min, x_max = self.plotItem.vb.viewRange()[0]
+        return max(0.025, float(x_max - x_min) * 0.01)
+
+    def _marker_width(self) -> float:
+        return max(0.002, self._hit_tolerance() * 0.4)
+
+    def _drag_mode(self, record: EventRecord, seconds: float) -> str:
+        if record.id in self._locked_duration_ids:
+            return "move"
+        if record.start_seconds == record.stop_seconds:
+            return "move"
+        tol = self._hit_tolerance()
+        if abs(seconds - record.start_seconds) <= tol:
+            return "resize_start"
+        if abs(seconds - record.stop_seconds) <= tol:
+            return "resize_stop"
+        return "move"
+
+    def _event_point(self, event) -> QtCore.QPointF:
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        return self.plotItem.vb.mapSceneToView(self.mapToScene(pos))
+
+
+class EventTimelineWidget(QtWidgets.QWidget):
+    event_selected = QtCore.Signal(object)
+    event_changed = QtCore.Signal(object, str, float, float)
+    event_created = QtCore.Signal(str, float, float)
+
+    def __init__(self, parent=None, *, show_waveform: bool = True) -> None:
+        super().__init__(parent)
+        self.setMinimumHeight(130 if show_waveform else 70)
+        self._show_waveform = bool(show_waveform)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        self.events = EventBarsView()
+        self.waveform = WaveformPane() if self._show_waveform else None
+        self.splitter = None
+        if self.waveform is None:
+            layout.addWidget(self.events)
+        else:
+            self.events.setXLink(self.waveform)
+            self.splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+            self.splitter.setHandleWidth(8)
+            self.splitter.addWidget(self.waveform)
+            self.splitter.addWidget(self.events)
+            self.splitter.setSizes([80, 100])
+            self.splitter.setCollapsible(0, False)
+            self.splitter.setCollapsible(1, False)
+            layout.addWidget(self.splitter)
+        self.events.event_selected.connect(self.event_selected.emit)
+        self.events.event_changed.connect(self.event_changed.emit)
+        self.events.event_created.connect(self.event_created.emit)
+
+    def set_waveform(self, x: np.ndarray, y: np.ndarray) -> None:
+        if self.waveform is not None:
+            self.waveform.set_waveform(x, y)
+            return
+        if x is not None and len(x):
+            self.events.setXRange(float(x[0]), float(x[-1]), padding=0)
+
+    def set_events(
+        self,
+        events: Events,
+        colors: dict[str, tuple[int, int, int]] | None = None,
+        selected_ids: Iterable[str] | None = None,
+        locked_duration_ids: Iterable[str] | None = None,
+    ) -> None:
+        self.events.set_events(events, colors=colors, selected_ids=selected_ids, locked_duration_ids=locked_duration_ids)
+
+    def set_selected_ids(self, selected_ids: Iterable[str]) -> None:
+        self.events.set_selected_ids(selected_ids)
+
+    def set_playhead(self, seconds: float) -> None:
+        if self.waveform is not None:
+            self.waveform.set_playhead(seconds)
+        self.events.set_playhead(seconds)

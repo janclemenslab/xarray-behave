@@ -6,7 +6,6 @@ from typing import Optional, Tuple
 
 from .. import io
 
-
 logger = logging.getLogger(__name__)
 
 

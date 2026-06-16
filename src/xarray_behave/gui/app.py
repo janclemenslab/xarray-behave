@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 import scipy.interpolate
 import scipy.signal.windows
-import scipy.signal as ss
 import peakutils
 from typing import Callable, Optional, List
 
@@ -26,12 +25,21 @@ from qtpy import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 
 import xarray_behave
-from .. import xarray_behave as xb, loaders as ld, annot, event_utils
+from .. import _dataset_service as dataset_service, xarray_behave as xb, loaders as ld, annot
 from .formbuilder import YamlDialog
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
-from . import utils, views, table, audio_player
+from . import utils, views, table, audio_player, event_widgets, modern_video
+from .style_profile import WINDOW_STYLESHEET
 
 logger = logging.getLogger(__name__)
+
+try:
+    from PySide6.QtCore import QUrl
+    from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+except Exception:  # pragma: no cover - optional Qt runtime module
+    QAudioOutput = None
+    QMediaPlayer = None
+    QUrl = None
 
 try:
     import numba
@@ -48,6 +56,10 @@ class DataSource:
     def __init__(self, type: str, name: str):
         self.type = type
         self.name = name
+
+
+def _num_flies(ds):
+    return int(ds.sizes["flies"]) if "flies" in ds.sizes else 1
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -243,7 +255,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                               Otherwise, seconds will correspond to the correct time stamp of the event sample.
                                               Only relevant for xb.datasets with timestamp info.
                                               Defaults to False.
-            preserve_empty (bool, optional): Preserve song types without annotations. Defaults to True.
+            preserve_empty (bool, optional): Preserve event names without annotations. Defaults to True.
             with_channels (bool, optional): Add channels column to file. Defaults to True.
             qt_keycode ([type], optional): [description]. Defaults to None.
         """
@@ -281,11 +293,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not np.isfinite(start_seconds) or not np.isfinite(stop_seconds):
                 continue
 
-            category = self.event_times.categories.get(name)
-            if category is None:
-                category = "event" if np.isclose(start_seconds, stop_seconds) else "segment"
-            if category == "event":
-                stop_seconds = start_seconds
+            category = "event"
 
             self.event_times.add_time(name + suffix, start_seconds, stop_seconds, category=category)
             added += 1
@@ -379,10 +387,16 @@ class MainWindow(QtWidgets.QMainWindow):
             "parent": self,
         }
         das_signature = inspect.signature(DASConformerWindow)
-        accepts_extra_kwargs = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in das_signature.parameters.values())
-        if current_audio_provider is not None and (accepts_extra_kwargs or "current_duration_provider" in das_signature.parameters):
+        accepts_extra_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in das_signature.parameters.values()
+        )
+        if current_audio_provider is not None and (
+            accepts_extra_kwargs or "current_duration_provider" in das_signature.parameters
+        ):
             window_kwargs["current_duration_provider"] = self._das_current_audio_duration
-        if current_audio_provider is not None and (accepts_extra_kwargs or "annotated_region_provider" in das_signature.parameters):
+        if current_audio_provider is not None and (
+            accepts_extra_kwargs or "annotated_region_provider" in das_signature.parameters
+        ):
             window_kwargs["annotated_region_provider"] = self._das_annotated_regions
         window = DASConformerWindow(**window_kwargs)
         window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
@@ -487,8 +501,15 @@ class MainWindow(QtWidgets.QMainWindow):
                             except KeyError:
                                 pass
                 except KeyError:
-                    logger.info(f"{filename} no sample rate info in NPZ file.Need to save 'samplerate' variable with the audio data. Defaulting to {samplerate}")
-            elif filename.endswith(".h5") or filename.endswith(".hdfs") or filename.endswith(".hdf5") or filename.endswith(".mat"):
+                    logger.info(
+                        f"{filename} no sample rate info in NPZ file.Need to save 'samplerate' variable with the audio data. Defaulting to {samplerate}"
+                    )
+            elif (
+                filename.endswith(".h5")
+                or filename.endswith(".hdfs")
+                or filename.endswith(".hdf5")
+                or filename.endswith(".mat")
+            ):
                 # infer data set (for hdf5) and populate form
                 try:
                     # list all data sets in file and add to list
@@ -552,23 +573,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # if form_data['target_samplingrate'] is None:
                 #     form_data['target_samplingrate'] = None
 
-                ds = xb.assemble(
-                    filepath_daq=filename,
-                    filepath_annotations=form_data["annotation_path"],
-                    filepath_definitions=form_data["definition_path"],
-                    audio_sampling_rate=form_data["samplerate"],
-                    target_sampling_rate=form_data["target_samplingrate"],
-                    audio_dataset=form_data["data_set"],
-                )
-
-                if form_data["filter_song"] == "yes":
-                    ds = cls.filter_song(ds, form_data["f_low"], form_data["f_high"])
-
-                ds.attrs["filename"] = filename
-                ds.attrs["filebase"] = os.path.splitext(filename)[0]
-                ds.attrs["datename"] = ""
-                ds.attrs["res_path"] = ""
-                ds.attrs["dat_path"] = ""
+                ds = dataset_service.assemble_from_file(filename, form_data)
                 return PSV(
                     ds,
                     title=filename,
@@ -622,65 +627,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 form_data = dialog.form.get_form_data()
                 logger.info(f"Making new dataset from directory {dirname}.")
 
-                if form_data["target_samplingrate"] == 0 or form_data["target_samplingrate"] is None:
-                    resample_video_data = False
-                else:
-                    resample_video_data = True
-
-                form_data["filter_song"] = form_data["filter_song"] == "yes"
-
-                include_tracks = not form_data["ignore_tracks"]
-                include_poses = not form_data["ignore_tracks"]
-                lazy_load_song = not form_data["filter_song"]  # faster that way
-                base, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
-                root, dat_path = os.path.split(base)
-                annotation_path = None if not len(form_data["annotation_path"]) else form_data["annotation_path"]
-                filepath_video = None if not len(form_data["video_filename"]) else form_data["video_filename"]
-                filepath_daq = None if not len(form_data["daq_filename"]) else form_data["daq_filename"]
-
-                ds = xb.assemble(
-                    datename,
-                    root,
-                    dat_path,
-                    res_path="res",
-                    filepath_annotations=annotation_path,
-                    filepath_video=filepath_video,
-                    filepath_daq=filepath_daq,
-                    fix_fly_indices=form_data["fix_fly_indices"],
-                    include_song=~form_data["ignore_song"],
-                    target_sampling_rate=form_data["target_samplingrate"],
-                    resample_video_data=resample_video_data,
-                    pixel_size_mm=pixel_size_mm,
-                    lazy_load_song=lazy_load_song,
-                    include_tracks=include_tracks,
-                    include_poses=include_poses,
-                )
-
-                if form_data["filter_song"]:
-                    ds = cls.filter_song(ds, form_data["f_low"], form_data["f_high"])
-
-                event_names = []
-                event_classes = []
-                if form_data["init_annotations"] and len(form_data["events_string"]):
-                    for pair in form_data["events_string"].split(";"):
-                        items = pair.strip().split(",")
-                        if len(items) > 0:
-                            event_names.append(items[0].strip())
-                        if len(items) > 1:
-                            event_classes.append(items[1].strip())
-                        else:
-                            event_classes.append("segment")
-
-                # add event categories if they are missing in the dataset
-                if "song_events" in ds and "event_categories" not in ds:
-                    event_categories = ["segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values]
-                    ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
-
-                # add missing song types
-                if "song_events" not in ds or len(ds.event_types) == 0:
-                    cats = {event_name: event_class for event_name, event_class in zip(event_names, event_classes)}
-                    ds.attrs["event_times"] = annot.Events(categories=cats)
-                    # FIXME update ds.song_events!!
+                _, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
+                ds = dataset_service.assemble_from_dir(dirname, form_data, pixel_size_mm=pixel_size_mm)
 
                 # add video file
                 vr = None
@@ -688,16 +636,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     if dialog.form["video_filename"] != "":
                         try:
                             video_filename = dialog.form["video_filename"]
-                            vr = utils.VideoReaderNP(video_filename)
+                            vr = modern_video.PyAVVideoReader(video_filename)
                         except:
                             pass
                     else:
                         try:
                             video_filename = os.path.join(dirname, datename + ".mp4")
-                            vr = utils.VideoReaderNP(video_filename)
+                            vr = modern_video.PyAVVideoReader(video_filename)
                         except:
                             video_filename = os.path.join(dirname, datename + ".avi")
-                            vr = utils.VideoReaderNP(video_filename)
+                            vr = modern_video.PyAVVideoReader(video_filename)
                     logger.info(vr)
                 except FileNotFoundError:
                     logger.info(f'Video "{video_filename}" not found. Continuing without.')
@@ -753,32 +701,11 @@ class MainWindow(QtWidgets.QMainWindow):
             if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
                 logger.info(f"Loading {filename}.")
-                ds = xb.load(filename, lazy=True, use_temp=True)
-                if "song_events" in ds:
-                    ds.song_events.load()
-                if not form_data["lazy"]:
-                    logger.info("   Loading data from ds.")
-                    if "song" in ds:
-                        ds.song.load()  # non-lazy load song for faster updates
-                    if "pose_positions_allo" in ds:
-                        ds.pose_positions_allo.load()  # non-lazy load song for faster updates
-                    if "sampletime" in ds:
-                        ds.sampletime.load()
-                    if "song_raw" in ds:  # this will take a long time:
-                        ds.song_raw.load()  # non-lazy load song for faster updates
-
-                if form_data["filter_song"] == "yes":
-                    ds = cls.filter_song(ds, form_data["f_low"], form_data["f_high"])
-
-                # add event categories if they are missing in the dataset
-                if "song_events" in ds and "event_categories" not in ds:
-                    event_categories = ["segment" if "sine" in evt or "syllable" in evt else "event" for evt in ds.event_types.values]
-                    ds = ds.assign_coords({"event_categories": (("event_types"), event_categories)})
-                logger.info(ds)
+                ds = dataset_service.load_from_zarr(filename, form_data)
                 vr = None
                 try:
                     video_filename = ds.attrs["video_filename"]
-                    vr = utils.VideoReaderNP(video_filename)
+                    vr = modern_video.PyAVVideoReader(video_filename)
                     logger.info(vr)
                 except FileNotFoundError:
                     logger.info(f'Video "{video_filename}" not found. Continuing without.')
@@ -797,24 +724,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @classmethod
     def filter_song(cls, ds, f_low, f_high):
-        # TODO paralellize over channels
-        if f_low is None:
-            f_low = 1.0
-        if "song_raw" in ds:  # this will take a long time:
-            if f_high is None:
-                f_high = ds.song_raw.attrs["sampling_rate_Hz"] / 2 - 1
-            else:
-                f_high = min(f_high, ds.song_raw.attrs["sampling_rate_Hz"] / 2 - 1)
-            sos_bp = ss.butter(
-                5,
-                [f_low, f_high],
-                "bandpass",
-                output="sos",
-                fs=ds.song_raw.attrs["sampling_rate_Hz"],
-            )
-            logger.info(f"Filtering `song_raw` between {f_low} and {f_high} Hz.")
-            ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
-        return ds
+        return dataset_service.filter_song(ds, f_low, f_high)
 
     @classmethod
     def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
@@ -847,22 +757,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 retval = ZarrOverwriteWarning().exec_()
 
             if retval == QtWidgets.QMessageBox.Ignore:
-                if "song_events" in self.ds:
-                    logger.info("   Updating song events")
-                    # TODO: replace with method in annot.Events
-                    self.ds = event_utils.eventtimes_to_traces(self.ds, self.event_times)
-
-                # scale tracks back to original units upon save
-                if hasattr(self, "original_spatial_units"):
-                    logger.info(f"Converting spatial units back to {self.original_spatial_units} if required.")
-                    self.ds = xb.convert_spatial_units(self.ds, to_units=self.original_spatial_units)
-
-                # update ds.event_times from event_times dict
-                event_times = annot.Events(self.event_times)
-                ds_event_times = event_times.to_dataset()
-                if "index" in self.ds.dims and "event_time" in self.ds.dims:
-                    self.ds = self.ds.drop_dims(["index", "event_time"])
-                    self.ds = self.ds.combine_first(ds_event_times)
+                self.ds = dataset_service.prepare_for_save(
+                    self.ds,
+                    self.event_times,
+                    original_spatial_units=getattr(self, "original_spatial_units", None),
+                )
 
                 logger.info(f"   Saving dataset to {savefilename}.")
                 xb.save(savefilename, self.ds)
@@ -888,6 +787,7 @@ class PSV(MainWindow):
         frame_flipud: bool = False,
     ):
         super().__init__(title=title)
+        self.setStyleSheet(WINDOW_STYLESHEET)
         pg.setConfigOptions(useOpenGL=False)  # appears to be faster that way
         try:
             import numba
@@ -902,19 +802,10 @@ class PSV(MainWindow):
         # TODO allow vr to be a string with the video file name
         self.vr = vr
 
-        # detect all event times and segment on/offsets
-        if "event_times" in ds and "event_names" in ds and len(ds["event_names"]) > 0:
-            self.event_times = annot.Events.from_dataset(ds)
-        elif "event_times" in ds.attrs:
-            self.event_times = ds.attrs["event_times"].copy()
-        elif "song_events" in ds:
-            self.event_times = event_utils.detect_events(ds)  # detect events from ds.song_events traces
-        else:
-            self.event_times = dict()
-        self.event_times = annot.Events(self.event_times)
-
-        self.nb_eventtypes = len(self.event_times.names)
-        self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
+        # detect all event times
+        self.event_times = dataset_service.event_times_from_dataset(ds)
+        self.event_presets = self._initial_event_presets()
+        self._sync_event_colors_from_presets()
 
         self.box_size = box_size
         self.fmin = fmin
@@ -950,7 +841,7 @@ class PSV(MainWindow):
         self.move_poses = False
         self.circle_size = 8
 
-        self.nb_flies = np.max(self.ds.flies).values + 1 if "flies" in self.ds.dims else 1
+        self.nb_flies = _num_flies(self.ds)
         self.focal_fly = 0
         self.other_fly = 1 if self.nb_flies > 1 else 0
 
@@ -968,13 +859,9 @@ class PSV(MainWindow):
         self.fly_colors = utils.make_colors(self.nb_flies)
         self.bodypart_colors = utils.make_colors(self.nb_bodyparts)
 
-        # scale tracks back to px - required for display purposes
-        names = ["body_positions", "pose_positions", "pose_positions_allo"]
-        # save original spatial units so we can convert back upon save
-        for name in names:
-            if name in self.ds:
-                self.original_spatial_units = self.ds[name].attrs["spatial_units"]
-        self.ds = xb.convert_spatial_units(self.ds, to_units="pixels")
+        self.ds, original_spatial_units = dataset_service.prepare_for_display(self.ds)
+        if original_spatial_units is not None:
+            self.original_spatial_units = original_spatial_units
 
         if "swap_events" in self.ds.attrs:
             self.swap_events = self.ds.attrs["swap_events"]
@@ -988,7 +875,7 @@ class PSV(MainWindow):
         self.show_tracks = False
         self.show_movie = True
         self.show_options = True
-        self.show_segment_text = True
+        self.show_event_text = True
         self.spec_win = 200
         self.show_songevents = True
         self.movable_events = True
@@ -1024,8 +911,19 @@ class PSV(MainWindow):
             self.frame_interval = self.fs_song / 1_000
 
         self._span = min(int(self.fs_song), self.tmax)
-        self._t0 = int(self.span / 2)
+        self._t0 = 0
         self.step = 1
+        self._is_playing = False
+        self._is_slider_scrubbing = False
+        self._playback_timer = QtCore.QTimer(self)
+        self._playback_timer.setInterval(20)
+        self._playback_timer.timeout.connect(self._on_playback_tick)
+        self._playback_clock = QtCore.QElapsedTimer()
+        self._playback_anchor_sample = 0.0
+        self._playback_window_start = None
+        self._playback_window_stop = None
+        self._audio_output = None
+        self._audio_player = None
 
         self.resize(1000, 800)
 
@@ -1163,7 +1061,7 @@ class PSV(MainWindow):
         view_audio.addSeparator()
 
         view_annotations = self.bar.addMenu("Annotations")
-        self._add_keyed_menuitem(view_annotations, "Add or edit song types", self.edit_annotation_types)
+        self._add_keyed_menuitem(view_annotations, "Add or edit events", self.edit_annotation_types)
         self._add_keyed_menuitem(
             view_annotations,
             "Show annotations",
@@ -1183,7 +1081,7 @@ class PSV(MainWindow):
         )
         self._add_keyed_menuitem(
             view_annotations,
-            "Only edit active song type",
+            "Only edit active event",
             partial(self.toggle, "edit_only_current_events"),
             None,
             checkable=True,
@@ -1191,22 +1089,22 @@ class PSV(MainWindow):
         )
         self._add_keyed_menuitem(
             view_annotations,
-            "Show segment labels",
-            partial(self.toggle, "show_segment_text"),
+            "Show event labels",
+            partial(self.toggle, "show_event_text"),
             None,
             checkable=True,
-            checked=self.show_segment_text,
+            checked=self.show_event_text,
         )
         view_annotations.addSeparator()
         self._add_keyed_menuitem(
             view_annotations,
-            "Delete active song type in view",
+            "Delete active event in view",
             self.delete_current_events,
             "U",
         )
         self._add_keyed_menuitem(
             view_annotations,
-            "Delete all song types in view",
+            "Delete all events in view",
             self.delete_all_events,
             "Y",
         )
@@ -1228,13 +1126,13 @@ class PSV(MainWindow):
         view_annotations.addSeparator()
         self._add_keyed_menuitem(
             view_annotations,
-            "Approve proposals for active song type in view",
+            "Approve proposals for active event in view",
             self.approve_active_proposals,
             "G",
         )
         self._add_keyed_menuitem(
             view_annotations,
-            "Approve proposals for all song types in view",
+            "Approve proposals for all events in view",
             self.approve_all_proposals,
             "H",
         )
@@ -1298,12 +1196,12 @@ class PSV(MainWindow):
         self.cb.currentIndexChanged.connect(self.update_xy)
 
         def ta():
-            if self.cb.currentText() == "Initialize song types":
+            if self.cb.currentText() == "Initialize events":
                 self.edit_annotation_types()
 
         self.cb.activated.connect(ta)
 
-        event_sel_label = QtWidgets.QLabel("Song types:")
+        event_sel_label = QtWidgets.QLabel("Events:")
         event_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
         event_sel_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.hl.addWidget(event_sel_label, stretch=1)
@@ -1325,7 +1223,10 @@ class PSV(MainWindow):
             for chan in range(self.ds.song_raw.shape[1]):
                 self.cb2.addItem("Channel " + str(chan))
 
-        self.cb2.currentIndexChanged.connect(self.update_xy)
+        def on_channel_changed():
+            self.update_xy()
+
+        self.cb2.currentIndexChanged.connect(on_channel_changed)
         self.cb2.setCurrentIndex(0)
         channel_sel_label = QtWidgets.QLabel("Audio channels:")
         channel_sel_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
@@ -1369,32 +1270,74 @@ class PSV(MainWindow):
         self.slice_view = views.TraceView(model=self, callback=self.on_trace_clicked)
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
         self.annot_view = views.AnnotView(model=self, callback=self.on_trace_clicked)
+        self.event_timeline = event_widgets.EventTimelineWidget(show_waveform=False)
+        self.events_table = event_widgets.EventsTableWidget()
+        self.preset_panel = event_widgets.EventPresetPanel()
+        for widget in (self.slice_view, self.tracks_view, self.annot_view, self.event_timeline, self.events_table):
+            widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+        self._syncing_event_selection = False
+        self.preset_panel.selection_changed.connect(self._on_preset_selected)
+        self.preset_panel.create_requested.connect(self._create_preset_from_panel)
+        self.preset_panel.edit_requested.connect(self._edit_preset_from_panel)
+        self.preset_panel.delete_requested.connect(self._delete_preset_from_panel)
+        self.events_table.selection_changed.connect(self._on_events_table_selection)
+        self.events_table.type_changed.connect(self._on_events_table_type_changed)
+        self.events_table.time_changed.connect(self._on_events_table_time_changed)
+        self.events_table.delete_requested.connect(self._on_events_table_delete)
+        self.event_timeline.event_selected.connect(self._on_timeline_event_selected)
+        self.event_timeline.event_created.connect(self._on_timeline_event_created)
+        self.event_timeline.event_changed.connect(self._on_timeline_event_changed)
         self.spec_compression_ratio = 0
         self.spec_mel = False
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=cmap_name)
+        self.spec_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self._slice_view_in_layout = False
 
         self.ly = QtWidgets.QVBoxLayout()
         self.ly.addLayout(self.hl)
 
+        outer_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        outer_splitter.setHandleWidth(8)
+        outer_splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        splitter.setObjectName("centerWorkspace")
+        splitter.setHandleWidth(8)
+        splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
-        splitter_horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        splitter_sizes = []
 
-        splitter.addWidget(splitter_horizontal)
-        if "pose_positions_allo" in self.ds:
-            splitter.addWidget(self.tracks_view)
-        splitter.addWidget(self.annot_view)
-        splitter.addWidget(self.slice_view)
-        splitter.addWidget(self.spec_view)
+        def add_splitter_panel(widget, size: int) -> None:
+            splitter.addWidget(widget)
+            splitter_sizes.append(size)
+
         if self.vr is not None:
-            splitter_horizontal.addWidget(self.movie_view)
-            splitter_horizontal.setSizes([1, 4000, 10])
-            splitter.setSizes([400, 10, 100, 100, 100])
-        else:
-            splitter_horizontal.setSizes([500, 50])
-            splitter.setSizes([10, 1000, 1000, 1000])
+            add_splitter_panel(self.movie_view, 320)
+        if "pose_positions_allo" in self.ds:
+            add_splitter_panel(self.tracks_view, 150)
+        if self.vr is not None or "pose_positions_allo" in self.ds:
+            add_splitter_panel(self.annot_view, 130)
 
-        self.ly.addWidget(splitter)
+        add_splitter_panel(self.slice_view, 100)
+        add_splitter_panel(self.spec_view, 400)
+        add_splitter_panel(self.event_timeline, 100)
+        add_splitter_panel(self.events_table, 200)
+        self._slice_view_in_layout = True
+
+        for index in range(splitter.count()):
+            splitter.setCollapsible(index, False)
+            splitter.setStretchFactor(index, splitter_sizes[index])
+        splitter.setSizes(splitter_sizes)
+
+        outer_splitter.addWidget(self.preset_panel)
+        outer_splitter.addWidget(splitter)
+        outer_splitter.setCollapsible(0, False)
+        outer_splitter.setCollapsible(1, False)
+        outer_splitter.setStretchFactor(0, 0)
+        outer_splitter.setStretchFactor(1, 1)
+        outer_splitter.setSizes([260, 1200])
+
+        self.ly.addWidget(outer_splitter)
 
         def edit_time_finished(source=None):
             try:
@@ -1412,43 +1355,29 @@ class PSV(MainWindow):
             except Exception as e:
                 print(e)
 
-        self.scrollbar = QtWidgets.QScrollBar(QtCore.Qt.Horizontal)
-        self.scrollbar.setMinimum(int(self.tmin))
-        self.scrollbar.setMaximum(int(self.tmax))
-        self.scrollbar.setPageStep(
-            int(
-                max(
-                    1,
-                    round(max((self.tmax - self.tmin) / 100, self._span / self.fs_song)),
-                )
-            )
-        )
-        self.scrollbar.valueChanged.connect(lambda value: setattr(self, "t0", value))
-        scrollbar_layout = QtWidgets.QHBoxLayout()
-
-        self.playButton = QtWidgets.QPushButton()
-        self.playButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
-        self.playButton.clicked.connect(self.toggle_playvideo)
-
-        scrollbar_layout.addWidget(self.playButton, stretch=1)
-        scrollbar_layout.addWidget(self.scrollbar, stretch=10)
+        transport_layout = QtWidgets.QHBoxLayout()
+        transport_layout.setContentsMargins(0, 0, 0, 0)
+        transport_layout.setSpacing(8)
+        transport_layout.addWidget(self._build_transport(), stretch=10)
 
         self.edit_time = QtWidgets.QLineEdit()
         self.edit_time.editingFinished.connect(functools.partial(edit_time_finished, source=self.edit_time))
-        scrollbar_layout.addWidget(self.edit_time, stretch=1)
+        transport_layout.addWidget(self.edit_time, stretch=1)
         edit_time_label = QtWidgets.QLabel("seconds")
-        edit_time_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
-        scrollbar_layout.addWidget(edit_time_label, stretch=1)
+        edit_time_label.setProperty("role", "muted")
+        transport_layout.addWidget(edit_time_label)
 
         if self.vr is not None:
             self.edit_frame = QtWidgets.QLineEdit()
             self.edit_frame.editingFinished.connect(functools.partial(edit_frame_finished, source=self.edit_frame))
-            scrollbar_layout.addWidget(self.edit_frame, stretch=1)
+            transport_layout.addWidget(self.edit_frame, stretch=1)
             edit_frame_label = QtWidgets.QLabel("frame")
-            edit_frame_label.setStyleSheet("QLabel { background-color : black; color : gray; }")
-            scrollbar_layout.addWidget(edit_frame_label, stretch=1)
+            edit_frame_label.setProperty("role", "muted")
+            transport_layout.addWidget(edit_frame_label)
 
-        self.ly.addLayout(scrollbar_layout)
+        self.ly.addLayout(transport_layout)
+        self._setup_audio_clock(self._audio_source_path())
+        self._sync_transport_controls()
 
         self.cw = pg.GraphicsLayoutWidget()
         self.cw.setLayout(self.ly)
@@ -1547,17 +1476,362 @@ class PSV(MainWindow):
         except:
             pass
 
+    def _build_transport(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        panel.setObjectName("transportPanel")
+        layout = QtWidgets.QHBoxLayout(panel)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(8)
+
+        transport_box = QtWidgets.QWidget(panel)
+        transport_box.setObjectName("transportBox")
+        transport_box_layout = QtWidgets.QHBoxLayout(transport_box)
+        transport_box_layout.setContentsMargins(6, 4, 6, 4)
+        transport_box_layout.setSpacing(4)
+
+        buttons = (
+            self._build_transport_button(
+                QtWidgets.QStyle.SP_MediaSeekBackward,
+                "Fast Reverse",
+                lambda: self._transport_fast_seek(-1),
+            ),
+            self._build_transport_button(
+                QtWidgets.QStyle.SP_MediaSkipBackward,
+                "Reverse",
+                lambda: self._transport_frame_seek(-1),
+            ),
+            self._build_transport_button(
+                QtWidgets.QStyle.SP_MediaPlay,
+                "Play/Pause",
+                self._toggle_playback,
+                object_name="transportPlayButton",
+            ),
+            self._build_transport_button(
+                QtWidgets.QStyle.SP_MediaSkipForward,
+                "Forward",
+                lambda: self._transport_frame_seek(1),
+            ),
+            self._build_transport_button(
+                QtWidgets.QStyle.SP_MediaSeekForward,
+                "Fast Forward",
+                lambda: self._transport_fast_seek(1),
+            ),
+        )
+        self._play_button = buttons[2]
+        self.playButton = self._play_button
+        for button in buttons:
+            transport_box_layout.addWidget(button)
+
+        self._slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self._slider.setFocusPolicy(QtCore.Qt.NoFocus)
+        self._slider.setRange(int(self.tmin), int(self.tmax_playhead))
+        self._slider.setPageStep(max(1, int(round(max((self.tmax - self.tmin) / 100, self._span)))))
+        self._slider.valueChanged.connect(self._on_transport_seek)
+        self._slider.sliderPressed.connect(self._on_slider_scrub_started)
+        self._slider.sliderReleased.connect(self._on_slider_scrub_finished)
+        self._clock_label = QtWidgets.QLabel()
+        self._clock_label.setObjectName("transportClock")
+        self._clock_label.setMinimumWidth(150)
+
+        layout.addWidget(transport_box)
+        label = QtWidgets.QLabel("Playhead")
+        label.setProperty("role", "muted")
+        layout.addWidget(label)
+        layout.addWidget(self._slider, 1)
+        layout.addWidget(self._clock_label)
+        self._set_play_button_state(playing=False)
+        return panel
+
+    def _build_transport_button(self, icon, tooltip: str, callback: Callable[[], None], object_name: str = None):
+        button = QtWidgets.QToolButton()
+        button.setProperty("role", "transport")
+        if object_name is not None:
+            button.setObjectName(object_name)
+        button.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+        button.setIcon(self.style().standardIcon(icon))
+        button.setToolTip(tooltip)
+        button.setText(tooltip)
+        button.clicked.connect(lambda _checked=False: callback())
+        return button
+
+    def _set_play_button_state(self, *, playing: bool) -> None:
+        if not hasattr(self, "_play_button"):
+            return
+        icon = QtWidgets.QStyle.SP_MediaPause if playing else QtWidgets.QStyle.SP_MediaPlay
+        self._play_button.setIcon(self.style().standardIcon(icon))
+        self._play_button.setText("Pause" if playing else "Play")
+        self._play_button.setToolTip("Pause playback" if playing else "Start playback")
+
+    def _format_seconds(self, seconds: float) -> str:
+        seconds = max(0.0, float(seconds))
+        minutes, rem = divmod(seconds, 60.0)
+        hours, minutes = divmod(int(minutes), 60)
+        if hours:
+            return f"{hours:d}:{minutes:02d}:{rem:06.3f}"
+        return f"{minutes:02d}:{rem:06.3f}"
+
+    def _sync_transport_controls(self) -> None:
+        if hasattr(self, "_slider"):
+            self._slider.blockSignals(True)
+            self._slider.setValue(int(round(self.t0)))
+            self._slider.blockSignals(False)
+        if hasattr(self, "edit_time") and not self.edit_time.hasFocus():
+            self.edit_time.setText(str(self.t0 / self.fs_song))
+        if self.vr is not None and hasattr(self, "edit_frame") and not self.edit_frame.hasFocus():
+            self.edit_frame.setText(str(self.framenumber))
+        if hasattr(self, "_clock_label"):
+            current = self._format_seconds(self.t0 / self.fs_song)
+            total = self._format_seconds(self.tmax_playhead / self.fs_song)
+            self._clock_label.setText(f"{current} / {total}")
+
+    def _sync_playhead_only(self) -> None:
+        seconds = float(self.t0) / self.fs_song
+        if hasattr(self, "event_timeline"):
+            self.event_timeline.set_playhead(seconds)
+        if hasattr(self, "spec_view") and hasattr(self.spec_view, "pos_line"):
+            self.spec_view.pos_line.setValue(seconds)
+
+    def _playhead_requires_view_refresh(self) -> bool:
+        if not hasattr(self, "x") or len(self.x) == 0:
+            return True
+        seconds = float(self.t0) / self.fs_song
+        return seconds < float(self.x[0]) or seconds > float(self.x[-1])
+
+    def _clear_playback_window(self) -> None:
+        self._playback_window_start = None
+        self._playback_window_stop = None
+
+    def _set_playhead_sample(
+        self,
+        sample: float,
+        *,
+        refresh: bool = True,
+        process_events: bool = True,
+        preserve_playback_window: bool = False,
+        force_refresh: bool = False,
+    ) -> None:
+        if not preserve_playback_window:
+            self._clear_playback_window()
+        old_t0 = getattr(self, "_t0", self.tmin)
+        self._t0 = np.clip(sample, self.tmin, self.tmax_playhead)
+        if force_refresh or not np.isclose(self._t0, old_t0, rtol=0.0, atol=1.0e-4):
+            self._sync_transport_controls()
+            if refresh or self._playhead_requires_view_refresh():
+                self.update_xy()
+                self.update_frame()
+            else:
+                self._sync_playhead_only()
+            if process_events:
+                self.app.processEvents()
+
+    def _transport_fast_seek(self, direction: int) -> None:
+        if direction:
+            self._seek_playhead(self.t0 + direction * self.span / 2)
+
+    def _transport_frame_seek(self, direction: int) -> None:
+        if direction:
+            self._seek_playhead(self.t0 + direction * self.frame_interval)
+
+    def _on_transport_seek(self, value: int) -> None:
+        self._seek_playhead(value)
+
+    def _on_slider_scrub_started(self) -> None:
+        self._is_slider_scrubbing = True
+
+    def _on_slider_scrub_finished(self) -> None:
+        self._is_slider_scrubbing = False
+        self._seek_audio_to_playhead()
+        self.update_xy()
+        self.update_frame()
+
+    def _seek_playhead(self, sample: float) -> None:
+        self._set_playhead_sample(sample, refresh=True)
+        self._playback_anchor_sample = float(self.t0)
+        self._playback_clock.restart()
+        self._seek_audio_to_playhead()
+
+    def _audio_source_path(self):
+        audio_suffixes = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".ogg", ".m4a"}
+        for key in ("filename", "audio_filename", "filepath_daq", "source_audio"):
+            value = self.ds.attrs.get(key) if hasattr(self.ds, "attrs") else None
+            if not value:
+                continue
+            path = Path(str(value)).expanduser()
+            if path.suffix.lower() in audio_suffixes and path.exists():
+                return path.resolve()
+        return None
+
+    def _setup_audio_clock(self, media_path: Path | None) -> None:
+        if media_path is None or QAudioOutput is None or QMediaPlayer is None or QUrl is None:
+            if hasattr(self, "_clock_label"):
+                self._clock_label.setToolTip("Timer-backed playback; install PySide6 for QMediaPlayer audio.")
+            if QMediaPlayer is None:
+                logger.warning("QMediaPlayer unavailable. Install PySide6 to enable synced transport audio.")
+            return
+        try:
+            self._audio_output = QAudioOutput(self)
+            self._audio_player = QMediaPlayer(self)
+            self._audio_player.setAudioOutput(self._audio_output)
+            self._audio_player.setSource(QUrl.fromLocalFile(str(media_path)))
+            self._audio_player.positionChanged.connect(self._on_audio_position_changed)
+            self._audio_player.durationChanged.connect(self._on_audio_duration_changed)
+            self._audio_player.playbackStateChanged.connect(self._on_audio_playback_state_changed)
+            self._audio_player.mediaStatusChanged.connect(self._on_audio_media_status_changed)
+            self._audio_player.errorOccurred.connect(self._on_audio_error)
+            if hasattr(self, "_clock_label"):
+                self._clock_label.setToolTip(f"QMediaPlayer audio ({media_path.name})")
+        except Exception as exc:
+            logger.debug("Could not initialize Qt audio playback: %s", exc)
+            self._audio_output = None
+            self._audio_player = None
+            if hasattr(self, "_clock_label"):
+                self._clock_label.setToolTip("Timer-backed playback")
+
+    def _seek_audio_to_playhead(self) -> None:
+        if self._audio_player is not None:
+            self._audio_player.setPosition(int(round(self.t0 / self.fs_song * 1000)))
+
+    def _toggle_playback(self) -> None:
+        if self._is_playing:
+            self._pause_playback()
+        else:
+            self._start_playback()
+
+    def _start_playback(self) -> None:
+        if self.t0 >= self.tmax_playhead:
+            self._seek_playhead(self.tmin)
+        page_start = self.time0
+        self._start_playback_page(page_start)
+
+    def _set_playback_window(self, page_start: float) -> None:
+        max_start = max(0, self.tmax - self.span)
+        page_start = int(np.clip(page_start, self.tmin, max_start))
+        self._playback_window_start = page_start
+        self._playback_window_stop = min(self.tmax, page_start + self.span)
+
+    def _start_playback_page(self, page_start: float) -> None:
+        self._set_playback_window(page_start)
+        self.STOP = False
+        self._is_playing = True
+        self._set_playhead_sample(
+            self._playback_window_start,
+            refresh=True,
+            preserve_playback_window=True,
+            force_refresh=True,
+        )
+        self._playback_anchor_sample = float(self.t0)
+        self._playback_clock.restart()
+        self._seek_audio_to_playhead()
+        self._playback_timer.start()
+        self._set_play_button_state(playing=True)
+        if self._audio_player is not None:
+            self._audio_player.play()
+
+    def _advance_playback_window(self, target_sample: float) -> bool:
+        changed = False
+        while self._playback_window_stop is not None and target_sample >= self._playback_window_stop:
+            next_start = self._playback_window_stop
+            if next_start >= self.tmax_playhead:
+                break
+            old_start = self._playback_window_start
+            old_stop = self._playback_window_stop
+            self._set_playback_window(next_start)
+            changed = True
+            if self._playback_window_start == old_start and self._playback_window_stop == old_stop:
+                break
+        return changed
+
+    def _pause_playback(self) -> None:
+        self.STOP = True
+        self._is_playing = False
+        self._playback_timer.stop()
+        self._set_play_button_state(playing=False)
+        if self._audio_player is not None:
+            self._audio_player.pause()
+
+    def _on_playback_tick(self) -> None:
+        if not self._is_playing:
+            return
+        if self._audio_player is not None:
+            target_sample = self._audio_player.position() / 1000 * self.fs_song
+        else:
+            target_sample = self._playback_anchor_sample + self._playback_clock.nsecsElapsed() / 1e9 * self.fs_song
+        if self._playback_window_start is not None:
+            target_sample = max(float(self._playback_window_start), target_sample)
+        page_stop = self._playback_window_stop if self._playback_window_stop is not None else self.tmax
+        if target_sample >= page_stop:
+            if page_stop >= self.tmax_playhead:
+                self._set_playhead_sample(self.tmax_playhead, refresh=True, preserve_playback_window=True)
+                self._pause_playback()
+                return
+            if self._advance_playback_window(target_sample):
+                self._set_playhead_sample(
+                    target_sample,
+                    refresh=True,
+                    process_events=False,
+                    preserve_playback_window=True,
+                    force_refresh=True,
+                )
+            return
+        if target_sample >= self.tmax_playhead:
+            self._set_playhead_sample(self.tmax_playhead, refresh=True, preserve_playback_window=True)
+            self._pause_playback()
+            return
+        self._set_playhead_sample(target_sample, refresh=False, process_events=False, preserve_playback_window=True)
+
+    def _on_audio_position_changed(self, position_ms: int) -> None:
+        if self._is_playing and self._playback_timer.isActive():
+            return
+        self._set_playhead_sample(position_ms / 1000 * self.fs_song, refresh=True)
+
+    def _on_audio_playback_state_changed(self, state) -> None:
+        if QMediaPlayer is None or self._audio_player is None:
+            return
+        stopped_state = getattr(QMediaPlayer, "StoppedState", None)
+        if stopped_state is None and hasattr(QMediaPlayer, "PlaybackState"):
+            stopped_state = QMediaPlayer.PlaybackState.StoppedState
+        if state == stopped_state and self._is_playing:
+            self._pause_playback()
+
+    def _on_audio_duration_changed(self, duration_ms: int) -> None:
+        if duration_ms > 0:
+            self.tmax = max(self.tmax, int(round(duration_ms / 1000 * self.fs_song)))
+            if hasattr(self, "_slider"):
+                self._slider.setMaximum(int(self.tmax_playhead))
+
+    def _on_audio_media_status_changed(self, status) -> None:
+        logger.debug("QMediaPlayer media status changed: %s", status)
+
+    def _on_audio_error(self, *args) -> None:
+        logger.warning("Qt audio playback error: %s", args)
+        self._audio_player = None
+        self._audio_output = None
+        if self._is_playing:
+            self._playback_anchor_sample = float(self.t0)
+            self._playback_clock.restart()
+
     @property
     def fs_ratio(self):
         return self.fs_song / self.fs_other
 
     @property
     def time0(self):
-        return int(int(max(0, self.t0 - self.span / 2) / self.fs_ratio) * self.fs_ratio)
+        max_start = max(0, self.tmax - self.span)
+        playback_start = getattr(self, "_playback_window_start", None)
+        if playback_start is None:
+            start = np.clip(self.t0 - self.span / 2, 0, max_start)
+        else:
+            start = np.clip(playback_start, 0, max_start)
+        return int(int(start / self.fs_ratio) * self.fs_ratio)
 
     @property
     def time1(self):
-        return int(int(max(0, self.t0 + self.span / 2) / self.fs_ratio) * self.fs_ratio)
+        stop = min(self.tmax, self.time0 + self.span)
+        return int(int(stop / self.fs_ratio) * self.fs_ratio)
+
+    @property
+    def tmax_playhead(self):
+        return max(self.tmin, self.tmax - 1)
 
     @property
     def trange(self):
@@ -1569,16 +1843,11 @@ class PSV(MainWindow):
 
     @t0.setter
     def t0(self, val: float):
-        old_t0 = self._t0
-        self._t0 = np.clip(val, self.span / 2, self.tmax - self.span / 2)  # ensure t0 stays within bounds
-        if not np.isclose(self._t0, old_t0, rtol=0.0, atol=1.0e-4):
-            self.scrollbar.setValue(int(round(self.t0)))
-            self.edit_time.setText(str(self.t0 / self.fs_song))
-            if self.vr is not None:
-                self.edit_frame.setText(str(self.framenumber))
-            self.update_xy()
-            self.update_frame()
-            self.app.processEvents()
+        self._set_playhead_sample(val, refresh=True)
+        if getattr(self, "_is_playing", False):
+            self._playback_anchor_sample = float(self.t0)
+            self._playback_clock.restart()
+            self._seek_audio_to_playhead()
 
     @property
     def framenumber(self):
@@ -1619,6 +1888,174 @@ class PSV(MainWindow):
         else:
             return self.event_times.names[self.current_event_index]
 
+    def _initial_event_presets(self):
+        colors = utils.make_colors(max(1, len(self.event_times.names)))
+        presets = {}
+        for index, name in enumerate(self.event_times.names):
+            color_hex = event_widgets.color_hex_from_rgb(colors[index % len(colors)])
+            values = np.asarray(self.event_times[name])
+            finite = values[np.all(np.isfinite(values[:, :2]), axis=1)] if values.size else np.zeros((0, 3))
+            durations = np.abs(finite[:, 1] - finite[:, 0]) if len(finite) else np.zeros((0,))
+            fixed_duration = not np.any(durations > 1e-9)
+            duration_seconds = 0.0 if fixed_duration else float(np.nanmedian(durations))
+            presets[name] = event_widgets.EventTypePreset(
+                name=name,
+                fixed_duration=fixed_duration,
+                duration_seconds=duration_seconds,
+                duration_editable=not fixed_duration,
+                color_hex=color_hex,
+            )
+        return presets
+
+    def _sync_event_colors_from_presets(self):
+        self.nb_eventtypes = len(self.event_times.names)
+        self.eventtype_colors = np.array(
+            [self._event_preset(name).color_tuple() for name in self.event_times.names],
+            dtype=int,
+        )
+
+    def _event_preset(self, name: str):
+        if not hasattr(self, "event_presets"):
+            self.event_presets = {}
+        if name not in self.event_presets:
+            index = self.event_times.names.index(name) if name in self.event_times.names else len(self.event_presets)
+            colors = utils.make_colors(max(1, index + 1))
+            self.event_presets[name] = event_widgets.EventTypePreset(
+                name=name,
+                color_hex=event_widgets.color_hex_from_rgb(colors[index % len(colors)]),
+            )
+        return self.event_presets[name]
+
+    def _event_presets_in_order(self):
+        return [self._event_preset(name) for name in self.event_times.names]
+
+    def _locked_duration_record_ids(self):
+        locked = []
+        for record in event_widgets.records_from_events(self.event_times):
+            preset = self._event_preset(record.name)
+            if preset.fixed_duration and not preset.duration_editable:
+                locked.append(record.id)
+        return locked
+
+    def _clamp_event_bounds(self, start_seconds: float, stop_seconds: float):
+        start = max(0.0, float(start_seconds))
+        stop = max(0.0, float(stop_seconds))
+        max_seconds = self.tmax / self.fs_song if getattr(self, "fs_song", 0) else None
+        if max_seconds is not None:
+            start = min(start, max_seconds)
+            stop = min(stop, max_seconds)
+        return start, stop
+
+    def _bounds_for_event_creation(self, name: str, start_seconds: float, stop_seconds: float = None):
+        if stop_seconds is None:
+            stop_seconds = start_seconds
+        start, stop = sorted([float(start_seconds), float(stop_seconds)])
+        preset = self._event_preset(name)
+        if preset.fixed_duration:
+            stop = start + max(0.0, float(preset.duration_seconds))
+        return self._clamp_event_bounds(start, stop)
+
+    def _bounds_for_event_edit(
+        self,
+        name: str,
+        old_start_seconds: float,
+        old_stop_seconds: float,
+        start_seconds: float,
+        stop_seconds: float,
+        changed_edge: str = "move",
+    ):
+        preset = self._event_preset(name)
+        start = float(start_seconds)
+        stop = float(stop_seconds)
+        if preset.fixed_duration and not preset.duration_editable:
+            duration = max(0.0, float(preset.duration_seconds))
+            if changed_edge == "stop":
+                stop = float(stop_seconds)
+                start = stop - duration
+            else:
+                start = float(start_seconds)
+                stop = start + duration
+        else:
+            start, stop = sorted([start, stop])
+        return self._clamp_event_bounds(start, stop)
+
+    def _refresh_preset_panel(self, selected_name: str = None):
+        if not hasattr(self, "preset_panel"):
+            return
+        if selected_name is None:
+            selected_name = self.current_event_name
+        self.preset_panel.set_presets(self._event_presets_in_order(), selected_name=selected_name)
+
+    def _on_preset_selected(self, name: str):
+        if name not in self.event_times.names:
+            return
+        for row, (_index, event_name) in enumerate(self.eventList, start=1):
+            if event_name == name:
+                self.cb.setCurrentIndex(row)
+                return
+
+    def _create_preset_from_panel(self):
+        dialog = event_widgets.EventTypePresetDialog(
+            title="Create Event",
+            used_names=self.event_times.names,
+            used_color_hexes=[preset.color_hex for preset in self._event_presets_in_order()],
+            parent=self,
+        )
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        preset = dialog.value()
+        if preset is None:
+            return
+        self.event_times.add_name(preset.name, category="event")
+        self.event_presets[preset.name] = preset
+        self._sync_after_event_type_change(selected_name=preset.name)
+
+    def _edit_preset_from_panel(self, name: str):
+        preset = self._event_preset(name)
+        dialog = event_widgets.EventTypePresetDialog(
+            title="Edit Event",
+            preset=preset,
+            used_names=self.event_times.names,
+            used_color_hexes=[item.color_hex for item in self._event_presets_in_order()],
+            parent=self,
+        )
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        updated = dialog.value()
+        if updated is None:
+            return
+        if updated.name != name:
+            self.event_times[updated.name] = self.event_times.pop(name)
+            self.event_times.categories.pop(name, None)
+            self.event_times.categories[updated.name] = "event"
+            self.event_presets.pop(name, None)
+        self.event_presets[updated.name] = updated
+        self._sync_after_event_type_change(selected_name=updated.name)
+
+    def _delete_preset_from_panel(self, name: str):
+        if name not in self.event_times.names:
+            return
+        confirmed = QtWidgets.QMessageBox.question(
+            self,
+            "Delete Event",
+            f"Delete event '{name}' and all of its annotations?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if confirmed != QtWidgets.QMessageBox.Yes:
+            return
+        del self.event_times[name]
+        self.event_times.categories.pop(name, None)
+        self.event_presets.pop(name, None)
+        selected_name = self.event_times.names[0] if self.event_times.names else None
+        self._sync_after_event_type_change(selected_name=selected_name)
+
+    def _sync_after_event_type_change(self, selected_name: str = None):
+        self._sync_event_colors_from_presets()
+        self.update_eventtype_selector(selected_name=selected_name)
+        self._refresh_preset_panel(selected_name=selected_name)
+        self.update_xy()
+
     @property
     def current_channel_name(self):
         return self.cb2.currentText()
@@ -1636,6 +2073,162 @@ class PSV(MainWindow):
         current_time = self.ds.time.sel(time=current_sampletime, method="nearest")
         index_other = np.where(self.ds.time == current_time)[0]
         return int(index_other)
+
+    def _event_color_map(self):
+        colors = {}
+        for index, name in enumerate(self.event_times.names):
+            if index < len(self.eventtype_colors):
+                colors[name] = tuple(int(v) for v in self.eventtype_colors[index])
+        return colors
+
+    def _refresh_event_widgets(self, sync_table_to_view: bool = False):
+        if not hasattr(self, "event_timeline") or not hasattr(self, "events_table"):
+            return
+        selected_ids = self.events_table.selected_record_ids()
+        colors = self._event_color_map()
+        self.event_timeline.set_events(
+            self.event_times,
+            colors=colors,
+            selected_ids=selected_ids,
+            locked_duration_ids=self._locked_duration_record_ids(),
+        )
+        self.events_table.set_events(self.event_times, selected_ids=selected_ids)
+        self.event_timeline.set_selected_ids(self.events_table.selected_record_ids())
+        self.event_timeline.set_playhead(float(self.t0) / self.fs_song)
+        if sync_table_to_view and self.events_table.sync_enabled and not self._syncing_event_selection:
+            try:
+                self._syncing_event_selection = True
+                self.events_table.select_overlapping_range(float(self.x[0]), float(self.x[-1]))
+            finally:
+                self._syncing_event_selection = False
+
+    def _after_event_edit(self):
+        for name in self.event_times.names:
+            self._event_preset(name)
+        self._sync_event_colors_from_presets()
+        self.update_eventtype_selector()
+        self._refresh_preset_panel()
+        self.update_xy()
+
+    def _on_events_table_selection(self, records):
+        if not hasattr(self, "event_timeline"):
+            return
+        selected_ids = [record.id for record in records]
+        self.event_timeline.set_selected_ids(selected_ids)
+        if self._syncing_event_selection or not records or not self.events_table.sync_enabled:
+            return
+        start = min(record.start_seconds for record in records)
+        stop = max(record.stop_seconds for record in records)
+        center = (start + stop) / 2
+        try:
+            self._syncing_event_selection = True
+            width_samples = max(200, int((stop - start) * self.fs_song * 1.25))
+            if width_samples > self.span:
+                self.span = width_samples
+            self.t0 = center * self.fs_song
+        finally:
+            self._syncing_event_selection = False
+
+    def _on_timeline_event_selected(self, records):
+        if not hasattr(self, "events_table"):
+            return
+        try:
+            self._syncing_event_selection = True
+            self.events_table.select_ids([record.id for record in records])
+            self.event_timeline.set_selected_ids([record.id for record in records])
+        finally:
+            self._syncing_event_selection = False
+
+    def _on_events_table_type_changed(self, records, new_name: str):
+        self._move_event_records(records, new_name=new_name)
+
+    def _on_events_table_time_changed(self, record, start_seconds: float, stop_seconds: float, changed_edge: str):
+        if record.name in self.event_times and record.index < len(self.event_times[record.name]):
+            start_seconds, stop_seconds = self._bounds_for_event_edit(
+                record.name,
+                record.start_seconds,
+                record.stop_seconds,
+                start_seconds,
+                stop_seconds,
+                changed_edge=changed_edge,
+            )
+            self.event_times[record.name][record.index, :2] = [start_seconds, stop_seconds]
+            self._after_event_edit()
+
+    def _on_events_table_delete(self, records):
+        by_name = {}
+        for record in records:
+            by_name.setdefault(record.name, []).append(record.index)
+        for name, indices in by_name.items():
+            if name not in self.event_times:
+                continue
+            for index in sorted(indices, reverse=True):
+                if index < len(self.event_times[name]):
+                    self.event_times[name] = np.delete(self.event_times[name], index, axis=0)
+        self._after_event_edit()
+
+    def _on_timeline_event_created(self, name: str, start_seconds: float, stop_seconds: float):
+        channel = self.current_channel_index
+        if channel is None:
+            channel = -1
+        start_seconds, stop_seconds = self._bounds_for_event_creation(name, start_seconds, stop_seconds)
+        self.event_times.add_time(name, start_seconds, stop_seconds, category="event", channel=channel)
+        self._after_event_edit()
+
+    def _on_timeline_event_changed(self, record, new_name: str, start_seconds: float, stop_seconds: float):
+        if new_name != record.name:
+            self._move_event_records([record], new_name=new_name, start_seconds=start_seconds, stop_seconds=stop_seconds)
+            return
+        if record.name in self.event_times and record.index < len(self.event_times[record.name]):
+            start_seconds, stop_seconds = self._bounds_for_event_edit(
+                record.name,
+                record.start_seconds,
+                record.stop_seconds,
+                start_seconds,
+                stop_seconds,
+                changed_edge="move",
+            )
+            self.event_times[record.name][record.index, :2] = [start_seconds, stop_seconds]
+            self._after_event_edit()
+
+    def _update_event_time_by_bounds(
+        self, name: str, old_start: float, old_stop: float, new_start: float, new_stop: float
+    ) -> bool:
+        if name not in self.event_times:
+            return False
+        rows = self.event_times[name]
+        hits = np.isclose(rows[:, 0], old_start) & np.isclose(rows[:, 1], old_stop)
+        if not np.any(hits):
+            return False
+        rows[hits, :2] = [new_start, new_stop]
+        return True
+
+    def _move_event_records(self, records, new_name: str, start_seconds: float = None, stop_seconds: float = None):
+        if new_name not in self.event_times:
+            self.event_times.add_name(new_name, category="event")
+        by_name = {}
+        for record in records:
+            by_name.setdefault(record.name, []).append(record)
+        for old_name, grouped in by_name.items():
+            if old_name not in self.event_times:
+                continue
+            for record in sorted(grouped, key=lambda item: item.index, reverse=True):
+                if record.index >= len(self.event_times[old_name]):
+                    continue
+                row = self.event_times[old_name][record.index].copy()
+                self.event_times[old_name] = np.delete(self.event_times[old_name], record.index, axis=0)
+                row[0] = record.start_seconds if start_seconds is None else start_seconds
+                row[1] = record.stop_seconds if stop_seconds is None else stop_seconds
+                row[0], row[1] = self._bounds_for_event_edit(
+                    new_name,
+                    record.start_seconds,
+                    record.stop_seconds,
+                    row[0],
+                    row[1],
+                    changed_edge="move",
+                )
+                self.event_times.add_time(new_name, row[0], row[1], category="event", channel=int(row[2]))
+        self._after_event_edit()
 
     def _add_keyed_menuitem(
         self,
@@ -1699,37 +2292,20 @@ class PSV(MainWindow):
 
     def threshold(self, qt_keycode):
         if self.STOP and self.current_event_name is not None:
-            if self.event_times.categories[self.current_event_name] == "event":
-                indexes = peakutils.indexes(
-                    self.envelope,
-                    thres=self.slice_view.threshold,
-                    min_dist=self.thres_min_dist * self.fs_song,
-                    thres_abs=True,
-                )
-                # add events to current song type
-                for t in self.x[indexes]:
-                    self.event_times.add_time(self.current_event_name, t)
-                    logger.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
-                # TODO ensure we did not add duplicates - maybe call np.unique at the end?
-                old_len = self.event_times[self.current_event_name].shape[0]
-                self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
-                new_len = self.event_times[self.current_event_name].shape[0]
-                if new_len != old_len:
-                    logger.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
-            if self.event_times.categories[self.current_event_name] == "segment":
-                # get pos and neg crossings
-                x = np.diff((self.envelope > self.slice_view.threshold).astype(float))
-                onsets = np.where(x == 1)[0]
-                offsets = np.where(x == -1)[0]
-                # remove incomplete segments at bounds
-                if offsets[0] <= onsets[0]:
-                    offsets = offsets[1:]
-                if onsets[-1] >= offsets[-1]:
-                    onsets = onsets[:-1]
-                # add segments to current song type
-                for onset, offset in zip(self.x[onsets], self.x[offsets]):
-                    self.event_times.add_time(self.current_event_name, onset, offset)
-                    logger.info(f"   Added {self.current_event_name} at t={offset:1.4f}:{onset:1.4f}: seconds.")
+            indexes = peakutils.indexes(
+                self.envelope,
+                thres=self.slice_view.threshold,
+                min_dist=self.thres_min_dist * self.fs_song,
+                thres_abs=True,
+            )
+            for t in self.x[indexes]:
+                self.event_times.add_time(self.current_event_name, t)
+                logger.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
+            old_len = self.event_times[self.current_event_name].shape[0]
+            self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
+            new_len = self.event_times[self.current_event_name].shape[0]
+            if new_len != old_len:
+                logger.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
 
             self.update_xy()
 
@@ -1773,12 +2349,7 @@ class PSV(MainWindow):
             self.update_xy()
 
     def toggle_playvideo(self, qt_keycode=None):
-        self.STOP = not self.STOP
-        if not self.STOP:
-            self.playButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPause))
-            self.play_video()
-        else:
-            self.playButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+        self._toggle_playback()
 
     def toggle_show_poses(self, qt_keycode):
         self.show_poses = not self.show_poses
@@ -1910,7 +2481,12 @@ class PSV(MainWindow):
         else:
             self.envelope = None
 
-        if self.show_trace:
+        if hasattr(self, "event_timeline"):
+            self.event_timeline.set_waveform(self.x, self.y)
+        if hasattr(self, "preset_panel"):
+            self.preset_panel.set_current_name(self.current_event_name)
+
+        if getattr(self, "_slice_view_in_layout", False) and self.show_trace:
             self.slice_view.update_trace()
             self.slice_view.show()
         else:
@@ -1938,7 +2514,9 @@ class PSV(MainWindow):
                 i1 = int(self.time1 / self.fs_ratio)
 
                 self.x_tracks = self.ds.time.data[i0:i1]
-                self.y_tracks = self.ds.pose_positions_allo.data[i0:i1, self.focal_fly, self.track_sel_names, self.track_sel_coords]
+                self.y_tracks = self.ds.pose_positions_allo.data[
+                    i0:i1, self.focal_fly, self.track_sel_names, self.track_sel_coords
+                ]
                 self.tracks_view.update_trace()
                 self.tracks_view.show()
             else:
@@ -1953,8 +2531,12 @@ class PSV(MainWindow):
             self.spec_view.clear()
             self.spec_view.hide()
 
-        if self.show_songevents and (self.show_trace or self.show_tracks or self.show_spec or self.show_annot):
+        if self.show_songevents and (
+            self.show_tracks or self.show_spec or self.show_annot or getattr(self, "_slice_view_in_layout", False)
+        ):
             self.plot_song_events(self.x)
+
+        self._refresh_event_widgets(sync_table_to_view=True)
 
     def update_frame(self):
         if self.movie_view is not None:
@@ -1977,14 +2559,17 @@ class PSV(MainWindow):
 
             events_in_view = self.event_times.filter_range(event_name, x[0], x[-1], strict=False)
 
-            if self.show_segment_text:
-                segment_text = event_name
+            if self.show_event_text:
+                event_text = event_name
             else:
-                segment_text = None
+                event_text = None
 
-            if self.event_times.categories[event_name] == "segment":
-                for onset, offset in zip(events_in_view[:, 0], events_in_view[:, 1]):
-                    if self.show_trace:
+            point_like = events_in_view[:, 0] == events_in_view[:, 1] if len(events_in_view) else []
+            interval_events = events_in_view[~point_like] if len(events_in_view) else []
+            point_events = events_in_view[point_like] if len(events_in_view) else []
+            if len(interval_events):
+                for onset, offset in zip(interval_events[:, 0], interval_events[:, 1]):
+                    if getattr(self, "_slice_view_in_layout", False) and self.show_trace:
                         self.slice_view.add_segment(
                             onset,
                             offset,
@@ -1992,7 +2577,7 @@ class PSV(MainWindow):
                             brush=event_brush,
                             pen=event_pen,
                             movable=movable,
-                            text=segment_text,
+                            text=event_text,
                         )
                     if self.show_tracks:
                         self.tracks_view.add_segment(
@@ -2002,7 +2587,7 @@ class PSV(MainWindow):
                             brush=event_brush,
                             pen=event_pen,
                             movable=movable,
-                            text=segment_text,
+                            text=event_text,
                         )
                     if self.show_annot:
                         self.annot_view.add_segment(
@@ -2012,7 +2597,7 @@ class PSV(MainWindow):
                             brush=event_brush_annot,
                             pen=event_pen,
                             movable=movable,
-                            text=segment_text,
+                            text=event_text,
                         )
                     if self.show_spec:
                         self.spec_view.add_segment(
@@ -2022,55 +2607,47 @@ class PSV(MainWindow):
                             brush=event_brush,
                             pen=event_pen,
                             movable=movable,
-                            text=segment_text,
+                            text=event_text,
                         )
-            elif self.event_times.categories[event_name] == "event":
-                if self.show_trace:
+            if len(point_events):
+                if getattr(self, "_slice_view_in_layout", False) and self.show_trace:
                     self.slice_view.add_event(
-                        events_in_view[:, 0],
+                        point_events[:, 0],
                         event_index,
                         event_pen,
                         movable=movable,
-                        text=segment_text,
+                        text=event_text,
                     )
                 if self.show_tracks:
                     self.tracks_view.add_event(
-                        events_in_view[:, 0],
+                        point_events[:, 0],
                         event_index,
                         event_pen,
                         movable=movable,
-                        text=segment_text,
+                        text=event_text,
                     )
                 if self.show_annot:
                     self.annot_view.add_event(
-                        events_in_view[:, 0],
+                        point_events[:, 0],
                         event_index,
                         event_pen,
                         movable=movable,
-                        text=segment_text,
+                        text=event_text,
                     )
                 if self.show_spec:
                     self.spec_view.add_event(
-                        events_in_view[:, 0],
+                        point_events[:, 0],
                         event_index,
                         event_pen,
                         movable=movable,
-                        text=segment_text,
+                        text=event_text,
                     )
 
     def play_video(self):  # TODO: get rate from ds (video fps attr)
-        RUN = True
-        while RUN:
-            self.t0 += self.frame_interval
-            if self.STOP:
-                RUN = False
-                self.update_xy()
-                self.update_frame()
-                logger.debug("   Stopped playback.")
-                self.app.processEvents()
+        self._start_playback()
 
     def on_region_change_finished(self, region):
-        """Called when dragging a segment-like song_event - will change its bounds."""
+        """Called when dragging an interval event - will change its bounds."""
         if self.edit_only_current_events and self.current_event_index != region.event_index:
             return
 
@@ -2079,8 +2656,33 @@ class PSV(MainWindow):
             event_name_to_move = self.event_times.names[region.event_index]
 
         new_region = region.getRegion()
-        self.event_times.move_time(event_name_to_move, region.bounds, new_region)
-        logger.info(f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds.")
+        changed_edge = "move"
+        old_delta = region.bounds[1] - region.bounds[0]
+        new_delta = new_region[1] - new_region[0]
+        if not np.isclose(old_delta, new_delta):
+            if abs(new_region[0] - region.bounds[0]) >= abs(new_region[1] - region.bounds[1]):
+                changed_edge = "start"
+            else:
+                changed_edge = "stop"
+        new_region = self._bounds_for_event_edit(
+            event_name_to_move,
+            region.bounds[0],
+            region.bounds[1],
+            new_region[0],
+            new_region[1],
+            changed_edge=changed_edge,
+        )
+        if not self._update_event_time_by_bounds(
+            event_name_to_move,
+            region.bounds[0],
+            region.bounds[1],
+            new_region[0],
+            new_region[1],
+        ):
+            self.event_times.move_time(event_name_to_move, region.bounds, new_region)
+        logger.info(
+            f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
+        )
 
         # FIXME for moving annotations in ethogram - fails in pyside6
         if self.annot_view.mousePoint is not None:
@@ -2101,9 +2703,24 @@ class PSV(MainWindow):
         event_name_to_move = self.current_event_name
         if self.current_event_index != position.event_index:
             event_name_to_move = self.event_times.names[position.event_index]
-        print(position.pos(), position.position)
-        new_position = position.pos()[0]
-        self.event_times.move_time(event_name_to_move, position.position, new_position)
+        new_point = position.pos()
+        new_position = new_point.x() if hasattr(new_point, "x") else new_point[0]
+        new_position, new_stop = self._bounds_for_event_edit(
+            event_name_to_move,
+            position.position,
+            position.position,
+            new_position,
+            new_position,
+            changed_edge="move",
+        )
+        if not self._update_event_time_by_bounds(
+            event_name_to_move,
+            position.position,
+            position.position,
+            new_position,
+            new_stop,
+        ):
+            self.event_times.move_time(event_name_to_move, position.position, new_position)
         logger.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
 
         # FIXME for moving annotations in ethogram - fails in pyside6
@@ -2152,7 +2769,10 @@ class PSV(MainWindow):
                 fly_pos = self.ds.pose_positions_allo.data[self.index_other, :, self.pose_center_index, :]
                 fly_pos = np.array(fly_pos)  # in case this is a dask.array
                 if self.crop:  # transform fly pos to coordinates of the cropped box
-                    box_center = self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.pose_center_index] + self.box_size / 2
+                    box_center = (
+                        self.ds.pose_positions_allo.data[self.index_other, self.focal_fly, self.pose_center_index]
+                        + self.box_size / 2
+                    )
                     box_center = np.array(box_center)  # in case this is a dask.array
                     fly_pos = fly_pos - box_center
                 fly_dist = np.sum((fly_pos - np.array([mouseY, mouseX])) ** 2, axis=-1)
@@ -2189,39 +2809,22 @@ class PSV(MainWindow):
                 max_time=self.time1 / self.fs_song,
             )
             if changed_time is not None:
-                if self.event_times.categories[self.current_event_name] == "event":
-                    logger.info(f"  Changed event at {changed_time[0]:1.4f} from {old_name} to {new_name}.")
-                else:
-                    logger.info(f"  Changed segment at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}.")
+                logger.info(f"  Changed event at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}.")
                 self.update_xy()
         elif mouseButton == QtCore.Qt.MouseButton.LeftButton:  # add event
             if self.current_event_index is not None:
-                if self.event_times.categories[self.current_event_name] == "segment":
-                    if self.sinet0 is None:
-                        self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-                        self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-                        self.annot_view.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
-                        self.sinet0 = mouseT
-                    else:
-                        self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-                        self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-                        self.annot_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-                        self.event_times.add_time(
-                            self.current_event_name,
-                            start_seconds=self.sinet0,
-                            stop_seconds=mouseT,
-                            channel=self.current_channel_index,
-                        )
-                        logger.info(f"  Added {self.current_event_name} on channel {self.current_channel_index} at t=[{self.sinet0:1.4f}:{mouseT:1.4f}] seconds.")
-                        self.sinet0 = None
-                if self.event_times.categories[self.current_event_name] == "event":
-                    self.sinet0 = None
-                    self.event_times.add_time(
-                        self.current_event_name,
-                        start_seconds=mouseT,
-                        channel=self.current_channel_index,
-                    )
-                    logger.info(f"  Added {self.current_event_name} on channel {self.current_channel_index} at t={mouseT:1.4f} seconds.")
+                self.sinet0 = None
+                start_seconds, stop_seconds = self._bounds_for_event_creation(self.current_event_name, mouseT)
+                self.event_times.add_time(
+                    self.current_event_name,
+                    start_seconds=start_seconds,
+                    stop_seconds=stop_seconds,
+                    channel=self.current_channel_index,
+                )
+                logger.info(
+                    f"  Added {self.current_event_name} on channel {self.current_channel_index} "
+                    f"at t={start_seconds:1.4f}:{stop_seconds:1.4f} seconds."
+                )
                 self.update_xy()
             else:
                 self.sinet0 = None
@@ -2292,7 +2895,7 @@ class PSV(MainWindow):
 
     def approve_proposals(self, appprove_only_active_event: bool = False):
         t0 = self.ds.sampletime.data[self.time0]
-        t1 = self.ds.sampletime.data[self.time1]
+        t1 = self.ds.sampletime.data[min(self.time1, self.tmax_playhead)]
 
         proposal_suffix = "_proposals"
         logger.info("Approving:")
@@ -2306,7 +2909,7 @@ class PSV(MainWindow):
                 # delete from `songtype_proposals`, add to `songtype`
                 self.event_times.add_name(
                     name=name[: -len(proposal_suffix)],
-                    category=self.event_times.categories[name],
+                    category="event",
                     times=within_range_times,
                     append=True,
                     overwrite=False,
@@ -2315,8 +2918,9 @@ class PSV(MainWindow):
                 if len(within_range_times):
                     logger.info(f"   {len(within_range_times)} events of {name} to {name[: -len(proposal_suffix)]}")
         # update event selector in case the event did not exist yet
-        self.nb_eventtypes = len(self.event_times)
-        self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
+        for name in self.event_times.names:
+            self._event_preset(name)
+        self._sync_event_colors_from_presets()
         self.update_eventtype_selector()
 
         logger.info("Done.")
@@ -2326,8 +2930,7 @@ class PSV(MainWindow):
         if dialog is None:
             if hasattr(self, "event_times"):
                 types = self.event_times.names
-                cats = list(self.event_times.categories.values())
-                table_data = [[typ, cat] for typ, cat in zip(types, cats)]
+                table_data = [[typ] for typ in types]
             else:
                 table_data = []
 
@@ -2343,12 +2946,11 @@ class PSV(MainWindow):
             # now edit self.event_times
             event_names = []
             event_names_old = []
-            event_categories = []
             for item in data:
                 event_name, event_name_old = item[0]
-                event_names.append(event_name)
-                event_names_old.append(event_name_old)
-                event_categories.append(item[1][0])
+                if len(event_name):
+                    event_names.append(event_name)
+                    event_names_old.append(event_name_old)
 
             # deletions: deletion in table will remove the entry from the list -
             # so it's name will not even be in event_names_old anymore
@@ -2356,15 +2958,25 @@ class PSV(MainWindow):
             for event_name_current in event_names_current:
                 if event_name_current not in event_names_old:
                     del self.event_times[event_name_current]
-                    del self.event_times.categories[event_name_current]
+                    self.event_times.categories.pop(event_name_current, None)
+                    if hasattr(self, "event_presets"):
+                        self.event_presets.pop(event_name_current, None)
 
             # propagate existing and create new
-            for event_name, event_category, event_name_old in zip(event_names, event_categories, event_names_old):
+            for event_name, event_name_old in zip(event_names, event_names_old):
                 if event_name_old in self.event_times and event_name != event_name_old:  # rename existing
                     self.event_times[event_name] = self.event_times.pop(event_name_old)
-                    self.event_times.categories[event_name] = self.event_times.categories.pop(event_name_old)
+                    self.event_times.categories.pop(event_name_old, None)
+                    self.event_times.categories[event_name] = "event"
+                    if hasattr(self, "event_presets"):
+                        preset = self.event_presets.pop(event_name_old, None)
+                        if preset is not None:
+                            self.event_presets[event_name] = preset.with_name(event_name)
                 elif event_name_old not in self.event_times:  # create new empty
-                    self.event_times.add_name(event_name, event_category)
+                    self.event_times.add_name(event_name, "event")
+                    self._event_preset(event_name)
+                else:
+                    self.event_times.categories[event_name] = "event"
 
             # update event-related attrs
             if "song_events" in self.ds:
@@ -2374,8 +2986,7 @@ class PSV(MainWindow):
             else:
                 self.fs_other = self.fs_song
 
-            self.nb_eventtypes = len(self.event_times)
-            self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
+            self._sync_event_colors_from_presets()
 
             self.update_eventtype_selector()
         if dialog is not None:  # update docked table widget
@@ -2384,8 +2995,7 @@ class PSV(MainWindow):
     def update_eventtype_dialog(self):
         if hasattr(self, "event_times"):
             types = self.event_times.names
-            cats = list(self.event_times.categories.values())
-            table_data = [[typ, cat] for typ, cat in zip(types, cats)]
+            table_data = [[typ] for typ in types]
         else:
             table_data = []
 
@@ -2397,7 +3007,13 @@ class PSV(MainWindow):
         self.dialog.revert_button.clicked.connect(self.update_eventtype_dialog)
         self.dialog.button_layout.addWidget(self.dialog.revert_button)
 
-    def update_eventtype_selector(self):
+    def update_eventtype_selector(self, selected_name: str = None):
+        if selected_name is None:
+            try:
+                selected_name = self.current_event_name
+            except Exception:
+                selected_name = None
+        self.cb.blockSignals(True)
         # delete all existing entries
         while self.cb.count() > 0:
             self.cb.removeItem(0)
@@ -2409,15 +3025,21 @@ class PSV(MainWindow):
             self.eventList = []
 
         if not len(self.eventList):
-            self.cb.addItem("Initialize song types")
+            self.cb.addItem("Initialize events")
+            self.cb.blockSignals(False)
             return
 
         self.cb.addItem("No annotation")
         for event_type in self.eventList:
             self.cb.addItem("Add " + event_type[1])
 
-        # auto-select last in list
-        self.cb.setCurrentIndex(len(self.eventList))
+        selected_index = len(self.eventList)
+        if selected_name is not None:
+            for row, (_event_index, event_name) in enumerate(self.eventList, start=1):
+                if event_name == selected_name:
+                    selected_index = row
+                    break
+        self.cb.setCurrentIndex(selected_index)
 
         # update menus
         # remove associated menu items
@@ -2444,6 +3066,8 @@ class PSV(MainWindow):
         itemList = children[0]
         for ii, col in zip(range(1, itemList.rowCount()), self.eventtype_colors):
             itemList.item(ii).setForeground(QtGui.QColor(*col))
+        self.cb.blockSignals(False)
+        self._refresh_preset_panel(selected_name=self.current_event_name)
 
 
 def main(
@@ -2468,12 +3092,11 @@ def main(
             - an h5 file
             - an xarray-behave dataset constructed from an ethodrome data folder saved as a zarr file,
             - an ethodrome data folder (e.g. 'dat/localhost-xxx').
-        song_types_string (str): Initialize song types for annotations.
-                             String of the form "song_name,song_category;song_name,song_category".
+        events_string (str): Initialize event names for annotations.
+                             String of the form "event_name;event_name".
                              Avoid spaces or trailing ';'.
                              Need to wrap the string in "..." in the terminal
-                             "song_name" can be any string w/o space, ",", or ";"
-                             "song_category" can be "event" (e.g. pulse) or "segment" (sine, syllable
+                             "event_name" can be any string w/o space, ",", or ";"
         target_samplingrate (Optional[float]): [description]. If 0, will use frame times. Defaults to None.
                                      Only used if source is a data folder or a wav audio file.
         spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
@@ -2554,12 +3177,11 @@ def main_das(
             - an h5 file
             - an xarray-behave dataset constructed from an ethodrome data folder saved as a zarr file,
             - an ethodrome data folder (e.g. 'dat/localhost-xxx').
-        song_types_string (str): Initialize song types for annotations.
-                             String of the form "song_name,song_category;song_name,song_category".
+        song_types_string (str): Initialize event names for annotations.
+                             String of the form "event_name;event_name".
                              Avoid spaces or trailing ';'.
                              Need to wrap the string in "..." in the terminal
-                             "song_name" can be any string w/o space, ",", or ";"
-                             "song_category" can be "event" (e.g. pulse) or "segment" (sine, syllable)
+                             "event_name" can be any string w/o space, ",", or ";"
         spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
         spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
