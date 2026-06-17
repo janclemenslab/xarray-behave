@@ -44,7 +44,7 @@ def assemble(
     fix_fly_indices: bool = True,
     pixel_size_mm: Optional[float] = None,
     lazy_load_song: bool = False,
-    make_song_events: bool = True,
+    make_song_events: bool = False,
 ) -> xr.Dataset:
     """[summary]
 
@@ -79,7 +79,7 @@ def assemble(
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
-        make_song_events (bool, optional): Make binary matrix of song events. Defaults to True.
+        make_song_events (bool, optional): Make binary matrix of song events. Defaults to False.
     Returns:
         xarray.Dataset
     """

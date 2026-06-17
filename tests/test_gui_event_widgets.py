@@ -41,6 +41,15 @@ def test_records_from_events_preserves_intervals_and_channels():
     assert records[1].duration_seconds == 0.2
 
 
+def test_records_from_events_time_range_preserves_original_indices():
+    events = Events({"pulse": np.array([[0.0, 0.0, -1], [1.0, 1.1, -1], [2.0, 2.1, -1]])})
+
+    records = records_from_events(events, start_seconds=0.9, stop_seconds=1.2)
+
+    assert [record.id for record in records] == ["pulse\x1f1"]
+    assert records[0].index == 1
+
+
 def test_events_table_selects_overlapping_visible_range():
     _app()
     events = Events(

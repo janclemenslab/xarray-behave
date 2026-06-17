@@ -162,21 +162,33 @@ class Events(UserDict):
         if hasattr(self, "categories") and hasattr(new_dict, "categories"):
             self.categories.update(new_dict.categories)
 
-    def _init_df(self, with_channel: bool = True):
-        columns = ["name", "start_seconds", "stop_seconds"]
-        if with_channel:
-            columns.append("channel")
-        return pd.DataFrame(columns=columns)
+    def _to_columns(self, preserve_empty: bool = True):
+        names = []
+        starts = []
+        stops = []
+        channels = []
+        for name in self.names:
+            values = np.asarray(self[name])
+            if len(values):
+                names.extend([name] * len(values))
+                starts.append(values[:, 0])
+                stops.append(values[:, 1])
+                channels.append(values[:, 2])
+            elif preserve_empty:
+                names.append(name)
+                starts.append(np.array([np.nan]))
+                stops.append(np.array([np.nan]))
+                channels.append(np.array([-1]))
 
-    def _append_row(
-        self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None, channel: int = -1
-    ):
-        if stop_seconds is None:
-            stop_seconds = start_seconds
-
-        data = [name, start_seconds, stop_seconds, channel]
-        new_row = pd.DataFrame(np.array(data)[np.newaxis, :], columns=df.columns)
-        return pd.concat((df, new_row), ignore_index=True)
+        if starts:
+            start_seconds = np.concatenate(starts).astype(float, copy=False)
+            stop_seconds = np.concatenate(stops).astype(float, copy=False)
+            channels = np.concatenate(channels).astype(float, copy=False)
+        else:
+            start_seconds = np.array([], dtype=float)
+            stop_seconds = np.array([], dtype=float)
+            channels = np.array([], dtype=float)
+        return np.asarray(names), start_seconds, stop_seconds, channels
 
     def to_df(self, preserve_empty: bool = True, with_channels: bool = True):
         """Convert to pandas.DataFeame
@@ -192,19 +204,14 @@ class Events(UserDict):
         Returns:
             pandas.DataFrame: with columns name, start_seconds, stop_seconds, channels (if with_channels). One row per event.
         """
-        df = self._init_df()
-        for name in self.names:
-            for start_second, stop_second, channel in zip(
-                self.start_seconds(name), self.stop_seconds(name), self.channels(name)
-            ):
-                df = self._append_row(df, name, start_second, stop_second, channel)
-        if preserve_empty:  # ensure we keep event names without annotations
-            for name in self.names:
-                if name not in df.name.values:
-                    df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=np.nan)
-        # make sure start and stop seconds are numeric
-        df["start_seconds"] = pd.to_numeric(df["start_seconds"], errors="coerce")
-        df["stop_seconds"] = pd.to_numeric(df["stop_seconds"], errors="coerce")
+        names, start_seconds, stop_seconds, channels = self._to_columns(preserve_empty=preserve_empty)
+        data = {
+            "name": names,
+            "start_seconds": start_seconds,
+            "stop_seconds": stop_seconds,
+            "channel": channels,
+        }
+        df = pd.DataFrame(data)
         if not with_channels:
             del df["channel"]
         return df
@@ -220,12 +227,7 @@ class Events(UserDict):
         Returns:
             Tuple[List[str], List[float], List[float]: with names, start_seconds, stop_seconds.
         """
-        df = self.to_df(preserve_empty=preserve_empty)
-        names = df.name.values
-        start_seconds = df.start_seconds.values.astype(float)
-        stop_seconds = df.stop_seconds.values.astype(float)
-        channels = df.channel.values.astype(float)
-        return names, start_seconds, stop_seconds, channels
+        return self._to_columns(preserve_empty=preserve_empty)
 
     def to_dataset(self):
         names, start_seconds, stop_seconds, channels = self.to_lists()

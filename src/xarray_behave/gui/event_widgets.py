@@ -113,13 +113,26 @@ def _record_id(name: str, index: int) -> str:
     return f"{name}\x1f{int(index)}"
 
 
-def records_from_events(events: Events) -> list[EventRecord]:
+def records_from_events(
+    events: Events,
+    start_seconds: float | None = None,
+    stop_seconds: float | None = None,
+) -> list[EventRecord]:
     records: list[EventRecord] = []
     for name in events.names:
         values = np.asarray(events[name])
         if values.size == 0:
             continue
-        for index, row in enumerate(values):
+        indices = np.arange(values.shape[0])
+        if start_seconds is not None or stop_seconds is not None:
+            start_bound = -np.inf if start_seconds is None else float(start_seconds)
+            stop_bound = np.inf if stop_seconds is None else float(stop_seconds)
+            row_starts = np.minimum(values[:, 0], values[:, 1])
+            row_stops = np.maximum(values[:, 0], values[:, 1])
+            keep = np.logical_and(row_stops >= start_bound, row_starts <= stop_bound)
+            values = values[keep]
+            indices = indices[keep]
+        for index, row in zip(indices, values):
             start, stop = sorted([float(row[0]), float(row[1])])
             if not np.isfinite(start) or not np.isfinite(stop):
                 continue
@@ -212,13 +225,15 @@ class EventsTableWidget(QtWidgets.QWidget):
         events: Events,
         selected_ids: Iterable[str] | None = None,
         locked_event_names: Iterable[str] | None = None,
+        start_seconds: float | None = None,
+        stop_seconds: float | None = None,
     ) -> None:
         selected = set(selected_ids or self.selected_record_ids())
         self._blocked = True
         self._events = Events(events)
         self._event_names = list(self._events.names)
         self._locked_event_names = set(locked_event_names or set())
-        records = records_from_events(self._events)
+        records = records_from_events(self._events, start_seconds=start_seconds, stop_seconds=stop_seconds)
         self._records_by_id = {record.id: record for record in records}
         sort_state = self._sort_state()
         self.table.setSortingEnabled(False)
@@ -1010,9 +1025,11 @@ class EventBarsView(pg.PlotWidget):
         selected_ids: Iterable[str] | None = None,
         locked_duration_ids: Iterable[str] | None = None,
         locked_event_names: Iterable[str] | None = None,
+        start_seconds: float | None = None,
+        stop_seconds: float | None = None,
     ) -> None:
         self._events = Events(events)
-        self._records = records_from_events(self._events)
+        self._records = records_from_events(self._events, start_seconds=start_seconds, stop_seconds=stop_seconds)
         self._rows = list(self._events.names)
         self._row_index = {name: index for index, name in enumerate(self._rows)}
         self._colors = dict(colors or {})
@@ -1228,6 +1245,8 @@ class EventTimelineWidget(QtWidgets.QWidget):
         selected_ids: Iterable[str] | None = None,
         locked_duration_ids: Iterable[str] | None = None,
         locked_event_names: Iterable[str] | None = None,
+        start_seconds: float | None = None,
+        stop_seconds: float | None = None,
     ) -> None:
         self.events.set_events(
             events,
@@ -1235,6 +1254,8 @@ class EventTimelineWidget(QtWidgets.QWidget):
             selected_ids=selected_ids,
             locked_duration_ids=locked_duration_ids,
             locked_event_names=locked_event_names,
+            start_seconds=start_seconds,
+            stop_seconds=stop_seconds,
         )
 
     def set_selected_ids(self, selected_ids: Iterable[str]) -> None:

@@ -1932,9 +1932,13 @@ class PSV(MainWindow):
     def _locked_event_type_names(self):
         return [name for name in self.event_times.names if not self._event_type_editable(name)]
 
-    def _locked_duration_record_ids(self):
+    def _locked_duration_record_ids(self, start_seconds: float | None = None, stop_seconds: float | None = None):
         locked = []
-        for record in event_widgets.records_from_events(self.event_times):
+        for record in event_widgets.records_from_events(
+            self.event_times,
+            start_seconds=start_seconds,
+            stop_seconds=stop_seconds,
+        ):
             preset = self._event_preset(record.name)
             if preset.fixed_duration and not preset.duration_editable:
                 locked.append(record.id)
@@ -2126,14 +2130,27 @@ class PSV(MainWindow):
         colors = self._event_color_map()
         visible_events = self._visible_event_times()
         locked_event_names = self._locked_event_type_names()
+        start_seconds = None
+        stop_seconds = None
+        if sync_table_to_view and hasattr(self, "x") and len(self.x):
+            start_seconds = float(self.x[0])
+            stop_seconds = float(self.x[-1])
         self.event_timeline.set_events(
             visible_events,
             colors=colors,
             selected_ids=selected_ids,
-            locked_duration_ids=self._locked_duration_record_ids(),
+            locked_duration_ids=self._locked_duration_record_ids(start_seconds, stop_seconds),
             locked_event_names=locked_event_names,
+            start_seconds=start_seconds,
+            stop_seconds=stop_seconds,
         )
-        self.events_table.set_events(visible_events, selected_ids=selected_ids, locked_event_names=locked_event_names)
+        self.events_table.set_events(
+            visible_events,
+            selected_ids=selected_ids,
+            locked_event_names=locked_event_names,
+            start_seconds=start_seconds,
+            stop_seconds=stop_seconds,
+        )
         self.event_timeline.set_selected_ids(self.events_table.selected_record_ids())
         self.event_timeline.set_playhead(float(self.t0) / self.fs_song)
         if sync_table_to_view and self.events_table.sync_enabled and not self._syncing_event_selection:
@@ -3188,10 +3205,10 @@ def main(
     """
     app = pg.mkQApp()
 
-    mainwin = MainWindow()
-    mainwin.show()
+    mainwin = None
     if not len(source):
-        pass
+        mainwin = MainWindow()
+        mainwin.show()
     elif not os.path.exists(source):
         logger.info(f"{source} does not exist - skipping.")
     elif (
@@ -3202,7 +3219,7 @@ def main(
         or source.endswith(".hdf5")
         or source.lower().endswith(".mat")
     ):
-        MainWindow.from_file(
+        mainwin = MainWindow.from_file(
             filename=source,
             events_string=events_string,
             target_samplingrate=target_samplingrate,
@@ -3212,7 +3229,7 @@ def main(
             is_das=is_das,
         )
     elif source.endswith(".zarr"):
-        MainWindow.from_zarr(
+        mainwin = MainWindow.from_zarr(
             filename=source,
             box_size=box_size,
             spec_freq_min=spec_freq_min,
@@ -3221,7 +3238,7 @@ def main(
             is_das=is_das,
         )
     elif os.path.isdir(source):
-        MainWindow.from_dir(
+        mainwin = MainWindow.from_dir(
             dirname=source,
             events_string=events_string,
             target_samplingrate=target_samplingrate,
@@ -3232,6 +3249,7 @@ def main(
             skip_dialog=skip_dialog,
             is_das=is_das,
         )
+    app._xarray_behave_mainwin = mainwin
 
     # # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):

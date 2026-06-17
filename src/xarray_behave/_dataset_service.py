@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def assemble_from_file(filename: str, form_data: dict):
+    filter_song_requested = form_data["filter_song"] == "yes"
     ds = xb.assemble(
         filepath_daq=filename,
         filepath_annotations=form_data["annotation_path"],
@@ -19,9 +20,11 @@ def assemble_from_file(filename: str, form_data: dict):
         audio_sampling_rate=form_data["samplerate"],
         target_sampling_rate=form_data["target_samplingrate"],
         audio_dataset=form_data["data_set"],
+        lazy_load_song=not filter_song_requested,
+        make_song_events=form_data.get("generate_event_traces", False),
     )
 
-    if form_data["filter_song"] == "yes":
+    if filter_song_requested:
         ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
 
     ds.attrs["filename"] = filename
@@ -64,6 +67,7 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
         lazy_load_song=lazy_load_song,
         include_tracks=include_tracks,
         include_poses=include_poses,
+        make_song_events=form_data.get("generate_event_traces", False),
     )
 
     if filter_song_requested:
@@ -87,7 +91,9 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
 
 def load_from_zarr(filename: str, form_data: dict):
     ds = xb.load(filename, lazy=True, use_temp=True)
-    if "song_events" in ds:
+    load_event_traces = form_data.get("load_event_traces", False)
+    has_event_table = "event_times" in ds and "event_names" in ds and len(ds["event_names"]) > 0
+    if "song_events" in ds and (load_event_traces or not has_event_table):
         ds.song_events.load()
     if not form_data["lazy"]:
         logger.info("   Loading data from ds.")
@@ -159,8 +165,8 @@ def prepare_for_display(ds):
     return ds, original_spatial_units
 
 
-def prepare_for_save(ds, event_times, original_spatial_units=None):
-    if "song_events" in ds:
+def prepare_for_save(ds, event_times, original_spatial_units=None, generate_event_traces: bool = False):
+    if "song_events" in ds and generate_event_traces:
         logger.info("   Updating song events")
         ds = event_utils.eventtimes_to_traces(ds, event_times)
 
