@@ -7,7 +7,13 @@ from typing import Tuple
 
 from .. import xarray_behave as xb
 from . import utils
-from .event_widgets import _compact_tool_button, _settings_icon
+from .event_widgets import (
+    _activate_dialog,
+    _compact_tool_button,
+    _delete_dialog_later,
+    _dialog_is_open,
+    _settings_icon,
+)
 from .style_profile import TIMELINE_BACKGROUND, TIMELINE_GRID, TIMELINE_PLAYHEAD, TEXT_MUTED
 
 logger = logging.getLogger(__name__)
@@ -463,6 +469,7 @@ class SpecView(pg.ImageView):
         self.settings_button.setProperty("role", "presetGlobal")
         self.settings_button.setFixedSize(22, 22)
         self.settings_button.clicked.connect(lambda: self._open_settings_dialog())
+        self._settings_dialog = None
 
         # leave enough space so axes are aligned aligned
         self.y_axis = self.getView().getAxis("left")
@@ -523,9 +530,18 @@ class SpecView(pg.ImageView):
     def _open_settings_dialog(self):
         from . import view_dialog
 
+        if _dialog_is_open(self._settings_dialog):
+            _activate_dialog(self._settings_dialog)
+            return
         dialog = view_dialog.SpectrogramSettingsDialog(parent=self.window(), model=self.m)
-        dialog.show()
-        dialog.exec_()
+        self._settings_dialog = dialog
+        dialog.finished.connect(lambda _result, active_dialog=dialog: self._clear_settings_dialog(active_dialog))
+        _activate_dialog(dialog)
+
+    def _clear_settings_dialog(self, dialog):
+        if self._settings_dialog is dialog:
+            self._settings_dialog = None
+        _delete_dialog_later(dialog)
 
     def set_colormap(self, colormap: str):
         self.imageItem.setLookupTable(_lookup_colormap_lut(colormap))

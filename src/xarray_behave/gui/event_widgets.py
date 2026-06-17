@@ -9,6 +9,7 @@ import pyqtgraph as pg
 
 from ..annot import Events
 from .style_profile import TIMELINE_BACKGROUND, TIMELINE_GRID, TIMELINE_PLAYHEAD, TEXT_PRIMARY, TEXT_MUTED
+from .view_dialog import DoubleRangeSliderControl
 
 EVENT_COLOR_PALETTE: tuple[tuple[str, str], ...] = (
     ("Blue", "#35b7ff"),
@@ -22,6 +23,37 @@ EVENT_COLOR_PALETTE: tuple[tuple[str, str], ...] = (
 )
 Y_AXIS_WIDTH = 72
 WAVEFORM_OVERVIEW_MIN_SECONDS = 4.0
+
+
+def _dialog_is_open(dialog) -> bool:
+    if dialog is None:
+        return False
+    if hasattr(dialog, "isVisible"):
+        try:
+            return bool(dialog.isVisible())
+        except RuntimeError:
+            return False
+    return True
+
+
+def _activate_dialog(dialog) -> None:
+    try:
+        if hasattr(dialog, "show"):
+            dialog.show()
+        if hasattr(dialog, "raise_"):
+            dialog.raise_()
+        if hasattr(dialog, "activateWindow"):
+            dialog.activateWindow()
+    except RuntimeError:
+        return
+
+
+def _delete_dialog_later(dialog) -> None:
+    try:
+        if hasattr(dialog, "deleteLater"):
+            dialog.deleteLater()
+    except RuntimeError:
+        return
 
 
 def _configure_y_axis_inside(axis, label: str) -> None:
@@ -200,6 +232,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         self._event_names: list[str] = []
         self._locked_event_names: set[str] = set()
         self._channel_filter: int | None = None
+        self._type_combo_selection_ids: list[str] | None = None
         self._sync_enabled = True
         self._blocked = False
 
@@ -249,6 +282,7 @@ class EventsTableWidget(QtWidgets.QWidget):
     ) -> None:
         selected = set(selected_ids or self.selected_record_ids())
         self._blocked = True
+        self._type_combo_selection_ids = None
         self._events = Events(events)
         self._event_names = list(self._events.names)
         self._locked_event_names = set(locked_event_names or set())
@@ -317,6 +351,8 @@ class EventsTableWidget(QtWidgets.QWidget):
         idx = combo.findText(record.name)
         combo.setCurrentIndex(max(0, idx))
         combo.setEnabled(not locked)
+        combo.setProperty("xarray_behave_record_id", record.id)
+        combo.installEventFilter(self)
         combo.activated.connect(lambda _idx, rid=record.id, source=combo: self._on_type_combo(rid, source.currentText()))
         self.table.setCellWidget(row, self._COL_TYPE, combo)
 
@@ -347,17 +383,40 @@ class EventsTableWidget(QtWidgets.QWidget):
         return item
 
     def _on_type_combo(self, record_id: str, new_name: str) -> None:
+        pending_selected_ids = self._type_combo_selection_ids
+        self._type_combo_selection_ids = None
         if self._blocked or not new_name:
             return
-        selected = self.selected_records()
         source = self._records_by_id.get(record_id)
+        selected_ids = self.selected_record_ids()
+        if (
+            pending_selected_ids is not None
+            and record_id in pending_selected_ids
+            and len(pending_selected_ids) >= len(selected_ids)
+        ):
+            selected_ids = pending_selected_ids
+        selected = [self._records_by_id[selected_id] for selected_id in selected_ids if selected_id in self._records_by_id]
         if source is not None and source.name in self._locked_event_names:
             return
-        if source is not None and record_id not in {record.id for record in selected}:
+        if source is not None and record_id not in selected_ids:
             selected = [source]
         selected = [record for record in selected if record.name not in self._locked_event_names]
         if selected:
             self.type_changed.emit(selected, new_name)
+
+    def _remember_type_combo_selection(self, record_id: str) -> None:
+        selected_ids = self.selected_record_ids()
+        self._type_combo_selection_ids = selected_ids if record_id in selected_ids else [record_id]
+
+    def eventFilter(self, source, event) -> bool:
+        if isinstance(source, QtWidgets.QComboBox):
+            record_id = source.property("xarray_behave_record_id")
+            if isinstance(record_id, str) and event.type() in (
+                QtCore.QEvent.KeyPress,
+                QtCore.QEvent.MouseButtonPress,
+            ):
+                self._remember_type_combo_selection(record_id)
+        return super().eventFilter(source, event)
 
     def _on_item_changed(self, item: QtWidgets.QTableWidgetItem) -> None:
         if self._blocked or item.column() not in (self._COL_START, self._COL_STOP):
@@ -773,6 +832,10 @@ class ThresholdingPanel(QtWidgets.QWidget):
     threshold_changed = QtCore.Signal(float)
     envelope_std_changed = QtCore.Signal(float)
     min_distance_changed = QtCore.Signal(float)
+    duration_filter_changed = QtCore.Signal(bool)
+    duration_range_changed = QtCore.Signal(object)
+    bandpass_filter_changed = QtCore.Signal(bool)
+    bandpass_range_changed = QtCore.Signal(object)
     generate_requested = QtCore.Signal()
 
     def __init__(self, parent=None) -> None:
@@ -806,18 +869,58 @@ class ThresholdingPanel(QtWidgets.QWidget):
         self.min_distance_spin.valueChanged.connect(lambda value: self.min_distance_changed.emit(float(value)))
         layout.addLayout(self._labeled_row("Min gap", self.min_distance_spin))
 
+        self.duration_checkbox = QtWidgets.QCheckBox("Duration filter")
+        self.duration_checkbox.setToolTip("Create interval proposals and keep only durations in this range")
+        self.duration_checkbox.toggled.connect(self._on_duration_filter_toggled)
+        layout.addWidget(self.duration_checkbox)
+
+        self.duration_range = self._range_slider(maximum=1.0, decimals=4, step=0.001)
+        self.duration_range.setObjectName("thresholdDurationRange")
+        self.duration_range.valueChanged.connect(lambda value: self.duration_range_changed.emit(value))
+        layout.addLayout(self._labeled_row("Duration", self.duration_range))
+
+        self.bandpass_checkbox = QtWidgets.QCheckBox("Band-pass filter")
+        self.bandpass_checkbox.setToolTip("Filter audio before envelope computation")
+        self.bandpass_checkbox.toggled.connect(self._on_bandpass_filter_toggled)
+        layout.addWidget(self.bandpass_checkbox)
+
+        self.bandpass_range = self._range_slider(maximum=1.0, decimals=1, step=10.0)
+        self.bandpass_range.setObjectName("thresholdBandpassRange")
+        self.bandpass_range.valueChanged.connect(lambda value: self.bandpass_range_changed.emit(value))
+        layout.addLayout(self._labeled_row("Cutoffs", self.bandpass_range))
+
         self.generate_button = QtWidgets.QPushButton("Generate")
         self.generate_button.setToolTip("Generate proposals for the active event type")
         self.generate_button.clicked.connect(self.generate_requested.emit)
         layout.addWidget(self.generate_button)
+        self._sync_optional_controls()
 
-    def set_values(self, *, threshold: float, envelope_std: float, min_distance: float) -> None:
+    def set_values(
+        self,
+        *,
+        threshold: float,
+        envelope_std: float,
+        min_distance: float,
+        duration_enabled: bool,
+        duration_range: tuple[float, float],
+        bandpass_enabled: bool,
+        bandpass_range: tuple[float, float],
+    ) -> None:
         self._set_spin_value(self.threshold_spin, threshold)
         self._set_spin_value(self.envelope_std_spin, envelope_std)
         self._set_spin_value(self.min_distance_spin, min_distance)
+        self._set_checkbox_value(self.duration_checkbox, duration_enabled)
+        self._set_range_value(self.duration_range, duration_range)
+        self._set_checkbox_value(self.bandpass_checkbox, bandpass_enabled)
+        self._set_range_value(self.bandpass_range, bandpass_range)
+        self._sync_optional_controls()
 
     def set_threshold(self, threshold: float) -> None:
         self._set_spin_value(self.threshold_spin, threshold)
+
+    def set_limits(self, *, duration_max: float, frequency_max: float) -> None:
+        self._set_range_limit(self.duration_range, max(0.001, float(duration_max)))
+        self._set_range_limit(self.bandpass_range, max(1.0, float(frequency_max)))
 
     def _double_spin(self, *, decimals: int, minimum: float, maximum: float, step: float) -> QtWidgets.QDoubleSpinBox:
         spin = QtWidgets.QDoubleSpinBox(self)
@@ -825,6 +928,14 @@ class ThresholdingPanel(QtWidgets.QWidget):
         spin.setRange(minimum, maximum)
         spin.setSingleStep(step)
         return spin
+
+    def _range_slider(self, *, maximum: float, decimals: int, step: float) -> DoubleRangeSliderControl:
+        slider = DoubleRangeSliderControl(self)
+        slider.setRange(0.0, maximum)
+        slider.setDecimals(decimals)
+        slider.setSingleStep(step)
+        slider.setValue([0.0, maximum])
+        return slider
 
     def _labeled_row(self, label: str, widget: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:
         row = QtWidgets.QHBoxLayout()
@@ -840,6 +951,35 @@ class ThresholdingPanel(QtWidgets.QWidget):
         spin.blockSignals(True)
         spin.setValue(float(value))
         spin.blockSignals(False)
+
+    def _set_checkbox_value(self, checkbox: QtWidgets.QCheckBox, checked: bool) -> None:
+        checkbox.blockSignals(True)
+        checkbox.setChecked(bool(checked))
+        checkbox.blockSignals(False)
+
+    def _set_range_value(self, slider: DoubleRangeSliderControl, value: tuple[float, float]) -> None:
+        slider.blockSignals(True)
+        slider.setValue(value)
+        slider.blockSignals(False)
+
+    def _set_range_limit(self, slider: DoubleRangeSliderControl, maximum: float) -> None:
+        value = slider.value()
+        slider.blockSignals(True)
+        slider.setRange(0.0, maximum)
+        slider.setValue([min(value[0], maximum), min(value[1], maximum)])
+        slider.blockSignals(False)
+
+    def _on_duration_filter_toggled(self, checked: bool) -> None:
+        self._sync_optional_controls()
+        self.duration_filter_changed.emit(bool(checked))
+
+    def _on_bandpass_filter_toggled(self, checked: bool) -> None:
+        self._sync_optional_controls()
+        self.bandpass_filter_changed.emit(bool(checked))
+
+    def _sync_optional_controls(self) -> None:
+        self.duration_range.setEnabled(self.duration_checkbox.isChecked())
+        self.bandpass_range.setEnabled(self.bandpass_checkbox.isChecked())
 
 
 class _PresetRowWidget(QtWidgets.QWidget):
@@ -1199,6 +1339,7 @@ class WaveformPane(pg.PlotWidget):
         self._waveform_y_limits: tuple[float, float] | None = None
         self._last_waveform_y: np.ndarray | None = None
         self._last_waveform_y_other: np.ndarray | None = None
+        self._settings_dialog: WaveformSettingsDialog | None = None
         self.settings_button = _compact_tool_button(_settings_icon(), "Waveform display settings", self)
         self.settings_button.setObjectName("waveformSettingsButton")
         self.settings_button.setProperty("role", "presetGlobal")
@@ -1253,9 +1394,18 @@ class WaveformPane(pg.PlotWidget):
         self.settings_button.raise_()
 
     def _open_settings_dialog(self) -> None:
+        if _dialog_is_open(self._settings_dialog):
+            _activate_dialog(self._settings_dialog)
+            return
         dialog = WaveformSettingsDialog(self, parent=self.window())
-        dialog.show()
-        dialog.exec_()
+        self._settings_dialog = dialog
+        dialog.finished.connect(lambda _result, active_dialog=dialog: self._clear_settings_dialog(active_dialog))
+        _activate_dialog(dialog)
+
+    def _clear_settings_dialog(self, dialog) -> None:
+        if self._settings_dialog is dialog:
+            self._settings_dialog = None
+        _delete_dialog_later(dialog)
 
     def set_waveform_color(self, color: str) -> None:
         qcolor = QtGui.QColor(color)

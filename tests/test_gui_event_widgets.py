@@ -195,24 +195,51 @@ def test_thresholding_panel_syncs_values_and_emits_changes():
     threshold_changes = []
     envelope_changes = []
     min_distance_changes = []
+    duration_filter_changes = []
+    duration_range_changes = []
+    bandpass_filter_changes = []
+    bandpass_range_changes = []
     generated = []
     panel.threshold_changed.connect(threshold_changes.append)
     panel.envelope_std_changed.connect(envelope_changes.append)
     panel.min_distance_changed.connect(min_distance_changes.append)
+    panel.duration_filter_changed.connect(duration_filter_changes.append)
+    panel.duration_range_changed.connect(duration_range_changes.append)
+    panel.bandpass_filter_changed.connect(bandpass_filter_changes.append)
+    panel.bandpass_range_changed.connect(bandpass_range_changes.append)
     panel.generate_requested.connect(lambda: generated.append(True))
 
-    panel.set_values(threshold=0.25, envelope_std=0.003, min_distance=0.04)
+    panel.set_limits(duration_max=2.0, frequency_max=500.0)
+    panel.set_values(
+        threshold=0.25,
+        envelope_std=0.003,
+        min_distance=0.04,
+        duration_enabled=True,
+        duration_range=(0.05, 0.25),
+        bandpass_enabled=True,
+        bandpass_range=(100.0, 300.0),
+    )
     panel.threshold_spin.setValue(0.5)
     panel.envelope_std_spin.setValue(0.006)
     panel.min_distance_spin.setValue(0.08)
+    panel.duration_checkbox.setChecked(False)
+    panel.duration_range.setValue([0.1, 0.4])
+    panel.bandpass_checkbox.setChecked(False)
+    panel.bandpass_range.setValue([150.0, 250.0])
     panel.generate_button.click()
 
     assert panel.threshold_spin.value() == 0.5
     assert panel.envelope_std_spin.value() == 0.006
     assert panel.min_distance_spin.value() == 0.08
+    assert panel.duration_range.value() == [0.1, 0.4]
+    assert panel.bandpass_range.value() == [150.0, 250.0]
     assert threshold_changes[-1] == 0.5
     assert envelope_changes[-1] == 0.006
     assert min_distance_changes[-1] == 0.08
+    assert duration_filter_changes[-1] is False
+    assert duration_range_changes[-1] == [0.1, 0.4]
+    assert bandpass_filter_changes[-1] is False
+    assert bandpass_range_changes[-1] == [150.0, 250.0]
     assert generated == [True]
 
 
@@ -239,6 +266,47 @@ def test_waveform_pane_draws_threshold_overlay_only_when_enabled():
     assert widget._threshold_curve not in widget.getPlotItem().items
 
 
+def test_threshold_duration_mode_adds_interval_events():
+    window = PSV.__new__(PSV)
+    window.STOP = True
+    window.event_times = Events({"song": np.zeros((0, 3))})
+    window.event_presets = {"song": EventTypePreset("song", fixed_duration=False)}
+    window._current_event_name = "song"
+    window.fs_song = 100
+    window.tmax = 1_000
+    window.x = np.arange(8) / window.fs_song
+    window.envelope = np.array([0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0])
+    window.thres_value = 0.5
+    window.thres_min_dist = 0.011
+    window.thres_duration_enabled = True
+    window.thres_duration_min = 0.05
+    window.thres_duration_max = 0.1
+    window.slice_view = type("SliceView", (), {"threshold": 0.5})()
+    window.update_xy = lambda: None
+
+    window.threshold(None)
+
+    np.testing.assert_allclose(window.event_times["song"], [[0.01, 0.07, -1.0]])
+
+
+def test_threshold_bandpass_filters_signal_before_envelope():
+    window = PSV.__new__(PSV)
+    window.fs_song = 1_000
+    seconds = np.arange(0.0, 2.0, 1 / window.fs_song)
+    low = np.sin(2 * np.pi * 20 * seconds)
+    high = np.sin(2 * np.pi * 200 * seconds)
+    window.y = low + high
+    window.thres_bandpass_enabled = True
+    window.thres_bandpass_low = 150.0
+    window.thres_bandpass_high = 250.0
+
+    filtered = window._threshold_signal()
+    core = slice(200, -200)
+
+    assert np.corrcoef(filtered[core], high[core])[0, 1] > 0.9
+    assert abs(np.corrcoef(filtered[core], low[core])[0, 1]) < 0.2
+
+
 def test_waveform_settings_dialog_updates_color_and_limits_live():
     _app()
     widget = WaveformPane()
@@ -263,6 +331,23 @@ def test_waveform_settings_dialog_updates_color_and_limits_live():
 
     assert widget.waveform_y_limits is None
     dialog.close()
+    widget.close()
+
+
+def test_waveform_settings_dialog_is_singleton():
+    app = _app()
+    widget = WaveformPane()
+
+    widget._open_settings_dialog()
+    dialog = widget._settings_dialog
+    widget._open_settings_dialog()
+
+    assert widget._settings_dialog is dialog
+
+    dialog.reject()
+    app.processEvents()
+
+    assert widget._settings_dialog is None
     widget.close()
 
 
@@ -347,6 +432,31 @@ def test_events_table_locks_rows_by_event_name():
 
     assert not widget.table.cellWidget(0, widget._COL_TYPE).isEnabled()
     assert not (widget.table.item(0, widget._COL_START).flags() & QtCore.Qt.ItemIsEditable)
+
+
+def test_events_table_type_combo_changes_selection_from_start_of_edit():
+    _app()
+    widget = EventsTableWidget()
+    widget.set_events(
+        Events(
+            {
+                "pulse": np.array([[0.1, 0.1, -1], [0.2, 0.2, -1]]),
+                "song": np.zeros((0, 3)),
+            }
+        )
+    )
+    changed = []
+    widget.type_changed.connect(lambda records, name: changed.append(([record.id for record in records], name)))
+    selected_ids = ["pulse\x1f0", "pulse\x1f1"]
+    widget.select_ids(selected_ids)
+    combo = widget.table.cellWidget(0, widget._COL_TYPE)
+
+    widget._remember_type_combo_selection("pulse\x1f0")
+    widget.select_ids(["pulse\x1f0"])
+    combo.setCurrentText("song")
+    combo.activated.emit(combo.currentIndex())
+
+    assert changed == [(selected_ids, "song")]
 
 
 def test_waveform_pane_updates_playhead():
@@ -516,22 +626,39 @@ def test_audio_settings_dialog_live_update_reverts_on_cancel(monkeypatch):
         def connect(self, callback):
             self._callback = callback
 
-        def emit(self, settings):
-            self._callback(settings)
+        def emit(self, *args):
+            self._callback(*args)
 
     live_settings = AudioChannelSettings(waveform_all=False, events_all=False, playback_all=True)
     seen_live = []
+    instances = []
 
     class Dialog:
         def __init__(self, settings, parent):
             self.settings_changed = Signal()
+            self.finished = Signal()
             self._parent = parent
+            self._visible = True
+            self.activations = []
+            self.deleted = False
+            instances.append(self)
             assert settings == AudioChannelSettings()
 
-        def exec_(self):
-            self.settings_changed.emit(live_settings)
-            seen_live.append(self._parent.audio_channel_settings)
-            return QtWidgets.QDialog.Rejected
+        def isVisible(self):
+            return self._visible
+
+        def show(self):
+            self._visible = True
+            self.activations.append("show")
+
+        def raise_(self):
+            self.activations.append("raise")
+
+        def activateWindow(self):
+            self.activations.append("activate")
+
+        def deleteLater(self):
+            self.deleted = True
 
     monkeypatch.setattr(gui_app.event_widgets, "AudioSettingsDialog", Dialog)
     window = PSV.__new__(PSV)
@@ -541,8 +668,15 @@ def test_audio_settings_dialog_live_update_reverts_on_cancel(monkeypatch):
     window.STOP = False
 
     window._edit_audio_settings()
+    instances[0].settings_changed.emit(live_settings)
+    seen_live.append(window.audio_channel_settings)
+    window._edit_audio_settings()
+    instances[0].finished.emit(QtWidgets.QDialog.Rejected)
 
     assert seen_live == [live_settings]
+    assert len(instances) == 1
+    assert instances[0].activations == ["show", "raise", "activate", "show", "raise", "activate"]
+    assert instances[0].deleted
     assert window.audio_channel_settings == AudioChannelSettings()
     assert window.show_all_channels is True
 
@@ -1336,20 +1470,43 @@ def test_spectrogram_view_opens_settings_dialog(monkeypatch):
     widget = views.SpecView(model=model, callback=lambda *args: None)
     calls = []
 
+    class Signal:
+        def __init__(self):
+            self._callback = None
+
+        def connect(self, callback):
+            self._callback = callback
+
+        def emit(self, *args):
+            self._callback(*args)
+
     class Dialog:
         def __init__(self, parent, model):
+            self.finished = Signal()
+            self._visible = True
             calls.append(("init", parent, model))
+
+        def isVisible(self):
+            return self._visible
 
         def show(self):
             calls.append(("show",))
 
-        def exec_(self):
-            calls.append(("exec",))
+        def raise_(self):
+            calls.append(("raise",))
+
+        def activateWindow(self):
+            calls.append(("activate",))
+
+        def deleteLater(self):
+            calls.append(("delete",))
 
     monkeypatch.setattr(view_dialog, "SpectrogramSettingsDialog", Dialog)
 
     widget.resize(320, 180)
     widget._position_settings_button()
+    widget._open_settings_dialog()
+    dialog = widget._settings_dialog
     widget._open_settings_dialog()
 
     assert widget.settings_button.objectName() == "spectrogramSettingsButton"
@@ -1358,7 +1515,11 @@ def test_spectrogram_view_opens_settings_dialog(monkeypatch):
     assert widget.settings_button.iconSize() == QtCore.QSize(18, 18)
     assert calls[0][0] == "init"
     assert calls[0][2] is model
-    assert calls[1:] == [("show",), ("exec",)]
+    assert widget._settings_dialog is dialog
+    assert calls[1:] == [("show",), ("raise",), ("activate",), ("show",), ("raise",), ("activate",)]
+    dialog.finished.emit(QtWidgets.QDialog.Rejected)
+    assert widget._settings_dialog is None
+    assert calls[-1] == ("delete",)
     widget.close()
 
 

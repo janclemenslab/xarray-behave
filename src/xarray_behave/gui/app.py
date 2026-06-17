@@ -17,6 +17,7 @@ import functools
 import numpy as np
 import pandas as pd
 import scipy.interpolate
+import scipy.signal
 import scipy.signal.windows
 import peakutils
 from typing import Callable, Optional, List
@@ -901,6 +902,8 @@ class PSV(MainWindow):
         self.edit_only_current_events = False
         self.audio_channel_settings = event_widgets.AudioChannelSettings()
         self.show_all_channels = self.audio_channel_settings.waveform_all
+        self._audio_settings_dialog = None
+        self._audio_settings_initial = None
         self.select_loudest_channel = False
         self.threshold_mode = False
         self.sinet0 = None
@@ -912,6 +915,12 @@ class PSV(MainWindow):
         self.thres_min_dist = 0.020  # seconds
         self.thres_env_std = 0.002  # seconds
         self.thres_value = 0.0
+        self.thres_duration_enabled = False
+        self.thres_duration_min = 0.0
+        self.thres_duration_max = 1.0
+        self.thres_bandpass_enabled = False
+        self.thres_bandpass_low = 0.0
+        self.thres_bandpass_high = None
 
         if "song_events" in self.ds:
             self.fs_other = self.ds.song_events.attrs["sampling_rate_Hz"]
@@ -926,6 +935,8 @@ class PSV(MainWindow):
             self.nb_channels = self.ds.song_raw.shape[1]
         else:
             self.fs_song = self.fs_other  # not sure this would work?
+        if self.thres_bandpass_high is None:
+            self.thres_bandpass_high = self.fs_song / 2
 
         if self.vr is not None:
             self.frame_interval = self.fs_song / self.vr.frame_rate  # song samples? TODO: get from self.ds
@@ -1276,6 +1287,10 @@ class PSV(MainWindow):
         self.threshold_panel.threshold_changed.connect(self._on_threshold_value_changed)
         self.threshold_panel.envelope_std_changed.connect(self._on_threshold_envelope_std_changed)
         self.threshold_panel.min_distance_changed.connect(self._on_threshold_min_distance_changed)
+        self.threshold_panel.duration_filter_changed.connect(self._on_threshold_duration_filter_changed)
+        self.threshold_panel.duration_range_changed.connect(self._on_threshold_duration_range_changed)
+        self.threshold_panel.bandpass_filter_changed.connect(self._on_threshold_bandpass_filter_changed)
+        self.threshold_panel.bandpass_range_changed.connect(self._on_threshold_bandpass_range_changed)
         self.threshold_panel.generate_requested.connect(lambda: self.threshold(None))
         self.slice_view.threshold_changed.connect(self._on_threshold_line_changed)
         self.preset_panel.selection_changed.connect(self._on_preset_selected)
@@ -2415,11 +2430,25 @@ class PSV(MainWindow):
             self.update_xy()
 
     def _edit_audio_settings(self) -> None:
+        if event_widgets._dialog_is_open(getattr(self, "_audio_settings_dialog", None)):
+            event_widgets._activate_dialog(self._audio_settings_dialog)
+            return
         initial_settings = self._audio_settings()
         dialog = event_widgets.AudioSettingsDialog(initial_settings, self)
+        self._audio_settings_dialog = dialog
+        self._audio_settings_initial = initial_settings
         dialog.settings_changed.connect(self._set_audio_settings)
-        if dialog.exec_() != QtWidgets.QDialog.Accepted:
-            self._set_audio_settings(initial_settings)
+        dialog.finished.connect(lambda result, active_dialog=dialog: self._finish_audio_settings_dialog(active_dialog, result))
+        event_widgets._activate_dialog(dialog)
+
+    def _finish_audio_settings_dialog(self, dialog, result: int) -> None:
+        if getattr(self, "_audio_settings_dialog", None) is not dialog:
+            return
+        if result != QtWidgets.QDialog.Accepted and self._audio_settings_initial is not None:
+            self._set_audio_settings(self._audio_settings_initial)
+        self._audio_settings_dialog = None
+        self._audio_settings_initial = None
+        event_widgets._delete_dialog_later(dialog)
 
     def _audio_event_channel_filter(self):
         if self._audio_settings().events_all:
@@ -2728,10 +2757,18 @@ class PSV(MainWindow):
     def _sync_threshold_panel(self) -> None:
         if not hasattr(self, "threshold_panel"):
             return
+        self.threshold_panel.set_limits(
+            duration_max=self._threshold_duration_limit(),
+            frequency_max=self.fs_song / 2,
+        )
         self.threshold_panel.set_values(
             threshold=float(getattr(self, "thres_value", 0.0)),
             envelope_std=float(getattr(self, "thres_env_std", 0.0)),
             min_distance=float(getattr(self, "thres_min_dist", 0.0)),
+            duration_enabled=bool(getattr(self, "thres_duration_enabled", False)),
+            duration_range=self._threshold_duration_bounds(),
+            bandpass_enabled=bool(getattr(self, "thres_bandpass_enabled", False)),
+            bandpass_range=self._threshold_bandpass_bounds(),
         )
 
     def _on_threshold_value_changed(self, value: float) -> None:
@@ -2752,6 +2789,55 @@ class PSV(MainWindow):
     def _on_threshold_min_distance_changed(self, value: float) -> None:
         self.thres_min_dist = max(float(value), 1 / self.fs_song)
         self._sync_threshold_panel()
+
+    def _on_threshold_duration_filter_changed(self, enabled: bool) -> None:
+        self.thres_duration_enabled = bool(enabled)
+
+    def _on_threshold_duration_range_changed(self, value) -> None:
+        self.thres_duration_min, self.thres_duration_max = self._sorted_pair(value)
+        self._sync_threshold_panel()
+
+    def _on_threshold_bandpass_filter_changed(self, enabled: bool) -> None:
+        self.thres_bandpass_enabled = bool(enabled)
+        if self.STOP:
+            self.update_xy()
+
+    def _on_threshold_bandpass_range_changed(self, value) -> None:
+        self.thres_bandpass_low, self.thres_bandpass_high = self._sorted_pair(value)
+        self._sync_threshold_panel()
+        if self.STOP and self.thres_bandpass_enabled:
+            self.update_xy()
+
+    def _sorted_pair(self, value) -> tuple[float, float]:
+        low, high = (float(v) for v in value)
+        return (low, high) if low <= high else (high, low)
+
+    def _threshold_duration_limit(self) -> float:
+        duration = self.tmax / self.fs_song if getattr(self, "fs_song", 0) else 1.0
+        return min(max(1.0, float(duration)), 100.0)
+
+    def _threshold_duration_bounds(self) -> tuple[float, float]:
+        low, high = self._sorted_pair(
+            (
+                getattr(self, "thres_duration_min", 0.0),
+                getattr(self, "thres_duration_max", 1.0),
+            )
+        )
+        limit = self._threshold_duration_limit()
+        low = min(max(0.0, low), limit)
+        high = max(low, min(high, limit))
+        return low, high
+
+    def _threshold_bandpass_bounds(self) -> tuple[float, float]:
+        high_default = self.fs_song / 2 if getattr(self, "fs_song", 0) else 1.0
+        high_value = getattr(self, "thres_bandpass_high", high_default)
+        if high_value is None:
+            high_value = high_default
+        low, high = self._sorted_pair((getattr(self, "thres_bandpass_low", 0.0), high_value))
+        nyquist = self.fs_song / 2
+        low = min(max(0.0, low), nyquist)
+        high = max(low, min(high, nyquist))
+        return low, high
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
@@ -2790,16 +2876,22 @@ class PSV(MainWindow):
             if self.envelope is None or len(self.envelope) == 0:
                 return
             self.thres_value = self.slice_view.threshold
-            min_dist = max(1, int(round(self.thres_min_dist * self.fs_song)))
-            indexes = peakutils.indexes(
-                self.envelope,
-                thres=self.thres_value,
-                min_dist=min_dist,
-                thres_abs=True,
-            )
-            for t in self.x[indexes]:
-                self.event_times.add_time(self.current_event_name, t)
-                logger.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
+            if self.thres_duration_enabled:
+                intervals = self._threshold_interval_proposals()
+                for start, stop in intervals:
+                    self.event_times.add_time(self.current_event_name, start, stop)
+                    logger.info(f"   Added {self.current_event_name} from t={start:1.4f} to {stop:1.4f} seconds.")
+            else:
+                min_dist = max(1, int(round(self.thres_min_dist * self.fs_song)))
+                indexes = peakutils.indexes(
+                    self.envelope,
+                    thres=self.thres_value,
+                    min_dist=min_dist,
+                    thres_abs=True,
+                )
+                for t in self.x[indexes]:
+                    self.event_times.add_time(self.current_event_name, t)
+                    logger.info(f"   Added {self.current_event_name} at t={t:1.4f} seconds.")
             old_len = self.event_times[self.current_event_name].shape[0]
             self.event_times[self.current_event_name] = np.unique(self.event_times[self.current_event_name], axis=0)
             new_len = self.event_times[self.current_event_name].shape[0]
@@ -2808,12 +2900,71 @@ class PSV(MainWindow):
 
             self.update_xy()
 
+    def _threshold_interval_proposals(self) -> list[tuple[float, float]]:
+        above = np.asarray(self.envelope) >= self.thres_value
+        if above.size == 0 or not np.any(above):
+            return []
+        padded = np.concatenate(([False], above, [False]))
+        changes = np.diff(padded.astype(int))
+        starts = np.flatnonzero(changes == 1)
+        stops = np.flatnonzero(changes == -1)
+        runs = self._merge_threshold_runs(list(zip(starts, stops)))
+        min_duration, max_duration = self._threshold_duration_bounds()
+        sample_period = 1 / self.fs_song
+        intervals = []
+        for start_index, stop_index in runs:
+            start = float(self.x[start_index])
+            last_index = min(stop_index - 1, len(self.x) - 1)
+            stop = min(float(self.x[-1]), float(self.x[last_index]) + sample_period)
+            duration = max(0.0, stop - start)
+            if duration < min_duration or duration > max_duration:
+                continue
+            intervals.append((start, stop))
+        return intervals
+
+    def _merge_threshold_runs(self, runs: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        if not runs:
+            return []
+        gap_samples = max(0, int(round(self.thres_min_dist * self.fs_song)))
+        merged = [runs[0]]
+        for start, stop in runs[1:]:
+            prev_start, prev_stop = merged[-1]
+            if start - prev_stop <= gap_samples:
+                merged[-1] = (prev_start, stop)
+            else:
+                merged.append((start, stop))
+        return merged
+
     def get_envelope(self):
+        y = self._threshold_signal()
         std = self.thres_env_std * self.fs_song
         win = scipy.signal.windows.gaussian(int(std * 6), std)
         win /= np.sum(win)
-        env = np.sqrt(np.convolve(self.y.astype(float) ** 2, win, mode="same"))
+        env = np.sqrt(np.convolve(y**2, win, mode="same"))
         return env
+
+    def _threshold_signal(self) -> np.ndarray:
+        y = np.asarray(self.y, dtype=float)
+        if not self.thres_bandpass_enabled:
+            return y
+        low, high = self._threshold_bandpass_bounds()
+        nyquist = self.fs_song / 2
+        if high <= low or (low <= 0 and high >= nyquist):
+            return y
+        if low <= 0:
+            btype = "lowpass"
+            cutoff = high / nyquist
+        elif high >= nyquist:
+            btype = "highpass"
+            cutoff = low / nyquist
+        else:
+            btype = "bandpass"
+            cutoff = [low / nyquist, high / nyquist]
+        sos = scipy.signal.butter(4, cutoff, btype=btype, output="sos")
+        try:
+            return scipy.signal.sosfiltfilt(sos, y)
+        except ValueError:
+            return scipy.signal.sosfilt(sos, y)
 
     def set_prev_channel(self, qt_keycode):
         if self._channel_switching_locked():
