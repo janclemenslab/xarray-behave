@@ -719,10 +719,10 @@ def test_start_playback_starts_at_visible_window_beginning():
     window.ds = Dataset()
     window.tmin = 0
     window.tmax = 1_000
-    window._t0 = 500
+    window._t0 = 500.0000000001
     window.fs_song = 1_000
     window.fs_other = 1_000
-    window._span = 200
+    window._span = 200.0000000001
     window.STOP = True
     window._is_playing = False
     window._playback_timer = Timer()
@@ -750,12 +750,78 @@ def test_start_playback_starts_at_visible_window_beginning():
     assert window.STOP is False
     assert window._playback_timer.started is True
     assert window._playback_clock.restarted is True
-    assert window._audio_player.positions == []
-    assert window._audio_player.played is False
-    assert played[0][1] == 1_000
-    np.testing.assert_array_equal(played[0][0], np.arange(400, 600))
+    assert window._audio_player.positions == [400]
+    assert window._audio_player.played is True
+    assert played == []
     assert stopped == [True]
     assert states == [True]
+
+
+def test_start_playback_buffer_fallback_uses_integer_window_bounds():
+    class Timer:
+        def __init__(self):
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    class Clock:
+        def restart(self):
+            pass
+
+    class App:
+        def processEvents(self):
+            pass
+
+    class SongRaw:
+        data = np.arange(1_000)[:, None]
+
+    class Dataset:
+        song_raw = SongRaw()
+
+        def __contains__(self, key):
+            return key == "song_raw"
+
+    class BufferAudioPlayer:
+        player = object()
+
+        def play(self, y, fs):
+            played.append((y, fs))
+            return 1
+
+        def stop(self):
+            pass
+
+    played = []
+    window = PSV.__new__(PSV)
+    window.ds = Dataset()
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 500.0000000001
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200.0000000001
+    window.STOP = True
+    window._is_playing = False
+    window._playback_timer = Timer()
+    window._playback_clock = Clock()
+    window._audio_player = None
+    window.audio_player = BufferAudioPlayer()
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+    window._playback_window_start = None
+    window._playback_window_stop = None
+    window.vr = None
+    window.app = App()
+    window.update_xy = lambda: None
+    window.update_frame = lambda: None
+    window._set_play_button_state = lambda *, playing: None
+
+    window._start_playback()
+
+    assert window._playback_window_start == 400
+    assert window._playback_window_stop == 600
+    assert played[0][1] == 1_000
+    np.testing.assert_array_equal(played[0][0], np.arange(400, 600))
 
 
 def test_playback_tick_flips_to_next_window_at_visible_end():

@@ -1741,7 +1741,7 @@ class PSV(MainWindow):
         return self.audio_player.play(y, self.fs_song) != 0
 
     def _transport_uses_qmedia_audio(self) -> bool:
-        return self._audio_playback_all_channels() and self._audio_player is not None
+        return self._audio_player is not None
 
     def _seek_audio_to_playhead(self) -> None:
         if self._transport_uses_qmedia_audio():
@@ -1762,8 +1762,9 @@ class PSV(MainWindow):
     def _set_playback_window(self, page_start: float) -> None:
         max_start = max(0, self.tmax - self.span)
         page_start = int(np.clip(page_start, self.tmin, max_start))
+        page_stop = int(min(self.tmax, page_start + self.span))
         self._playback_window_start = page_start
-        self._playback_window_stop = min(self.tmax, page_start + self.span)
+        self._playback_window_stop = page_stop
 
     def _start_playback_page(self, page_start: float) -> None:
         self._stop_window_audio_playhead()
