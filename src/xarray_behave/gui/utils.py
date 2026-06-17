@@ -1,5 +1,4 @@
 from typing import Iterable
-import cv2
 import numpy as np
 import h5py
 import colorcet
@@ -8,7 +7,6 @@ from typing import Iterable
 import pyqtgraph as pg
 from qtpy import QtGui, QtWidgets, QtCore
 import logging
-from videoreader import VideoReader
 from typing import Union
 
 
@@ -71,44 +69,6 @@ def fast_plot(plot_widget, x, y, pen=None):
     item.setPen(pen)
     plot_widget.addItem(item)
     return item
-
-
-class VideoReaderNP(VideoReader):
-    """VideoReader posing as numpy array."""
-
-    def __getitem__(self, index):
-        return self.read(index)[1]
-
-    @property
-    def dtype(self):
-        return np.uint8
-
-    @property
-    def shape(self):
-        return (self.number_of_frames, *self.frame_shape)
-
-    @property
-    def ndim(self):
-        return len(self.shape)
-
-    @property
-    def size(self):
-        return np.product(self.shape)
-
-    def min(self):
-        return 0
-
-    def max(self):
-        return 255
-
-    def transpose(self, *args):
-        return self
-
-
-class ImageViewVR(pg.ImageView):
-    def quickMinMax(self, data):
-        """Dummy min/max for numpy videoreader. The original function tries to read the full video!"""
-        return 0, 255
 
 
 class FastImageWidget(pg.GraphicsLayoutWidget):

@@ -26,8 +26,6 @@ dependencies = [
        'sounddevice',
        'soundfile',
        'librosa>0.8',
-       'opencv-python-headless',
-       'pyvideoreader',
        'av>=12',
        'vispy>=0.14',
        'PySide6>=6.10',

@@ -1,5 +1,6 @@
 import xarray_behave as xb
 import logging
+import numpy as np
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -105,6 +106,42 @@ def test_assemble7():
     datename = datenames[ii]
     kwargs = recs[datename]
     ds = xb.assemble(datename, **kwargs)
+
+
+def test_video_only_assembly_uses_pyav_reader(monkeypatch, tmp_path):
+    from xarray_behave.gui import modern_video
+
+    calls = []
+
+    class FakeVideoReader:
+        def __init__(self, filename):
+            calls.append(str(filename))
+            self.number_of_frames = 100
+            self.frame_rate = 20.0
+
+    monkeypatch.setattr(modern_video, "PyAVVideoReader", FakeVideoReader)
+
+    datename = "video_only"
+    data_dir = tmp_path / "dat" / datename
+    data_dir.mkdir(parents=True)
+    video_path = data_dir / f"{datename}.mp4"
+    video_path.write_bytes(b"")
+
+    ds = xb.assemble(
+        datename,
+        root=str(tmp_path),
+        target_sampling_rate=0,
+        include_song=False,
+        include_tracks=False,
+        include_poses=False,
+        include_balltracker=False,
+        include_movieparams=False,
+    )
+
+    assert calls == [str(video_path)]
+    assert np.isclose(ds.attrs["target_sampling_rate_Hz"], 20.0)
+    assert np.isclose(ds.attrs["sampling_rate_Hz"], 200.0)
+    assert "nearest_frame" in ds.coords
 
 
 if __name__ == '__main__':

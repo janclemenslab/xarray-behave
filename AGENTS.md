@@ -239,7 +239,7 @@ alignment throughout the package.
 - `src/xarray_behave/gui/formbuilder.py`
   - YAML-driven Qt form builder. Forms live under `src/xarray_behave/gui/forms`.
 - `src/xarray_behave/gui/utils.py`
-  - Color palettes, fast plotting, legacy `VideoReaderNP`, image widget,
+  - Color palettes, fast plotting, image widget,
     nearest-index helpers, worker/thread helpers, and checkable combo box.
 - `src/xarray_behave/gui/style_profile.py`
   - Shared dark Qt stylesheet and timeline colors adapted from `xb_gui`.

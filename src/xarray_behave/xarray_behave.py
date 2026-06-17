@@ -113,9 +113,9 @@ def assemble(
         path_tried = (filepath_daq, filepath_timestamps)
     elif os.path.exists(filepath_video):  # Video (+tracks) w/o DAQ
         # if there is only the video, generate fake samples from fps
-        from videoreader import VideoReader
+        from .gui.modern_video import PyAVVideoReader
 
-        vr = VideoReader(filepath_video)
+        vr = PyAVVideoReader(filepath_video)
 
         if os.path.exists(filepath_timestamps):
             _, frame_times = io.timestamps.CamStamps().load(filepath_timestamps)
