@@ -1,3 +1,6 @@
+from pathlib import Path
+
+
 SURFACE_BASE = "#0f131a"
 SURFACE_ELEVATED = "#171d27"
 SURFACE_ALT = "#111722"
@@ -11,6 +14,8 @@ ACCENT_SOFT = "#2f6b98"
 TIMELINE_BACKGROUND = "#0c1118"
 TIMELINE_GRID = "#2a3444"
 TIMELINE_PLAYHEAD = "#ffb454"
+
+CHECKBOX_CHECK_ICON = Path(__file__).with_name("checkbox_check.svg").as_posix()
 
 
 WINDOW_STYLESHEET = f"""
@@ -184,6 +189,26 @@ QComboBox:focus, QLineEdit:focus, QDoubleSpinBox:focus {{
 }}
 QCheckBox {{
     color: {TEXT_PRIMARY};
+}}
+QCheckBox::indicator {{
+    width: 14px;
+    height: 14px;
+    background-color: {SURFACE_INTERACTIVE};
+    border: 1px solid {BORDER_SUBTLE};
+    border-radius: 3px;
+}}
+QCheckBox::indicator:hover {{
+    background-color: {SURFACE_INTERACTIVE_HOVER};
+    border-color: {ACCENT_SOFT};
+}}
+QCheckBox::indicator:checked {{
+    background-color: {ACCENT};
+    border-color: {ACCENT};
+    image: url("{CHECKBOX_CHECK_ICON}");
+}}
+QCheckBox::indicator:disabled {{
+    background-color: {SURFACE_ALT};
+    border-color: {BORDER_SUBTLE};
 }}
 QTableWidget {{
     background-color: {SURFACE_ALT};
