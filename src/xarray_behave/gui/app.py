@@ -904,12 +904,14 @@ class PSV(MainWindow):
         self.select_loudest_channel = False
         self.threshold_mode = False
         self.sinet0 = None
+        self.sinet0_event_name = None
 
         self.frame_fliplr = frame_fliplr
         self.frame_flipud = frame_flipud
 
         self.thres_min_dist = 0.020  # seconds
         self.thres_env_std = 0.002  # seconds
+        self.thres_value = 0.0
 
         if "song_events" in self.ds:
             self.fs_other = self.ds.song_events.attrs["sampling_rate_Hz"]
@@ -1260,6 +1262,8 @@ class PSV(MainWindow):
         self.events_table = event_widgets.EventsTableWidget()
         self.channel_panel = event_widgets.ChannelSelectorPanel()
         self.channel_panel.set_channels(self._channel_labels())
+        self.threshold_panel = event_widgets.ThresholdingPanel()
+        self.threshold_panel.hide()
         self.preset_panel = event_widgets.EventPresetPanel()
         self.cb2 = self.channel_panel.channel_combo
         for widget in (self.slice_view, self.tracks_view, self.annot_view, self.event_timeline, self.events_table):
@@ -1269,6 +1273,11 @@ class PSV(MainWindow):
         self._syncing_event_selection = False
         self.channel_panel.channel_changed.connect(self.update_xy)
         self.channel_panel.settings_requested.connect(self._edit_audio_settings)
+        self.threshold_panel.threshold_changed.connect(self._on_threshold_value_changed)
+        self.threshold_panel.envelope_std_changed.connect(self._on_threshold_envelope_std_changed)
+        self.threshold_panel.min_distance_changed.connect(self._on_threshold_min_distance_changed)
+        self.threshold_panel.generate_requested.connect(lambda: self.threshold(None))
+        self.slice_view.threshold_changed.connect(self._on_threshold_line_changed)
         self.preset_panel.selection_changed.connect(self._on_preset_selected)
         self.preset_panel.create_requested.connect(self._create_preset_from_panel)
         self.preset_panel.edit_requested.connect(self._edit_preset_from_panel)
@@ -1286,7 +1295,8 @@ class PSV(MainWindow):
         self.event_timeline.event_changed.connect(self._on_timeline_event_changed)
         self.spec_compression_ratio = 0
         self.spec_mel = False
-        self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=cmap_name)
+        self.spec_colormap = cmap_name
+        self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=self.spec_colormap)
         self.spec_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
         self.ly = QtWidgets.QVBoxLayout()
@@ -1328,6 +1338,7 @@ class PSV(MainWindow):
         left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
         left_sidebar_layout.setSpacing(8)
         left_sidebar_layout.addWidget(self.channel_panel)
+        left_sidebar_layout.addWidget(self.threshold_panel)
         left_sidebar_layout.addWidget(self.preset_panel, 1)
 
         outer_splitter.addWidget(left_sidebar)
@@ -1464,6 +1475,18 @@ class PSV(MainWindow):
     def spec_mel(self, value: bool):
         self._spec_mel = value
         self._update_model()
+
+    @property
+    def spec_colormap(self):
+        return self._spec_colormap
+
+    @spec_colormap.setter
+    def spec_colormap(self, value: str):
+        self._spec_colormap = value
+        try:
+            self.spec_view.set_colormap(value)
+        except AttributeError:
+            pass
 
     @property
     def box_size(self):
@@ -2227,13 +2250,43 @@ class PSV(MainWindow):
         return start, stop
 
     def _bounds_for_event_creation(self, name: str, start_seconds: float, stop_seconds: float = None):
+        preset = self._event_preset(name)
+        if preset.fixed_duration:
+            duration = max(0.0, float(preset.duration_seconds))
+            if stop_seconds is None:
+                center = float(start_seconds)
+            else:
+                center = (float(start_seconds) + float(stop_seconds)) / 2
+            start = center - duration / 2
+            stop = center + duration / 2
+            max_seconds = self.tmax / self.fs_song if getattr(self, "fs_song", 0) else None
+            if max_seconds is not None and duration <= max_seconds:
+                if start < 0:
+                    stop -= start
+                    start = 0.0
+                if stop > max_seconds:
+                    start -= stop - max_seconds
+                    stop = max_seconds
+            return self._clamp_event_bounds(start, stop)
         if stop_seconds is None:
             stop_seconds = start_seconds
         start, stop = sorted([float(start_seconds), float(stop_seconds)])
-        preset = self._event_preset(name)
-        if preset.fixed_duration:
-            stop = start + max(0.0, float(preset.duration_seconds))
         return self._clamp_event_bounds(start, stop)
+
+    def _clear_pending_event_creation(self):
+        self.sinet0 = None
+        self.sinet0_event_name = None
+
+    def _pending_event_creation(self):
+        start_seconds = getattr(self, "sinet0", None)
+        name = getattr(self, "sinet0_event_name", None)
+        if start_seconds is None or name is None:
+            return None
+        if name != self.current_event_name or not self._event_type_can_edit(name):
+            return None
+        if self._event_preset(name).fixed_duration:
+            return None
+        return name, float(start_seconds)
 
     def _bounds_for_event_edit(
         self,
@@ -2271,6 +2324,7 @@ class PSV(MainWindow):
             return
         if getattr(self, "_current_event_name", None) == name:
             return
+        self._clear_pending_event_creation()
         self._current_event_name = name
         self.update_xy()
 
@@ -2524,10 +2578,25 @@ class PSV(MainWindow):
     def _on_timeline_event_created(self, name: str, start_seconds: float, stop_seconds: float):
         if not self._event_type_can_edit(name):
             return
+        preset = self._event_preset(name)
+        if not preset.fixed_duration:
+            if np.isclose(start_seconds, stop_seconds):
+                pending = self._pending_event_creation()
+                if pending is None or pending[0] != name:
+                    self.sinet0 = float(start_seconds)
+                    self.sinet0_event_name = name
+                    logger.info(f"  Started {name} at t={start_seconds:1.4f} seconds.")
+                    self.update_xy()
+                    return
+                _name, pending_start = pending
+                start_seconds, stop_seconds = pending_start, float(start_seconds)
+            else:
+                self._clear_pending_event_creation()
         channel = self.current_channel_index
         if channel is None:
             channel = -1
         start_seconds, stop_seconds = self._bounds_for_event_creation(name, start_seconds, stop_seconds)
+        self._clear_pending_event_creation()
         self.event_times.add_time(name, start_seconds, stop_seconds, category="event", channel=channel)
         self._after_event_edit()
 
@@ -2613,6 +2682,7 @@ class PSV(MainWindow):
     def change_event_type(self, qt_keycode):
         """Select event to annotate using key presses (0-nb_events)."""
         key_pressed = QtGui.QKeySequence(qt_keycode).toString()  # numeric key code to actual char pressed
+        old_event_name = getattr(self, "_current_event_name", None)
         try:
             key_index = int(key_pressed)
         except ValueError:  # if non-int pressed or int too large for index
@@ -2623,6 +2693,8 @@ class PSV(MainWindow):
             self._current_event_name = self.eventList[key_index - 1][1]
         else:
             return
+        if getattr(self, "_current_event_name", None) != old_event_name:
+            self._clear_pending_event_creation()
         self._refresh_preset_panel(selected_name=self.current_event_name)
         self.update_xy()
 
@@ -2637,11 +2709,49 @@ class PSV(MainWindow):
                     playback_all=current.playback_all,
                     scale_y_all=current.scale_y_all,
                 )
+            if var_name == "threshold_mode":
+                self._sync_threshold_mode_ui()
             if self.STOP:
                 self.update_frame()
                 self.update_xy()
         except KeyError as e:
             logger.exception(e)
+
+    def _sync_threshold_mode_ui(self) -> None:
+        enabled = bool(getattr(self, "threshold_mode", False))
+        if hasattr(self, "threshold_panel"):
+            self.threshold_panel.setVisible(enabled)
+            self._sync_threshold_panel()
+        if not enabled and hasattr(self, "slice_view"):
+            self.slice_view.set_threshold_data(None, None, enabled=False)
+
+    def _sync_threshold_panel(self) -> None:
+        if not hasattr(self, "threshold_panel"):
+            return
+        self.threshold_panel.set_values(
+            threshold=float(getattr(self, "thres_value", 0.0)),
+            envelope_std=float(getattr(self, "thres_env_std", 0.0)),
+            min_distance=float(getattr(self, "thres_min_dist", 0.0)),
+        )
+
+    def _on_threshold_value_changed(self, value: float) -> None:
+        self.thres_value = max(0.0, float(value))
+        if hasattr(self, "slice_view"):
+            self.slice_view.set_threshold_value(self.thres_value)
+
+    def _on_threshold_line_changed(self, value: float) -> None:
+        self.thres_value = max(0.0, float(value))
+        if hasattr(self, "threshold_panel"):
+            self.threshold_panel.set_threshold(self.thres_value)
+
+    def _on_threshold_envelope_std_changed(self, value: float) -> None:
+        self.thres_env_std = max(float(value), 1 / self.fs_song)
+        if self.STOP:
+            self.update_xy()
+
+    def _on_threshold_min_distance_changed(self, value: float) -> None:
+        self.thres_min_dist = max(float(value), 1 / self.fs_song)
+        self._sync_threshold_panel()
 
     def delete_current_events(self, qt_keycode):
         if self.current_event_index is not None:
@@ -2675,10 +2785,16 @@ class PSV(MainWindow):
 
     def threshold(self, qt_keycode):
         if self.STOP and self.current_event_name is not None and self._event_type_can_edit(self.current_event_name):
+            if self.envelope is None:
+                self.envelope = self.get_envelope()
+            if self.envelope is None or len(self.envelope) == 0:
+                return
+            self.thres_value = self.slice_view.threshold
+            min_dist = max(1, int(round(self.thres_min_dist * self.fs_song)))
             indexes = peakutils.indexes(
                 self.envelope,
-                thres=self.slice_view.threshold,
-                min_dist=self.thres_min_dist * self.fs_song,
+                thres=self.thres_value,
+                min_dist=min_dist,
                 thres_abs=True,
             )
             for t in self.x[indexes]:
@@ -2834,6 +2950,7 @@ class PSV(MainWindow):
             logger.info("Setting parameters for envelope computation:")
             logger.info(f"     Minimal distance between events: {self.thres_min_dist} seconds")
             logger.info(f"     Smoothing window for envelope: {self.thres_env_std} seconds")
+            self._sync_threshold_panel()
             self.update_xy()
 
     def update_xy(self):
@@ -2878,10 +2995,17 @@ class PSV(MainWindow):
                 y_other=self.y_other,
                 scale_y_all=self._audio_settings().scale_y_all,
             )
+            self.slice_view.set_threshold_data(
+                self.x,
+                self.envelope,
+                enabled=self.threshold_mode,
+                threshold=self.thres_value,
+            )
             self.slice_view.set_playhead(float(self.t0) / self.fs_song)
             self.slice_view.clear_annotations()
             self.slice_view.show()
         else:
+            self.slice_view.set_threshold_data(None, None, enabled=False)
             self.slice_view.clear_annotations()
             self.slice_view.hide()
 
@@ -3043,6 +3167,27 @@ class PSV(MainWindow):
                         movable=movable,
                         text=event_text,
                     )
+        self._plot_pending_event_boundary(x)
+
+    def _plot_pending_event_boundary(self, x):
+        pending = self._pending_event_creation()
+        if pending is None or len(x) == 0:
+            return
+        event_name, seconds = pending
+        if seconds < x[0] or seconds > x[-1]:
+            return
+        event_index = self.event_times.names.index(event_name)
+        event_pen = pg.mkPen(color=self.eventtype_colors[event_index], width=3)
+        event_text = event_name if self.show_event_text else None
+        xx = np.array([seconds], dtype=float)
+        if self.show_trace:
+            self.slice_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
+        if self.show_tracks:
+            self.tracks_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
+        if self.show_annot:
+            self.annot_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
+        if self.show_spec:
+            self.spec_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
 
     def play_video(self):  # TODO: get rate from ds (video fps attr)
         self._start_playback()
@@ -3207,7 +3352,7 @@ class PSV(MainWindow):
         modifiers = QtWidgets.QApplication.keyboardModifiers()
 
         if mouseButton == QtCore.Qt.MouseButton.LeftButton and modifiers == QtCore.Qt.ControlModifier:  # change event type
-            self.sinet0 = None
+            self._clear_pending_event_creation()
 
             if not self.edit_only_current_events or not self._event_type_can_edit(self.current_event_name):
                 return
@@ -3235,8 +3380,22 @@ class PSV(MainWindow):
                 self.update_xy()
         elif mouseButton == QtCore.Qt.MouseButton.LeftButton:  # add event
             if self.current_event_index is not None and self._event_type_can_edit(self.current_event_name):
-                self.sinet0 = None
-                start_seconds, stop_seconds = self._bounds_for_event_creation(self.current_event_name, mouseT)
+                preset = self._event_preset(self.current_event_name)
+                if preset.fixed_duration:
+                    self._clear_pending_event_creation()
+                    start_seconds, stop_seconds = self._bounds_for_event_creation(self.current_event_name, mouseT)
+                elif self._pending_event_creation() is None:
+                    self.sinet0 = float(mouseT)
+                    self.sinet0_event_name = self.current_event_name
+                    logger.info(f"  Started {self.current_event_name} at t={mouseT:1.4f} seconds.")
+                    self.update_xy()
+                    return
+                else:
+                    _name, pending_start = self._pending_event_creation()
+                    start_seconds, stop_seconds = self._bounds_for_event_creation(
+                        self.current_event_name, pending_start, mouseT
+                    )
+                    self._clear_pending_event_creation()
                 self.event_times.add_time(
                     self.current_event_name,
                     start_seconds=start_seconds,
@@ -3249,12 +3408,12 @@ class PSV(MainWindow):
                 )
                 self.update_xy()
             else:
-                self.sinet0 = None
+                self._clear_pending_event_creation()
         elif mouseButton == QtCore.Qt.MouseButton.RightButton:  # delete nearest event
             self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.annot_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-            self.sinet0 = None
+            self._clear_pending_event_creation()
 
             if not self.edit_only_current_events:
                 editable_events = self._event_times_for_names(self._editable_visible_event_names())
@@ -3349,6 +3508,7 @@ class PSV(MainWindow):
         self.update_xy()
 
     def update_eventtype_selector(self, selected_name: str = None):
+        old_event_name = getattr(self, "_current_event_name", None)
         if selected_name is None:
             try:
                 selected_name = self.current_event_name
@@ -3366,6 +3526,8 @@ class PSV(MainWindow):
             self._current_event_name = selected_name
         elif getattr(self, "_current_event_name", None) not in names:
             self._current_event_name = names[-1] if names else None
+        if getattr(self, "_current_event_name", None) != old_event_name:
+            self._clear_pending_event_creation()
 
         # update menus
         # remove associated menu items

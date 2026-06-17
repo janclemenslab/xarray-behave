@@ -7,6 +7,7 @@ from typing import Tuple
 
 from .. import xarray_behave as xb
 from . import utils
+from .event_widgets import _compact_tool_button, _settings_icon
 from .style_profile import TIMELINE_BACKGROUND, TIMELINE_GRID, TIMELINE_PLAYHEAD, TEXT_MUTED
 
 logger = logging.getLogger(__name__)
@@ -429,9 +430,16 @@ class TrackView(TraceView):
 
 
 def _lookup_colormap_lut(colormap: str):
-    cmap = pg.colormap.getFromMatplotlib(colormap)
+    cmap = None
+    try:
+        cmap = pg.colormap.getFromMatplotlib(colormap)
+    except Exception:
+        pass
     if cmap is None:
-        cmap = pg.colormap.get(colormap)
+        try:
+            cmap = pg.colormap.get(colormap)
+        except Exception:
+            cmap = None
     if cmap is None:
         cmap = pg.colormap.get("viridis")
     return cmap.getLookupTable()
@@ -450,6 +458,11 @@ class SpecView(pg.ImageView):
         self.view.setMouseEnabled(x=False, y=False)
         self.view.setMenuEnabled(False)
         self.view.getViewBox().setBackgroundColor(TIMELINE_BACKGROUND)
+        self.settings_button = _compact_tool_button(_settings_icon(), "Spectrogram display settings", self)
+        self.settings_button.setObjectName("spectrogramSettingsButton")
+        self.settings_button.setProperty("role", "presetGlobal")
+        self.settings_button.setFixedSize(22, 22)
+        self.settings_button.clicked.connect(lambda: self._open_settings_dialog())
 
         # leave enough space so axes are aligned aligned
         self.y_axis = self.getView().getAxis("left")
@@ -472,6 +485,7 @@ class SpecView(pg.ImageView):
 
         self.imageItem.setLookupTable(_lookup_colormap_lut(colormap))  # apply the colormap
         self.old_items = []
+        self._position_settings_button()
 
     @property
     def m(self):  # read only access to the model
@@ -493,6 +507,29 @@ class SpecView(pg.ImageView):
 
     def clear_annotations(self):
         [self.removeItem(item) for item in self.old_items]  # remove annotations <- slowest part of update_spec!!!
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_settings_button()
+
+    def _position_settings_button(self):
+        if not hasattr(self, "settings_button"):
+            return
+        margin = 8
+        left = max(margin, self.width() - self.settings_button.width() - margin)
+        self.settings_button.move(left, margin)
+        self.settings_button.raise_()
+
+    def _open_settings_dialog(self):
+        from . import view_dialog
+
+        dialog = view_dialog.SpectrogramSettingsDialog(parent=self.window(), model=self.m)
+        dialog.show()
+        dialog.exec_()
+
+    def set_colormap(self, colormap: str):
+        self.imageItem.setLookupTable(_lookup_colormap_lut(colormap))
+        self.imageItem.update()
 
     def update_spec(self, x, y):
         # tuple-ify y for caching

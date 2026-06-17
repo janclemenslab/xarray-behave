@@ -3,7 +3,7 @@ import numpy as np
 import xarray_behave  # noqa: F401 - sets QT_API before qtpy imports
 from qtpy import QtCore, QtWidgets
 from xarray_behave.annot import Events
-from xarray_behave.gui import app as gui_app
+from xarray_behave.gui import app as gui_app, view_dialog, views
 from xarray_behave.gui.app import PSV
 from xarray_behave.gui.event_widgets import (
     AudioChannelSettings,
@@ -15,6 +15,7 @@ from xarray_behave.gui.event_widgets import (
     EventTimelineWidget,
     EventTypePreset,
     EventsTableWidget,
+    ThresholdingPanel,
     WaveformPane,
     records_from_events,
 )
@@ -185,6 +186,56 @@ def test_channel_selector_panel_hosts_channel_selector_and_settings_button():
     assert panel.channel_combo.currentText() == "Merged channels"
     assert panel.channel_combo.isEnabled()
     assert requested == [True]
+
+
+def test_thresholding_panel_syncs_values_and_emits_changes():
+    _app()
+    panel = ThresholdingPanel()
+    threshold_changes = []
+    envelope_changes = []
+    min_distance_changes = []
+    generated = []
+    panel.threshold_changed.connect(threshold_changes.append)
+    panel.envelope_std_changed.connect(envelope_changes.append)
+    panel.min_distance_changed.connect(min_distance_changes.append)
+    panel.generate_requested.connect(lambda: generated.append(True))
+
+    panel.set_values(threshold=0.25, envelope_std=0.003, min_distance=0.04)
+    panel.threshold_spin.setValue(0.5)
+    panel.envelope_std_spin.setValue(0.006)
+    panel.min_distance_spin.setValue(0.08)
+    panel.generate_button.click()
+
+    assert panel.threshold_spin.value() == 0.5
+    assert panel.envelope_std_spin.value() == 0.006
+    assert panel.min_distance_spin.value() == 0.08
+    assert threshold_changes[-1] == 0.5
+    assert envelope_changes[-1] == 0.006
+    assert min_distance_changes[-1] == 0.08
+    assert generated == [True]
+
+
+def test_waveform_pane_draws_threshold_overlay_only_when_enabled():
+    _app()
+    widget = WaveformPane()
+    x = np.linspace(0, 1, 100)
+    y = np.sin(2 * np.pi * x)
+    envelope = np.abs(y)
+
+    widget.set_waveform(x, y)
+    widget.set_threshold_data(x, envelope, enabled=True, threshold=0.4)
+    env_x, env_y = widget._threshold_curve.getData()
+
+    assert widget.threshold == 0.4
+    assert widget.threshold_line in widget.getPlotItem().items
+    assert widget._threshold_curve in widget.getPlotItem().items
+    assert np.allclose(env_x, x)
+    assert np.allclose(env_y, envelope)
+
+    widget.set_threshold_data(None, None, enabled=False)
+
+    assert widget.threshold_line not in widget.getPlotItem().items
+    assert widget._threshold_curve not in widget.getPlotItem().items
 
 
 def test_audio_settings_dialog_defaults_and_accepts_changes():
@@ -478,7 +529,7 @@ def test_locked_preset_blocks_timeline_creation():
     assert len(window.event_times["pulse"]) == 0
 
 
-def test_fixed_duration_creation_uses_click_as_onset():
+def test_fixed_duration_creation_uses_click_as_center():
     window = PSV.__new__(PSV)
     window.tmax = 10_000
     window.fs_song = 1_000
@@ -486,7 +537,88 @@ def test_fixed_duration_creation_uses_click_as_onset():
         "pulse": EventTypePreset("pulse", fixed_duration=True, duration_seconds=0.25, duration_editable=False)
     }
 
-    assert window._bounds_for_event_creation("pulse", 1.0, 4.0) == (1.0, 1.25)
+    assert window._bounds_for_event_creation("pulse", 1.0) == (0.875, 1.125)
+
+
+def test_non_fixed_trace_creation_uses_two_clicks():
+    _app()
+    window = PSV.__new__(PSV)
+    window.event_times = Events({"song": np.zeros((0, 3))})
+    window.event_presets = {"song": EventTypePreset("song", fixed_duration=False)}
+    window._current_event_name = "song"
+    window.sinet0 = None
+    window.sinet0_event_name = None
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+    updates = []
+    window.update_xy = lambda: updates.append(True)
+
+    window.on_trace_clicked(0.75, QtCore.Qt.MouseButton.LeftButton)
+
+    assert len(window.event_times["song"]) == 0
+    assert window.sinet0 == 0.75
+    assert window.sinet0_event_name == "song"
+    assert updates == [True]
+
+    window.on_trace_clicked(1.25, QtCore.Qt.MouseButton.LeftButton)
+
+    np.testing.assert_allclose(window.event_times["song"], [[0.75, 1.25, 0]])
+    assert window.sinet0 is None
+    assert window.sinet0_event_name is None
+    assert updates == [True, True]
+
+
+def test_non_fixed_timeline_click_creation_uses_two_clicks():
+    window = PSV.__new__(PSV)
+    window.event_times = Events({"song": np.zeros((0, 3))})
+    window.event_presets = {"song": EventTypePreset("song", fixed_duration=False)}
+    window._current_event_name = "song"
+    window.sinet0 = None
+    window.sinet0_event_name = None
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Merged channels"})()
+    updates = []
+    window.update_xy = lambda: updates.append("xy")
+    window._after_event_edit = lambda: updates.append("after")
+
+    window._on_timeline_event_created("song", 0.25, 0.25)
+
+    assert len(window.event_times["song"]) == 0
+    assert window.sinet0 == 0.25
+    assert window.sinet0_event_name == "song"
+    assert updates == ["xy"]
+
+    window._on_timeline_event_created("song", 0.75, 0.75)
+
+    np.testing.assert_allclose(window.event_times["song"], [[0.25, 0.75, -1]])
+    assert window.sinet0 is None
+    assert window.sinet0_event_name is None
+    assert updates == ["xy", "after"]
+
+
+def test_pending_non_fixed_boundary_is_drawn():
+    window = PSV.__new__(PSV)
+    window.event_times = Events({"song": np.zeros((0, 3))})
+    window.event_presets = {"song": EventTypePreset("song", fixed_duration=False)}
+    window._current_event_name = "song"
+    window.sinet0 = 0.75
+    window.sinet0_event_name = "song"
+    window.eventtype_colors = np.array([[10, 20, 30]])
+    window.show_event_text = False
+    window.show_trace = True
+    window.show_tracks = False
+    window.show_annot = False
+    window.show_spec = False
+    calls = []
+    window.slice_view = type(
+        "SliceView",
+        (),
+        {"add_event": lambda self, xx, event_index, pen, movable=False, text=None: calls.append((xx, event_index, movable, text))},
+    )()
+
+    window._plot_pending_event_boundary(np.array([0.0, 1.0]))
+
+    assert len(calls) == 1
+    np.testing.assert_allclose(calls[0][0], [0.75])
+    assert calls[0][1:] == (0, False, None)
 
 
 def test_playhead_starts_at_boundary_and_scrolls_to_last_sample():
@@ -1167,3 +1299,67 @@ def test_point_event_drag_accepts_qpointf_and_persists():
     window.on_position_change_finished(Position())
 
     np.testing.assert_allclose(window.event_times["pulse"][0, :2], [2.0, 2.0])
+
+
+def test_spectrogram_view_opens_settings_dialog(monkeypatch):
+    _app()
+
+    model = object()
+    widget = views.SpecView(model=model, callback=lambda *args: None)
+    calls = []
+
+    class Dialog:
+        def __init__(self, parent, model):
+            calls.append(("init", parent, model))
+
+        def show(self):
+            calls.append(("show",))
+
+        def exec_(self):
+            calls.append(("exec",))
+
+    monkeypatch.setattr(view_dialog, "SpectrogramSettingsDialog", Dialog)
+
+    widget.resize(320, 180)
+    widget._position_settings_button()
+    widget._open_settings_dialog()
+
+    assert widget.settings_button.objectName() == "spectrogramSettingsButton"
+    assert widget.settings_button.x() == widget.width() - widget.settings_button.width() - 8
+    assert widget.settings_button.size() == QtCore.QSize(22, 22)
+    assert widget.settings_button.iconSize() == QtCore.QSize(18, 18)
+    assert calls[0][0] == "init"
+    assert calls[0][2] is model
+    assert calls[1:] == [("show",), ("exec",)]
+    widget.close()
+
+
+def test_spectrogram_settings_dialog_updates_model_live():
+    _app()
+
+    class SpecView:
+        S = np.array([[0.0, 1.0], [2.0, 3.0]])
+
+    class Model:
+        fs_song = 1_000
+        fmin = None
+        fmax = None
+        spec_levels = [None, None]
+        spec_compression_ratio = 0.0
+        spec_colormap = "turbo"
+        spec_view = SpecView()
+
+    model = Model()
+    dialog = view_dialog.SpectrogramSettingsDialog(model=model)
+
+    dialog.colormap_combo.setCurrentText("magma")
+    dialog.frequency_slider.sld.setValue((100.0, 200.0))
+    dialog.level_slider.checkbox.setChecked(False)
+    dialog.level_slider.sld.setValue((0.5, 1.5))
+    dialog.compression_slider.sld.setValue(4.0)
+
+    assert model.spec_colormap == "magma"
+    np.testing.assert_allclose([model.fmin, model.fmax], [100.0, 200.0])
+    np.testing.assert_allclose(model.spec_levels, [0.5, 1.5])
+    assert model.spec_compression_ratio == 4.0
+    dialog.close()

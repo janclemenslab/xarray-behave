@@ -769,6 +769,79 @@ class ChannelSelectorPanel(QtWidgets.QWidget):
         self.channel_combo.blockSignals(False)
 
 
+class ThresholdingPanel(QtWidgets.QWidget):
+    threshold_changed = QtCore.Signal(float)
+    envelope_std_changed = QtCore.Signal(float)
+    min_distance_changed = QtCore.Signal(float)
+    generate_requested = QtCore.Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("thresholdPanel")
+        self.setMinimumWidth(220)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(6)
+
+        title = QtWidgets.QLabel("Thresholding")
+        title.setProperty("role", "inspectorTitle")
+        layout.addWidget(title)
+
+        self.threshold_spin = self._double_spin(decimals=6, minimum=0.0, maximum=1.0e12, step=0.001)
+        self.threshold_spin.setObjectName("thresholdValue")
+        self.threshold_spin.setToolTip("Envelope threshold")
+        self.threshold_spin.valueChanged.connect(lambda value: self.threshold_changed.emit(float(value)))
+        layout.addLayout(self._labeled_row("Threshold", self.threshold_spin))
+
+        self.envelope_std_spin = self._double_spin(decimals=4, minimum=0.0, maximum=1.0, step=0.001)
+        self.envelope_std_spin.setObjectName("thresholdEnvelopeStd")
+        self.envelope_std_spin.setToolTip("Envelope smoothing window in seconds")
+        self.envelope_std_spin.valueChanged.connect(lambda value: self.envelope_std_changed.emit(float(value)))
+        layout.addLayout(self._labeled_row("Envelope", self.envelope_std_spin))
+
+        self.min_distance_spin = self._double_spin(decimals=4, minimum=0.0, maximum=100.0, step=0.001)
+        self.min_distance_spin.setObjectName("thresholdMinDistance")
+        self.min_distance_spin.setToolTip("Minimum distance between proposed events in seconds")
+        self.min_distance_spin.valueChanged.connect(lambda value: self.min_distance_changed.emit(float(value)))
+        layout.addLayout(self._labeled_row("Min gap", self.min_distance_spin))
+
+        self.generate_button = QtWidgets.QPushButton("Generate")
+        self.generate_button.setToolTip("Generate proposals for the active event type")
+        self.generate_button.clicked.connect(self.generate_requested.emit)
+        layout.addWidget(self.generate_button)
+
+    def set_values(self, *, threshold: float, envelope_std: float, min_distance: float) -> None:
+        self._set_spin_value(self.threshold_spin, threshold)
+        self._set_spin_value(self.envelope_std_spin, envelope_std)
+        self._set_spin_value(self.min_distance_spin, min_distance)
+
+    def set_threshold(self, threshold: float) -> None:
+        self._set_spin_value(self.threshold_spin, threshold)
+
+    def _double_spin(self, *, decimals: int, minimum: float, maximum: float, step: float) -> QtWidgets.QDoubleSpinBox:
+        spin = QtWidgets.QDoubleSpinBox(self)
+        spin.setDecimals(decimals)
+        spin.setRange(minimum, maximum)
+        spin.setSingleStep(step)
+        return spin
+
+    def _labeled_row(self, label: str, widget: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        text = QtWidgets.QLabel(label)
+        text.setProperty("role", "muted")
+        row.addWidget(text)
+        row.addWidget(widget, 1)
+        return row
+
+    def _set_spin_value(self, spin: QtWidgets.QDoubleSpinBox, value: float) -> None:
+        spin.blockSignals(True)
+        spin.setValue(float(value))
+        spin.blockSignals(False)
+
+
 class _PresetRowWidget(QtWidgets.QWidget):
     selection_requested = QtCore.Signal(str)
     edit_requested = QtCore.Signal(str)
@@ -1027,6 +1100,8 @@ class EventPresetPanel(QtWidgets.QWidget):
 
 
 class WaveformPane(pg.PlotWidget):
+    threshold_changed = QtCore.Signal(float)
+
     def __init__(self, parent=None, callback=None, region_changed_callback=None, position_changed_callback=None) -> None:
         super().__init__(parent=parent)
         self.setMinimumHeight(60)
@@ -1048,6 +1123,9 @@ class WaveformPane(pg.PlotWidget):
         self._curve = self.plot(pen=pg.mkPen("#36cfc9", width=1.6))
         self._curve.setZValue(0)
         self._other_curves: list[pg.PlotCurveItem] = []
+        self._threshold_curve = pg.PlotCurveItem(pen=pg.mkPen(color=[196, 98, 98], width=1))
+        self._threshold_curve.setZValue(8)
+        self._threshold_enabled = False
         self._playhead = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
         self._playhead.setZValue(20)
         self.addItem(self._playhead)
@@ -1061,6 +1139,8 @@ class WaveformPane(pg.PlotWidget):
             label="Threshold",
             labelOpts={"position": 0.9},
         )
+        self.threshold_line.setZValue(9)
+        self.threshold_line.sigPositionChangeFinished.connect(self._on_threshold_line_changed)
         self.getPlotItem().mouseClickEvent = self._click
 
     @property
@@ -1096,6 +1176,66 @@ class WaveformPane(pg.PlotWidget):
         self._set_curve_data(self._curve, x, y, max_points=max_points)
         self.setXRange(float(x[0]), float(x[-1]), padding=0)
         self._set_visible_y_range(y, y_other if scale_y_all else None)
+
+    def set_threshold_value(self, threshold: float) -> None:
+        self.threshold_line.blockSignals(True)
+        self.threshold_line.setValue(max(0.0, float(threshold)))
+        self.threshold_line.blockSignals(False)
+        if self._threshold_enabled:
+            self._include_threshold_y_range()
+
+    def set_threshold_data(
+        self,
+        x: np.ndarray | None,
+        envelope: np.ndarray | None,
+        *,
+        enabled: bool,
+        threshold: float | None = None,
+        max_points: int = 6000,
+    ) -> None:
+        self._set_threshold_enabled(bool(enabled))
+        if threshold is not None:
+            self.set_threshold_value(threshold)
+        if not enabled or x is None or envelope is None or len(x) == 0 or len(envelope) == 0:
+            self._threshold_curve.setData([], [])
+            return
+        x = np.asarray(x, dtype=float)
+        envelope = np.asarray(envelope, dtype=float)
+        if len(envelope) != len(x):
+            size = min(len(x), len(envelope))
+            x = x[:size]
+            envelope = envelope[:size]
+        self._set_curve_data(self._threshold_curve, x, envelope, max_points=max_points)
+        self._include_threshold_y_range(envelope)
+
+    def _set_threshold_enabled(self, enabled: bool) -> None:
+        if enabled == self._threshold_enabled:
+            return
+        self._threshold_enabled = enabled
+        if enabled:
+            self.addItem(self._threshold_curve)
+            self.addItem(self.threshold_line)
+        else:
+            self.removeItem(self._threshold_curve)
+            self.removeItem(self.threshold_line)
+
+    def _include_threshold_y_range(self, envelope: np.ndarray | None = None) -> None:
+        values = [np.array([self.threshold], dtype=float)]
+        if envelope is not None:
+            values.append(np.ravel(envelope))
+        finite = np.concatenate(values)
+        finite = finite[np.isfinite(finite)]
+        if finite.size == 0:
+            return
+        ymin, ymax = self.viewRange()[1]
+        ymin = min(float(ymin), float(np.min(finite)))
+        ymax = max(float(ymax), float(np.max(finite)))
+        span = ymax - ymin
+        margin = max(span * 0.05, 1.0e-9)
+        self.setYRange(ymin - margin, ymax + margin, padding=0)
+
+    def _on_threshold_line_changed(self) -> None:
+        self.threshold_changed.emit(self.threshold)
 
     def _clear_other_curves(self) -> None:
         for curve in self._other_curves:

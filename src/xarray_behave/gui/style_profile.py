@@ -44,6 +44,11 @@ QWidget#channelPanel {{
     border: 1px solid {BORDER_SUBTLE};
     border-radius: 8px;
 }}
+QWidget#thresholdPanel {{
+    background-color: {SURFACE_ELEVATED};
+    border: 1px solid {BORDER_SUBTLE};
+    border-radius: 8px;
+}}
 QWidget#centerWorkspace {{
     background-color: {SURFACE_BASE};
     border: 1px solid {BORDER_SUBTLE};
