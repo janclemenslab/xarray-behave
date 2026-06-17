@@ -26,6 +26,9 @@ class AudioDevice:
     def play(self, y, fs):
         pass
 
+    def stop(self):
+        pass
+
 
 class SoundDevice(AudioDevice):
     NAME = "sounddevice"
@@ -46,6 +49,7 @@ class SoundDevice(AudioDevice):
     def play(self, y, fs):
         if self._player is None:
             return 0
+        y = np.asarray(y)
         # scale sound so we do not blow out the speakers
         try:
             y = y.astype(float) / np.iinfo(y.dtype).max * self.MAX_AUDIO_AMP
@@ -53,6 +57,10 @@ class SoundDevice(AudioDevice):
             y = y / (np.nanmax(y) + 1e-10) / 10 * self.MAX_AUDIO_AMP
         self._player.play(y, fs)
         return 1
+
+    def stop(self):
+        if self._player is not None:
+            self._player.stop()
 
 
 class SimpleAudio(AudioDevice):
@@ -75,6 +83,11 @@ class SimpleAudio(AudioDevice):
     def play(self, y, fs):
         if not self.is_working:
             return 0
+        y = np.asarray(y)
+        if y.ndim == 1:
+            num_channels = 1
+        else:
+            num_channels = int(y.shape[1])
         # convert to 16bit int
         y = y / (np.nanmax(y) + 1e-10)
         y = y * 32767 / self.MAX_AUDIO_AMP
@@ -82,11 +95,22 @@ class SimpleAudio(AudioDevice):
 
         # simpleaudio can only play at these rates - choose the one nearest to our rate
         fs_nearest = min(self.ALLOWED_FS, key=lambda x: abs(x - int(fs)))
-        y = scipy.signal.resample_poly(y, fs_nearest, fs)
+        y = scipy.signal.resample_poly(y, fs_nearest, int(round(fs)), axis=0)
+        y = np.ascontiguousarray(y.astype(np.int16))
 
         # start playback in background
-        self._player.play_buffer(y, num_channels=1, bytes_per_sample=2, sample_rate=fs_nearest)
+        self._play_obj = self._player.play_buffer(
+            y,
+            num_channels=num_channels,
+            bytes_per_sample=2,
+            sample_rate=fs_nearest,
+        )
         return 1
+
+    def stop(self):
+        play_obj = getattr(self, "_play_obj", None)
+        if play_obj is not None:
+            play_obj.stop()
 
 
 class AudioPlayer:
@@ -106,3 +130,7 @@ class AudioPlayer:
 
     def __str__(self):
         return str(self.player)
+
+    def stop(self):
+        if self.player is not None:
+            self.player.stop()

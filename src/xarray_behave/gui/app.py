@@ -881,7 +881,8 @@ class PSV(MainWindow):
         self.show_songevents = True
         self.movable_events = True
         self.edit_only_current_events = False
-        self.show_all_channels = True
+        self.audio_channel_settings = event_widgets.AudioChannelSettings()
+        self.show_all_channels = self.audio_channel_settings.waveform_all
         self.select_loudest_channel = False
         self.threshold_mode = False
         self.sinet0 = None
@@ -923,6 +924,12 @@ class PSV(MainWindow):
         self._playback_anchor_sample = 0.0
         self._playback_window_start = None
         self._playback_window_stop = None
+        self._window_audio_timer = QtCore.QTimer(self)
+        self._window_audio_timer.setInterval(20)
+        self._window_audio_timer.timeout.connect(self._on_window_audio_tick)
+        self._window_audio_clock = QtCore.QElapsedTimer()
+        self._window_audio_start_sample = None
+        self._window_audio_stop_sample = None
         self._audio_output = None
         self._audio_player = None
 
@@ -1240,6 +1247,7 @@ class PSV(MainWindow):
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
         self._syncing_event_selection = False
         self.channel_panel.channel_changed.connect(self.update_xy)
+        self.channel_panel.settings_requested.connect(self._edit_audio_settings)
         self.preset_panel.selection_changed.connect(self._on_preset_selected)
         self.preset_panel.create_requested.connect(self._create_preset_from_panel)
         self.preset_panel.edit_requested.connect(self._edit_preset_from_panel)
@@ -1479,6 +1487,13 @@ class PSV(MainWindow):
                 object_name="transportPlayButton",
             ),
             self._build_transport_button(
+                "Loop",
+                "Play current window (E)",
+                lambda: self.play_audio("E"),
+                object_name="transportLoopButton",
+                width=40,
+            ),
+            self._build_transport_button(
                 ">|",
                 "Forward",
                 lambda: self._transport_frame_seek(1),
@@ -1514,7 +1529,14 @@ class PSV(MainWindow):
         self._set_play_button_state(playing=False)
         return panel
 
-    def _build_transport_button(self, label: str, tooltip: str, callback: Callable[[], None], object_name: str = None):
+    def _build_transport_button(
+        self,
+        label: str,
+        tooltip: str,
+        callback: Callable[[], None],
+        object_name: str = None,
+        width: int = 22,
+    ):
         button = QtWidgets.QToolButton()
         button.setProperty("role", "transport")
         if object_name is not None:
@@ -1522,7 +1544,7 @@ class PSV(MainWindow):
         button.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
         button.setToolTip(tooltip)
         button.setText(label)
-        button.setFixedSize(22, 22)
+        button.setFixedSize(width, 22)
         button.clicked.connect(lambda _checked=False: callback())
         return button
 
@@ -1573,6 +1595,14 @@ class PSV(MainWindow):
         self._playback_window_start = None
         self._playback_window_stop = None
 
+    def _stop_window_audio_playhead(self) -> None:
+        timer = getattr(self, "_window_audio_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._stop_buffer_audio()
+        self._window_audio_start_sample = None
+        self._window_audio_stop_sample = None
+
     def _set_playhead_sample(
         self,
         sample: float,
@@ -1583,6 +1613,7 @@ class PSV(MainWindow):
         force_refresh: bool = False,
     ) -> None:
         if not preserve_playback_window:
+            self._stop_window_audio_playhead()
             self._clear_playback_window()
         old_t0 = getattr(self, "_t0", self.tmin)
         self._t0 = np.clip(sample, self.tmin, self.tmax_playhead)
@@ -1659,8 +1690,61 @@ class PSV(MainWindow):
             if hasattr(self, "_clock_label"):
                 self._clock_label.setToolTip("Timer-backed playback")
 
+    def _ensure_buffer_audio_player(self) -> bool:
+        if not hasattr(self, "audio_player"):
+            self.audio_player = audio_player.AudioPlayer()
+        return self.audio_player.player is not None
+
+    def _stop_buffer_audio(self) -> None:
+        if hasattr(self, "audio_player") and self.audio_player.player is not None:
+            stop = getattr(self.audio_player, "stop", None)
+            if stop is not None:
+                stop()
+
+    def _materialize_audio_data(self, data):
+        try:
+            data = data.compute()
+        except AttributeError:
+            pass
+        return np.array(data)
+
+    def _audio_window_data(self, window_start: int, window_stop: int, *, all_channels: bool):
+        if "song_raw" in self.ds:
+            if all_channels:
+                return self._materialize_audio_data(self.ds.song_raw.data[window_start:window_stop, :])
+            channel = self.current_channel_index
+            if channel is None:
+                if "song" in self.ds:
+                    return self._materialize_audio_data(self.ds.song.data[window_start:window_stop])
+                return None
+            return self._materialize_audio_data(self.ds.song_raw.data[window_start:window_stop, channel])
+        if "song" in self.ds:
+            return self._materialize_audio_data(self.ds.song.data[window_start:window_stop])
+        return None
+
+    def _play_audio_window(
+        self,
+        window_start: int,
+        window_stop: int,
+        *,
+        all_channels: bool,
+        stop_existing: bool = True,
+    ) -> bool:
+        if not self._ensure_buffer_audio_player():
+            logger.info("No sound module installed - install 'sounddevice' or 'simpleaudio'")
+            return False
+        y = self._audio_window_data(window_start, window_stop, all_channels=all_channels)
+        if y is None or len(y) == 0:
+            return False
+        if stop_existing:
+            self._stop_buffer_audio()
+        return self.audio_player.play(y, self.fs_song) != 0
+
+    def _transport_uses_qmedia_audio(self) -> bool:
+        return self._audio_playback_all_channels() and self._audio_player is not None
+
     def _seek_audio_to_playhead(self) -> None:
-        if self._audio_player is not None:
+        if self._transport_uses_qmedia_audio():
             self._audio_player.setPosition(int(round(self.t0 / self.fs_song * 1000)))
 
     def _toggle_playback(self) -> None:
@@ -1682,6 +1766,7 @@ class PSV(MainWindow):
         self._playback_window_stop = min(self.tmax, page_start + self.span)
 
     def _start_playback_page(self, page_start: float) -> None:
+        self._stop_window_audio_playhead()
         self._set_playback_window(page_start)
         self.STOP = False
         self._is_playing = True
@@ -1696,8 +1781,15 @@ class PSV(MainWindow):
         self._seek_audio_to_playhead()
         self._playback_timer.start()
         self._set_play_button_state(playing=True)
-        if self._audio_player is not None:
+        if self._transport_uses_qmedia_audio():
             self._audio_player.play()
+        else:
+            self._play_audio_window(
+                self._playback_window_start,
+                self._playback_window_stop,
+                all_channels=self._audio_playback_all_channels(),
+                stop_existing=False,
+            )
 
     def _advance_playback_window(self, target_sample: float) -> bool:
         changed = False
@@ -1718,13 +1810,55 @@ class PSV(MainWindow):
         self._is_playing = False
         self._playback_timer.stop()
         self._set_play_button_state(playing=False)
-        if self._audio_player is not None:
+        if self._transport_uses_qmedia_audio():
             self._audio_player.pause()
+        else:
+            self._stop_buffer_audio()
+
+    def _start_window_audio_playhead(self, window_start: int, window_stop: int) -> None:
+        if self._is_playing:
+            self._pause_playback()
+        self._playback_window_start = int(window_start)
+        self._playback_window_stop = int(window_stop)
+        self._window_audio_start_sample = float(window_start)
+        self._window_audio_stop_sample = float(max(window_start, min(window_stop - 1, self.tmax_playhead)))
+        self._set_playhead_sample(
+            self._window_audio_start_sample,
+            refresh=True,
+            process_events=False,
+            preserve_playback_window=True,
+            force_refresh=True,
+        )
+        self._window_audio_clock.restart()
+        self._window_audio_timer.start()
+
+    def _on_window_audio_tick(self) -> None:
+        start_sample = self._window_audio_start_sample
+        stop_sample = self._window_audio_stop_sample
+        if start_sample is None or stop_sample is None:
+            self._stop_window_audio_playhead()
+            return
+        target_sample = start_sample + self._window_audio_clock.nsecsElapsed() / 1e9 * self.fs_song
+        if target_sample >= stop_sample:
+            self._set_playhead_sample(
+                stop_sample,
+                refresh=False,
+                process_events=False,
+                preserve_playback_window=True,
+            )
+            self._stop_window_audio_playhead()
+            return
+        self._set_playhead_sample(
+            target_sample,
+            refresh=False,
+            process_events=False,
+            preserve_playback_window=True,
+        )
 
     def _on_playback_tick(self) -> None:
         if not self._is_playing:
             return
-        if self._audio_player is not None:
+        if self._transport_uses_qmedia_audio():
             target_sample = self._audio_player.position() / 1000 * self.fs_song
         else:
             target_sample = self._playback_anchor_sample + self._playback_clock.nsecsElapsed() / 1e9 * self.fs_song
@@ -1744,6 +1878,12 @@ class PSV(MainWindow):
                     preserve_playback_window=True,
                     force_refresh=True,
                 )
+                if not self._transport_uses_qmedia_audio():
+                    self._play_audio_window(
+                        self._playback_window_start,
+                        self._playback_window_stop,
+                        all_channels=self._audio_playback_all_channels(),
+                    )
             return
         if target_sample >= self.tmax_playhead:
             self._set_playhead_sample(self.tmax_playhead, refresh=True, preserve_playback_window=True)
@@ -1752,12 +1892,14 @@ class PSV(MainWindow):
         self._set_playhead_sample(target_sample, refresh=False, process_events=False, preserve_playback_window=True)
 
     def _on_audio_position_changed(self, position_ms: int) -> None:
+        if not self._transport_uses_qmedia_audio():
+            return
         if self._is_playing and self._playback_timer.isActive():
             return
         self._set_playhead_sample(position_ms / 1000 * self.fs_song, refresh=True)
 
     def _on_audio_playback_state_changed(self, state) -> None:
-        if QMediaPlayer is None or self._audio_player is None:
+        if QMediaPlayer is None or self._audio_player is None or not self._transport_uses_qmedia_audio():
             return
         stopped_state = getattr(QMediaPlayer, "StoppedState", None)
         if stopped_state is None and hasattr(QMediaPlayer, "PlaybackState"):
@@ -1938,6 +2080,7 @@ class PSV(MainWindow):
             self.event_times,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
+            channel_filter=self._audio_event_channel_filter(),
         ):
             preset = self._event_preset(record.name)
             if preset.fixed_duration and not preset.duration_editable:
@@ -2101,6 +2244,45 @@ class PSV(MainWindow):
         else:
             return None
 
+    def _audio_settings(self):
+        if hasattr(self, "audio_channel_settings"):
+            return self.audio_channel_settings
+        return event_widgets.AudioChannelSettings(waveform_all=getattr(self, "show_all_channels", True))
+
+    def _set_audio_settings(self, settings):
+        if getattr(self, "_is_playing", False):
+            self._pause_playback()
+        self.audio_channel_settings = settings
+        self.show_all_channels = bool(settings.waveform_all)
+        if getattr(self, "STOP", True):
+            self.update_xy()
+
+    def _edit_audio_settings(self) -> None:
+        initial_settings = self._audio_settings()
+        dialog = event_widgets.AudioSettingsDialog(initial_settings, self)
+        dialog.settings_changed.connect(self._set_audio_settings)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            self._set_audio_settings(initial_settings)
+
+    def _audio_event_channel_filter(self):
+        if self._audio_settings().events_all:
+            return None
+        channel = self.current_channel_index
+        return -1 if channel is None else channel
+
+    def _filter_event_rows_for_audio_channel(self, rows):
+        channel_filter = self._audio_event_channel_filter()
+        if channel_filter is None or len(rows) == 0:
+            return rows
+        channels = np.full(rows.shape[0], -1, dtype=int)
+        if rows.shape[1] > 2:
+            finite_channels = np.isfinite(rows[:, 2])
+            channels[finite_channels] = rows[finite_channels, 2].astype(int)
+        return rows[channels == int(channel_filter)]
+
+    def _audio_playback_all_channels(self) -> bool:
+        return bool(self._audio_settings().playback_all)
+
     def _channel_labels(self) -> list[str]:
         labels = []
         if "song" in self.ds:
@@ -2135,6 +2317,7 @@ class PSV(MainWindow):
         if sync_table_to_view and hasattr(self, "x") and len(self.x):
             start_seconds = float(self.x[0])
             stop_seconds = float(self.x[-1])
+        channel_filter = self._audio_event_channel_filter()
         self.event_timeline.set_events(
             visible_events,
             colors=colors,
@@ -2143,6 +2326,7 @@ class PSV(MainWindow):
             locked_event_names=locked_event_names,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
+            channel_filter=channel_filter,
         )
         self.events_table.set_events(
             visible_events,
@@ -2150,6 +2334,7 @@ class PSV(MainWindow):
             locked_event_names=locked_event_names,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
+            channel_filter=channel_filter,
         )
         self.event_timeline.set_selected_ids(self.events_table.selected_record_ids())
         self.event_timeline.set_playhead(float(self.t0) / self.fs_song)
@@ -2341,6 +2526,14 @@ class PSV(MainWindow):
     def toggle(self, var_name, qt_keycode):
         try:
             self.__dict__[var_name] = not self.__dict__[var_name]
+            if var_name == "show_all_channels":
+                current = self._audio_settings()
+                self.audio_channel_settings = event_widgets.AudioChannelSettings(
+                    waveform_all=bool(self.show_all_channels),
+                    events_all=current.events_all,
+                    playback_all=current.playback_all,
+                    scale_y_all=current.scale_y_all,
+                )
             if self.STOP:
                 self.update_frame()
                 self.update_xy()
@@ -2553,7 +2746,7 @@ class PSV(MainWindow):
                 y_all = self.ds.song_raw.data[self.time0 : self.time1, :]
 
             self.y = y_all[:, self.current_channel_index]
-            if self.show_all_channels:
+            if self._audio_settings().waveform_all:
                 channel_list = np.delete(np.arange(self.nb_channels), self.current_channel_index)
                 self.y_other = y_all[:, channel_list]
 
@@ -2572,7 +2765,12 @@ class PSV(MainWindow):
             self.preset_panel.set_current_name(self.current_event_name)
 
         if self.show_trace:
-            self.slice_view.set_waveform(self.x, self.y)
+            self.slice_view.set_waveform(
+                self.x,
+                self.y,
+                y_other=self.y_other,
+                scale_y_all=self._audio_settings().scale_y_all,
+            )
             self.slice_view.set_playhead(float(self.t0) / self.fs_song)
             self.slice_view.clear_annotations()
             self.slice_view.show()
@@ -2581,7 +2779,12 @@ class PSV(MainWindow):
             self.slice_view.hide()
 
         if hasattr(self, "event_timeline"):
-            self.event_timeline.set_waveform(self.x, self.y)
+            self.event_timeline.set_waveform(
+                self.x,
+                self.y,
+                y_other=self.y_other,
+                scale_y_all=self._audio_settings().scale_y_all,
+            )
 
         if self.show_annot:
             self.annot_view.update_trace()
@@ -2654,6 +2857,7 @@ class PSV(MainWindow):
             else:
                 event_text = None
 
+            events_in_view = self._filter_event_rows_for_audio_channel(events_in_view)
             point_like = events_in_view[:, 0] == events_in_view[:, 1] if len(events_in_view) else []
             interval_events = events_in_view[~point_like] if len(events_in_view) else []
             point_events = events_in_view[point_like] if len(events_in_view) else []
@@ -2972,19 +3176,14 @@ class PSV(MainWindow):
         """Play vector as audio using the simpleaudio package."""
 
         if "song" in self.ds or "song_raw" in self.ds:
-            if not hasattr(self, "audio_player"):
-                self.audio_player = audio_player.AudioPlayer()
-
-            if self.audio_player.player is not None:
-                if "song" in self.ds and self.current_channel_name == "Merged channels":
-                    y = self.ds.song.data[self.time0 : self.time1]
-                else:
-                    y = self.ds.song_raw.data[self.time0 : self.time1, self.current_channel_index]
-                y = np.array(y)  # if y is a dask.array (lazy loaded)
-
-                self.audio_player.play(y, self.fs_song)
-            else:
-                logger.info("No sound module installed - install 'sounddevice' or 'simpleaudio'")
+            window_start = self.time0
+            window_stop = self.time1
+            if self._play_audio_window(
+                window_start,
+                window_stop,
+                all_channels=self._audio_playback_all_channels(),
+            ):
+                self._start_window_audio_playhead(window_start, window_stop)
         else:
             logger.info("Could not play sound - no sound data in the dataset.")
 

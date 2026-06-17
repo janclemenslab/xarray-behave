@@ -102,6 +102,14 @@ class EventTypePreset:
         )
 
 
+@dataclass(frozen=True)
+class AudioChannelSettings:
+    waveform_all: bool = True
+    events_all: bool = True
+    playback_all: bool = False
+    scale_y_all: bool = True
+
+
 def color_hex_from_rgb(rgb: Iterable[int]) -> str:
     values = [int(np.clip(value, 0, 255)) for value in rgb]
     while len(values) < 3:
@@ -117,6 +125,7 @@ def records_from_events(
     events: Events,
     start_seconds: float | None = None,
     stop_seconds: float | None = None,
+    channel_filter: int | None = None,
 ) -> list[EventRecord]:
     records: list[EventRecord] = []
     for name in events.names:
@@ -130,6 +139,14 @@ def records_from_events(
             row_starts = np.minimum(values[:, 0], values[:, 1])
             row_stops = np.maximum(values[:, 0], values[:, 1])
             keep = np.logical_and(row_stops >= start_bound, row_starts <= stop_bound)
+            values = values[keep]
+            indices = indices[keep]
+        if channel_filter is not None:
+            channels = np.full(values.shape[0], -1, dtype=int)
+            if values.shape[1] > 2:
+                finite_channels = np.isfinite(values[:, 2])
+                channels[finite_channels] = values[finite_channels, 2].astype(int)
+            keep = channels == int(channel_filter)
             values = values[keep]
             indices = indices[keep]
         for index, row in zip(indices, values):
@@ -182,6 +199,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         self._records_by_id: dict[str, EventRecord] = {}
         self._event_names: list[str] = []
         self._locked_event_names: set[str] = set()
+        self._channel_filter: int | None = None
         self._sync_enabled = True
         self._blocked = False
 
@@ -227,13 +245,20 @@ class EventsTableWidget(QtWidgets.QWidget):
         locked_event_names: Iterable[str] | None = None,
         start_seconds: float | None = None,
         stop_seconds: float | None = None,
+        channel_filter: int | None = None,
     ) -> None:
         selected = set(selected_ids or self.selected_record_ids())
         self._blocked = True
         self._events = Events(events)
         self._event_names = list(self._events.names)
         self._locked_event_names = set(locked_event_names or set())
-        records = records_from_events(self._events, start_seconds=start_seconds, stop_seconds=stop_seconds)
+        self._channel_filter = channel_filter
+        records = records_from_events(
+            self._events,
+            start_seconds=start_seconds,
+            stop_seconds=stop_seconds,
+            channel_filter=channel_filter,
+        )
         self._records_by_id = {record.id: record for record in records}
         sort_state = self._sort_state()
         self.table.setSortingEnabled(False)
@@ -344,7 +369,11 @@ class EventsTableWidget(QtWidgets.QWidget):
         try:
             value = float(item.text())
         except ValueError:
-            self.set_events(self._events, locked_event_names=self._locked_event_names)
+            self.set_events(
+                self._events,
+                locked_event_names=self._locked_event_names,
+                channel_filter=self._channel_filter,
+            )
             return
         start = value if item.column() == self._COL_START else record.start_seconds
         stop = value if item.column() == self._COL_STOP else record.stop_seconds
@@ -460,6 +489,115 @@ def _compact_tool_button(icon: QtGui.QIcon, tooltip: str, parent=None) -> QtWidg
     button.setToolTip(tooltip)
     button.setFocusPolicy(QtCore.Qt.NoFocus)
     return button
+
+
+def _settings_icon() -> QtGui.QIcon:
+    pixmap = QtGui.QPixmap(18, 18)
+    pixmap.fill(QtCore.Qt.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+    color = QtGui.QColor(TEXT_PRIMARY)
+    painter.setPen(QtGui.QPen(color, 1.5))
+    painter.setBrush(QtCore.Qt.NoBrush)
+    center = QtCore.QPointF(9.0, 9.0)
+    for angle in range(0, 360, 45):
+        transform = QtGui.QTransform()
+        transform.translate(center.x(), center.y())
+        transform.rotate(angle)
+        transform.translate(-center.x(), -center.y())
+        painter.setTransform(transform)
+        painter.drawLine(QtCore.QPointF(9.0, 1.8), QtCore.QPointF(9.0, 4.0))
+    painter.resetTransform()
+    painter.drawEllipse(QtCore.QRectF(4.0, 4.0, 10.0, 10.0))
+    painter.drawEllipse(QtCore.QRectF(7.0, 7.0, 4.0, 4.0))
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+class AudioSettingsDialog(QtWidgets.QDialog):
+    settings_changed = QtCore.Signal(object)
+
+    def __init__(self, settings: AudioChannelSettings | None = None, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Audio Settings")
+        self._settings = settings or AudioChannelSettings()
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
+
+        self.waveform_all_radio, self.waveform_current_radio = self._add_scope_group(
+            layout,
+            "Waveform",
+            "Show all channels",
+            "Show selected channel",
+            self._settings.waveform_all,
+        )
+        self.scale_y_all_radio, self.scale_y_current_radio = self._add_scope_group(
+            layout,
+            "Y limits",
+            "Scale from all visible channels",
+            "Scale from selected channel",
+            self._settings.scale_y_all,
+        )
+        self.events_all_radio, self.events_current_radio = self._add_scope_group(
+            layout,
+            "Annotations",
+            "Show events from all channels",
+            "Show events from selected channel",
+            self._settings.events_all,
+        )
+        self.playback_all_radio, self.playback_current_radio = self._add_scope_group(
+            layout,
+            "Playback",
+            "Play all channels",
+            "Play selected channel",
+            self._settings.playback_all,
+        )
+        for radio in (
+            self.waveform_all_radio,
+            self.scale_y_all_radio,
+            self.events_all_radio,
+            self.playback_all_radio,
+        ):
+            radio.toggled.connect(self._emit_settings_changed)
+
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _add_scope_group(
+        self,
+        layout: QtWidgets.QVBoxLayout,
+        title: str,
+        all_label: str,
+        current_label: str,
+        all_checked: bool,
+    ) -> tuple[QtWidgets.QRadioButton, QtWidgets.QRadioButton]:
+        group = QtWidgets.QGroupBox(title, self)
+        group_layout = QtWidgets.QVBoxLayout(group)
+        group_layout.setContentsMargins(10, 8, 10, 8)
+        group_layout.setSpacing(4)
+        all_radio = QtWidgets.QRadioButton(all_label, group)
+        current_radio = QtWidgets.QRadioButton(current_label, group)
+        all_radio.setChecked(bool(all_checked))
+        current_radio.setChecked(not bool(all_checked))
+        group_layout.addWidget(all_radio)
+        group_layout.addWidget(current_radio)
+        layout.addWidget(group)
+        return all_radio, current_radio
+
+    def settings(self) -> AudioChannelSettings:
+        return AudioChannelSettings(
+            waveform_all=self.waveform_all_radio.isChecked(),
+            events_all=self.events_all_radio.isChecked(),
+            playback_all=self.playback_all_radio.isChecked(),
+            scale_y_all=self.scale_y_all_radio.isChecked(),
+        )
+
+    def _emit_settings_changed(self, _checked: bool) -> None:
+        self.settings_changed.emit(self.settings())
 
 
 class EventTypePresetDialog(QtWidgets.QDialog):
@@ -590,6 +728,7 @@ class EventTypePresetDialog(QtWidgets.QDialog):
 
 class ChannelSelectorPanel(QtWidgets.QWidget):
     channel_changed = QtCore.Signal()
+    settings_requested = QtCore.Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -600,9 +739,19 @@ class ChannelSelectorPanel(QtWidgets.QWidget):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(5)
 
-        channel_label = QtWidgets.QLabel("Channel")
-        channel_label.setProperty("role", "inspectorTitle")
-        layout.addWidget(channel_label)
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(4)
+        self.title_label = QtWidgets.QLabel("Audio")
+        self.title_label.setProperty("role", "inspectorTitle")
+        header.addWidget(self.title_label)
+        header.addStretch(1)
+        self.settings_button = _compact_tool_button(_settings_icon(), "Audio settings", self)
+        self.settings_button.setObjectName("audioSettingsButton")
+        self.settings_button.setProperty("role", "presetGlobal")
+        self.settings_button.clicked.connect(self.settings_requested.emit)
+        header.addWidget(self.settings_button)
+        layout.addLayout(header)
 
         self.channel_combo = QtWidgets.QComboBox(self)
         self.channel_combo.setObjectName("channelSelector")
@@ -719,9 +868,9 @@ class EventPresetPanel(QtWidgets.QWidget):
         header = QtWidgets.QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(4)
-        title = QtWidgets.QLabel("Presets")
-        title.setProperty("role", "inspectorTitle")
-        header.addWidget(title)
+        self.title_label = QtWidgets.QLabel("Annotations")
+        self.title_label.setProperty("role", "inspectorTitle")
+        header.addWidget(self.title_label)
         header.addStretch(1)
 
         self.visibility_all_button = _compact_tool_button(_visibility_icon(True), "Hide all", self)
@@ -897,7 +1046,10 @@ class WaveformPane(pg.PlotWidget):
         self.region_changed_callback = region_changed_callback
         self.position_changed_callback = position_changed_callback
         self._curve = self.plot(pen=pg.mkPen("#36cfc9", width=1.6))
+        self._curve.setZValue(0)
+        self._other_curves: list[pg.PlotCurveItem] = []
         self._playhead = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
+        self._playhead.setZValue(20)
         self.addItem(self._playhead)
         self._annotation_items: list[pg.GraphicsObject] = []
         self.threshold_line = pg.InfiniteLine(
@@ -915,7 +1067,15 @@ class WaveformPane(pg.PlotWidget):
     def threshold(self) -> float:
         return float(self.threshold_line.value())
 
-    def set_waveform(self, x: np.ndarray, y: np.ndarray, max_points: int = 6000) -> None:
+    def set_waveform(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        y_other: np.ndarray | None = None,
+        scale_y_all: bool = True,
+        max_points: int = 6000,
+    ) -> None:
+        self._clear_other_curves()
         if x is None or y is None or len(x) == 0 or len(y) == 0:
             self._curve.setData([], [])
             return
@@ -923,6 +1083,50 @@ class WaveformPane(pg.PlotWidget):
         y = np.asarray(y, dtype=float)
         if y.ndim > 1:
             y = y.mean(axis=1)
+        if y_other is not None:
+            y_other = np.asarray(y_other, dtype=float)
+            if y_other.ndim == 1:
+                y_other = y_other[:, None]
+            for channel in range(y_other.shape[1]):
+                curve = pg.PlotCurveItem(pen=pg.mkPen("#4d5968", width=0.9))
+                curve.setZValue(-5)
+                self.addItem(curve)
+                self._set_curve_data(curve, x, y_other[:, channel], max_points=max_points)
+                self._other_curves.append(curve)
+        self._set_curve_data(self._curve, x, y, max_points=max_points)
+        self.setXRange(float(x[0]), float(x[-1]), padding=0)
+        self._set_visible_y_range(y, y_other if scale_y_all else None)
+
+    def _clear_other_curves(self) -> None:
+        for curve in self._other_curves:
+            self.removeItem(curve)
+        self._other_curves = []
+
+    def _set_visible_y_range(self, y: np.ndarray, y_other: np.ndarray | None = None) -> None:
+        values = [np.ravel(y)]
+        if y_other is not None:
+            values.append(np.ravel(y_other))
+        finite = np.concatenate(values)
+        finite = finite[np.isfinite(finite)]
+        if finite.size == 0:
+            return
+        ymin = float(np.min(finite))
+        ymax = float(np.max(finite))
+        span = ymax - ymin
+        if span <= 0:
+            margin = max(abs(ymin) * 0.1, 1.0)
+        else:
+            margin = span * 0.05
+        self.setYRange(ymin - margin, ymax + margin, padding=0)
+
+    def _set_curve_data(
+        self,
+        curve: pg.PlotCurveItem,
+        x: np.ndarray,
+        y: np.ndarray,
+        *,
+        max_points: int,
+    ) -> None:
         span_seconds = float(x[-1] - x[0]) if len(x) else 0.0
         if span_seconds >= WAVEFORM_OVERVIEW_MIN_SECONDS and len(y) > max_points:
             stride = int(np.ceil(len(y) / max_points))
@@ -935,10 +1139,9 @@ class WaveformPane(pg.PlotWidget):
             y_plot = np.empty(y_min.size * 2, dtype=float)
             y_plot[0::2] = y_min
             y_plot[1::2] = y_max
-            self._curve.setData(x_plot, y_plot, connect="pairs")
+            curve.setData(x_plot, y_plot, connect="pairs")
         else:
-            self._curve.setData(x, y, connect="finite")
-        self.setXRange(float(x[0]), float(x[-1]), padding=0)
+            curve.setData(x, y, connect="finite")
 
     def set_playhead(self, seconds: float) -> None:
         self._playhead.setPos(float(seconds))
@@ -1027,9 +1230,15 @@ class EventBarsView(pg.PlotWidget):
         locked_event_names: Iterable[str] | None = None,
         start_seconds: float | None = None,
         stop_seconds: float | None = None,
+        channel_filter: int | None = None,
     ) -> None:
         self._events = Events(events)
-        self._records = records_from_events(self._events, start_seconds=start_seconds, stop_seconds=stop_seconds)
+        self._records = records_from_events(
+            self._events,
+            start_seconds=start_seconds,
+            stop_seconds=stop_seconds,
+            channel_filter=channel_filter,
+        )
         self._rows = list(self._events.names)
         self._row_index = {name: index for index, name in enumerate(self._rows)}
         self._colors = dict(colors or {})
@@ -1231,9 +1440,15 @@ class EventTimelineWidget(QtWidgets.QWidget):
         self.events.event_changed.connect(self.event_changed.emit)
         self.events.event_created.connect(self.event_created.emit)
 
-    def set_waveform(self, x: np.ndarray, y: np.ndarray) -> None:
+    def set_waveform(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        y_other: np.ndarray | None = None,
+        scale_y_all: bool = True,
+    ) -> None:
         if self.waveform is not None:
-            self.waveform.set_waveform(x, y)
+            self.waveform.set_waveform(x, y, y_other=y_other, scale_y_all=scale_y_all)
             return
         if x is not None and len(x):
             self.events.setXRange(float(x[0]), float(x[-1]), padding=0)
@@ -1247,6 +1462,7 @@ class EventTimelineWidget(QtWidgets.QWidget):
         locked_event_names: Iterable[str] | None = None,
         start_seconds: float | None = None,
         stop_seconds: float | None = None,
+        channel_filter: int | None = None,
     ) -> None:
         self.events.set_events(
             events,
@@ -1256,6 +1472,7 @@ class EventTimelineWidget(QtWidgets.QWidget):
             locked_event_names=locked_event_names,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
+            channel_filter=channel_filter,
         )
 
     def set_selected_ids(self, selected_ids: Iterable[str]) -> None:

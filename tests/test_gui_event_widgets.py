@@ -3,8 +3,11 @@ import numpy as np
 import xarray_behave  # noqa: F401 - sets QT_API before qtpy imports
 from qtpy import QtCore, QtWidgets
 from xarray_behave.annot import Events
+from xarray_behave.gui import app as gui_app
 from xarray_behave.gui.app import PSV
 from xarray_behave.gui.event_widgets import (
+    AudioChannelSettings,
+    AudioSettingsDialog,
     ChannelSelectorPanel,
     EventBarsView,
     EventPresetPanel,
@@ -48,6 +51,16 @@ def test_records_from_events_time_range_preserves_original_indices():
 
     assert [record.id for record in records] == ["pulse\x1f1"]
     assert records[0].index == 1
+
+
+def test_records_from_events_channel_filter_preserves_original_indices():
+    events = Events({"pulse": np.array([[0.0, 0.0, 0], [1.0, 1.1, 1], [2.0, 2.1, -1]])})
+
+    records = records_from_events(events, channel_filter=1)
+
+    assert [record.id for record in records] == ["pulse\x1f1"]
+    assert records[0].index == 1
+    assert records[0].channel == 1
 
 
 def test_events_table_selects_overlapping_visible_range():
@@ -97,6 +110,18 @@ def test_events_table_defaults_to_start_time_sort():
     widget.set_events(events)
 
     assert widget.table.item(0, widget._COL_START).text() == "0.100000"
+
+
+def test_events_table_channel_filter_uses_exact_channel():
+    _app()
+    widget = EventsTableWidget()
+    events = Events({"pulse": np.array([[0.1, 0.1, -1], [0.2, 0.2, 0], [0.3, 0.3, 1]])})
+
+    widget.set_events(events, channel_filter=0)
+
+    assert widget.table.rowCount() == 1
+    assert widget.table.item(0, widget._COL_CHANNEL).text() == "0"
+    assert widget._record_id_for_row(0) == "pulse\x1f1"
 
 
 def test_annotation_name_editor_is_name_only():
@@ -152,17 +177,50 @@ def test_preset_panel_emits_selection_and_formats_fixed_duration():
     row = panel.list_widget.itemWidget(panel.list_widget.item(0))
     assert row.name_label.text() == "pulse"
     assert "fixed 0s" in row.detail_label.text()
+    assert panel.title_label.text() == "Annotations"
 
 
-def test_channel_selector_panel_hosts_channel_selector():
+def test_channel_selector_panel_hosts_channel_selector_and_settings_button():
     _app()
     panel = ChannelSelectorPanel()
+    requested = []
+    panel.settings_requested.connect(lambda: requested.append(True))
 
     panel.set_channels(["Merged channels", "Channel 0"])
+    panel.settings_button.click()
 
+    assert panel.title_label.text() == "Audio"
     assert panel.channel_combo.count() == 2
     assert panel.channel_combo.currentText() == "Merged channels"
     assert panel.channel_combo.isEnabled()
+    assert requested == [True]
+
+
+def test_audio_settings_dialog_defaults_and_accepts_changes():
+    _app()
+    dialog = AudioSettingsDialog(AudioChannelSettings())
+    changes = []
+    dialog.settings_changed.connect(changes.append)
+
+    assert dialog.settings() == AudioChannelSettings(waveform_all=True, events_all=True, playback_all=False)
+
+    dialog.waveform_current_radio.setChecked(True)
+    dialog.scale_y_current_radio.setChecked(True)
+    dialog.events_current_radio.setChecked(True)
+    dialog.playback_all_radio.setChecked(True)
+
+    assert dialog.settings() == AudioChannelSettings(
+        waveform_all=False,
+        events_all=False,
+        playback_all=True,
+        scale_y_all=False,
+    )
+    assert changes[-1] == AudioChannelSettings(
+        waveform_all=False,
+        events_all=False,
+        playback_all=True,
+        scale_y_all=False,
+    )
 
 
 def test_preset_panel_emits_row_and_global_layer_toggles():
@@ -229,6 +287,39 @@ def test_waveform_pane_updates_playhead():
     widget.set_playhead(1.5)
 
     assert widget._playhead.value() == 1.5
+
+
+def test_waveform_pane_overlays_other_channels_behind_primary():
+    _app()
+    widget = WaveformPane()
+    yranges = []
+    widget.setYRange = lambda ymin, ymax, padding=0: yranges.append((ymin, ymax, padding))
+
+    widget.set_waveform(
+        np.array([0.0, 1.0, 2.0]),
+        np.array([0.0, 1.0, 0.0]),
+    )
+    selected_range = yranges[-1]
+
+    widget.set_waveform(
+        np.array([0.0, 1.0, 2.0]),
+        np.array([0.0, 1.0, 0.0]),
+        y_other=np.array([[1.0, 2.0], [0.5, 1.5], [0.0, 1.0]]),
+    )
+    all_range = yranges[-1]
+    widget.set_waveform(
+        np.array([0.0, 1.0, 2.0]),
+        np.array([0.0, 1.0, 0.0]),
+        y_other=np.array([[1.0, 2.0], [0.5, 1.5], [0.0, 1.0]]),
+        scale_y_all=False,
+    )
+    selected_with_overlay_range = yranges[-1]
+
+    assert len(widget._other_curves) == 2
+    assert all(curve.zValue() < widget._curve.zValue() for curve in widget._other_curves)
+    assert selected_range[1] < 1.1
+    assert all_range[1] > 2.0
+    assert selected_with_overlay_range[1] < 1.1
 
 
 def test_waveform_pane_uses_continuous_trace_below_four_seconds():
@@ -302,6 +393,61 @@ def test_visible_event_times_filters_hidden_presets():
     assert visible.names == ["song"]
 
 
+def test_selected_channel_event_filter_is_exact():
+    rows = np.array([[0.1, 0.1, -1], [0.2, 0.2, 0], [0.3, 0.3, 1]])
+    window = PSV.__new__(PSV)
+    window.audio_channel_settings = AudioChannelSettings(events_all=False)
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+
+    filtered = window._filter_event_rows_for_audio_channel(rows)
+
+    np.testing.assert_array_equal(filtered[:, 2], np.array([0]))
+
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Merged channels"})()
+    filtered = window._filter_event_rows_for_audio_channel(rows)
+
+    np.testing.assert_array_equal(filtered[:, 2], np.array([-1]))
+
+
+def test_audio_settings_dialog_live_update_reverts_on_cancel(monkeypatch):
+    class Signal:
+        def __init__(self):
+            self._callback = None
+
+        def connect(self, callback):
+            self._callback = callback
+
+        def emit(self, settings):
+            self._callback(settings)
+
+    live_settings = AudioChannelSettings(waveform_all=False, events_all=False, playback_all=True)
+    seen_live = []
+
+    class Dialog:
+        def __init__(self, settings, parent):
+            self.settings_changed = Signal()
+            self._parent = parent
+            assert settings == AudioChannelSettings()
+
+        def exec_(self):
+            self.settings_changed.emit(live_settings)
+            seen_live.append(self._parent.audio_channel_settings)
+            return QtWidgets.QDialog.Rejected
+
+    monkeypatch.setattr(gui_app.event_widgets, "AudioSettingsDialog", Dialog)
+    window = PSV.__new__(PSV)
+    window.audio_channel_settings = AudioChannelSettings()
+    window.show_all_channels = True
+    window._is_playing = False
+    window.STOP = False
+
+    window._edit_audio_settings()
+
+    assert seen_live == [live_settings]
+    assert window.audio_channel_settings == AudioChannelSettings()
+    assert window.show_all_channels is True
+
+
 def test_locked_preset_blocks_timeline_creation():
     window = PSV.__new__(PSV)
     window.event_times = Events({"pulse": np.zeros((0, 3))})
@@ -350,6 +496,174 @@ def test_playhead_starts_at_boundary_and_scrolls_to_last_sample():
     assert window.time1 == 1_000
 
 
+def test_transport_loop_button_uses_audio_window_shortcut():
+    _app()
+    played = []
+    window = PSV.__new__(PSV)
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 500
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200
+    window.vr = None
+    window.play_audio = lambda qt_keycode: played.append(qt_keycode)
+
+    panel = window._build_transport()
+
+    loop_button = panel.findChild(QtWidgets.QToolButton, "transportLoopButton")
+    assert loop_button is not None
+    assert loop_button.text() == "Loop"
+    loop_button.click()
+    assert played == ["E"]
+
+
+def test_play_audio_starts_window_playhead_range():
+    class SongRaw:
+        data = np.arange(1_000)[:, None]
+
+    class Dataset:
+        song_raw = SongRaw()
+
+        def __contains__(self, key):
+            return key == "song_raw"
+
+    class AudioPlayer:
+        player = object()
+
+        def play(self, y, fs):
+            played.append((y, fs))
+            return 1
+
+    played = []
+    started = []
+    window = PSV.__new__(PSV)
+    window.ds = Dataset()
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 500
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200
+    window._playback_window_start = None
+    window._playback_window_stop = None
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+    window.audio_player = AudioPlayer()
+    window._start_window_audio_playhead = lambda window_start, window_stop: started.append((window_start, window_stop))
+
+    window.play_audio("E")
+
+    assert started == [(400, 600)]
+    assert played[0][1] == 1_000
+    np.testing.assert_array_equal(played[0][0], np.arange(400, 600))
+
+
+def test_play_audio_all_channels_passes_multichannel_buffer():
+    class SongRaw:
+        data = np.arange(2_000).reshape(1_000, 2)
+
+    class Dataset:
+        song_raw = SongRaw()
+
+        def __contains__(self, key):
+            return key == "song_raw"
+
+    class AudioPlayer:
+        player = object()
+
+        def play(self, y, fs):
+            played.append((y, fs))
+            return 1
+
+        def stop(self):
+            stopped.append(True)
+
+    played = []
+    stopped = []
+    window = PSV.__new__(PSV)
+    window.ds = Dataset()
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 500
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200
+    window._playback_window_start = None
+    window._playback_window_stop = None
+    window.audio_channel_settings = AudioChannelSettings(playback_all=True)
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+    window.audio_player = AudioPlayer()
+    window._start_window_audio_playhead = lambda window_start, window_stop: None
+
+    window.play_audio("E")
+
+    assert played[0][1] == 1_000
+    np.testing.assert_array_equal(played[0][0], np.arange(800, 1_200).reshape(200, 2))
+    assert stopped == [True]
+
+
+def test_window_audio_playhead_sweeps_without_advancing_window():
+    class Timer:
+        def __init__(self):
+            self.started = False
+            self.stopped = False
+
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            self.stopped = True
+
+    class Clock:
+        def __init__(self):
+            self.elapsed = 0
+
+        def restart(self):
+            self.elapsed = 0
+
+        def nsecsElapsed(self):
+            return self.elapsed
+
+    window = PSV.__new__(PSV)
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 500
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200
+    window._is_playing = False
+    window._playback_window_start = None
+    window._playback_window_stop = None
+    window._window_audio_timer = Timer()
+    window._window_audio_clock = Clock()
+    window.x = np.arange(400, 600) / 1_000
+    window.vr = None
+    window.update_xy = lambda: None
+    window.update_frame = lambda: None
+
+    window._start_window_audio_playhead(400, 600)
+
+    assert window.t0 == 400
+    assert window.time0 == 400
+    assert window.time1 == 600
+    assert window._window_audio_timer.started is True
+
+    window._window_audio_clock.elapsed = 50_000_000
+    window._on_window_audio_tick()
+
+    assert window.t0 == 450
+    assert window.time0 == 400
+    assert window.time1 == 600
+
+    window._window_audio_clock.elapsed = 250_000_000
+    window._on_window_audio_tick()
+
+    assert window.t0 == 599
+    assert window.time0 == 400
+    assert window.time1 == 600
+    assert window._window_audio_timer.stopped is True
+
+
 def test_start_playback_starts_at_visible_window_beginning():
     class Timer:
         def __init__(self):
@@ -365,7 +679,7 @@ def test_start_playback_starts_at_visible_window_beginning():
         def restart(self):
             self.restarted = True
 
-    class AudioPlayer:
+    class QMediaPlayer:
         def __init__(self):
             self.positions = []
             self.played = False
@@ -380,7 +694,29 @@ def test_start_playback_starts_at_visible_window_beginning():
         def processEvents(self):
             pass
 
+    class SongRaw:
+        data = np.arange(1_000)[:, None]
+
+    class Dataset:
+        song_raw = SongRaw()
+
+        def __contains__(self, key):
+            return key == "song_raw"
+
+    class BufferAudioPlayer:
+        player = object()
+
+        def play(self, y, fs):
+            played.append((y, fs))
+            return 1
+
+        def stop(self):
+            stopped.append(True)
+
+    played = []
+    stopped = []
     window = PSV.__new__(PSV)
+    window.ds = Dataset()
     window.tmin = 0
     window.tmax = 1_000
     window._t0 = 500
@@ -391,7 +727,9 @@ def test_start_playback_starts_at_visible_window_beginning():
     window._is_playing = False
     window._playback_timer = Timer()
     window._playback_clock = Clock()
-    window._audio_player = AudioPlayer()
+    window._audio_player = QMediaPlayer()
+    window.audio_player = BufferAudioPlayer()
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
     window._playback_window_start = None
     window._playback_window_stop = None
     window.vr = None
@@ -412,8 +750,11 @@ def test_start_playback_starts_at_visible_window_beginning():
     assert window.STOP is False
     assert window._playback_timer.started is True
     assert window._playback_clock.restarted is True
-    assert window._audio_player.positions == [400]
-    assert window._audio_player.played is True
+    assert window._audio_player.positions == []
+    assert window._audio_player.played is False
+    assert played[0][1] == 1_000
+    np.testing.assert_array_equal(played[0][0], np.arange(400, 600))
+    assert stopped == [True]
     assert states == [True]
 
 
@@ -450,6 +791,7 @@ def test_playback_tick_flips_to_next_window_at_visible_end():
     window._playback_anchor_sample = 400
     window._playback_window_start = 400
     window._playback_window_stop = 600
+    window.audio_channel_settings = AudioChannelSettings(playback_all=True)
     window._audio_player = AudioPlayer()
     window._playback_clock = type("Clock", (), {"restart": lambda self: None})()
     window._playback_timer = type("Timer", (), {"start": lambda self: None})()
