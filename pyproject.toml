@@ -23,7 +23,6 @@ dependencies = [
        'numba',
        'numpy',
        'scipy>1.9',
-       'sounddevice',
        'soundfile',
        'librosa>0.8',
        'av>=12',

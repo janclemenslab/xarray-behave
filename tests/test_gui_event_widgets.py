@@ -18,7 +18,6 @@ from xarray_behave.gui.event_widgets import (
     WaveformPane,
     records_from_events,
 )
-from xarray_behave.gui.table import Table
 
 
 def _app():
@@ -122,14 +121,6 @@ def test_events_table_channel_filter_uses_exact_channel():
     assert widget.table.rowCount() == 1
     assert widget.table.item(0, widget._COL_CHANNEL).text() == "0"
     assert widget._record_id_for_row(0) == "pulse\x1f1"
-
-
-def test_annotation_name_editor_is_name_only():
-    _app()
-    dialog = Table([["pulse"], ["sine"]])
-
-    assert dialog.table.columnCount() == 1
-    assert dialog.get_table_data()[0][0][0] == "pulse"
 
 
 def test_event_bars_drag_mode_resizes_interval_edges():
@@ -363,6 +354,35 @@ def test_preset_selection_sets_current_event_without_top_combo():
     assert updates == [True]
 
 
+def test_no_events_warning_add_button_opens_preset_dialog(monkeypatch):
+    _app()
+    window = PSV.__new__(PSV)
+    window.event_times = Events({})
+    window._current_event_name = None
+    calls = []
+    warning_instances = []
+
+    class Warning:
+        def __init__(self, parent=None):
+            self.parent = parent
+            self.button = object()
+            warning_instances.append(self)
+
+        def exec(self):
+            return None
+
+        def clickedButton(self):
+            return self.button
+
+    monkeypatch.setattr(gui_app, "NoEventsRegisteredWarning", Warning)
+    window._create_preset_from_panel = lambda: calls.append("create")
+
+    window.on_trace_clicked(0.5, QtCore.Qt.MouseButton.LeftButton)
+
+    assert warning_instances[0].parent is window
+    assert calls == ["create"]
+
+
 def test_numeric_event_shortcut_sets_current_event_without_top_combo():
     window = PSV.__new__(PSV)
     window.event_times = Events({"pulse": np.array([[0.1, 0.1, -1]]), "song": np.array([[0.2, 0.3, -1]])})
@@ -528,14 +548,6 @@ def test_play_audio_starts_window_playhead_range():
         def __contains__(self, key):
             return key == "song_raw"
 
-    class AudioPlayer:
-        player = object()
-
-        def play(self, y, fs):
-            played.append((y, fs))
-            return 1
-
-    played = []
     started = []
     window = PSV.__new__(PSV)
     window.ds = Dataset()
@@ -548,17 +560,16 @@ def test_play_audio_starts_window_playhead_range():
     window._playback_window_start = None
     window._playback_window_stop = None
     window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
-    window.audio_player = AudioPlayer()
-    window._start_window_audio_playhead = lambda window_start, window_stop: started.append((window_start, window_stop))
+    window._start_window_audio_playhead = lambda window_start, window_stop, *, all_channels: started.append(
+        (window_start, window_stop, all_channels)
+    )
 
     window.play_audio("E")
 
-    assert started == [(400, 600)]
-    assert played[0][1] == 1_000
-    np.testing.assert_array_equal(played[0][0], np.arange(400, 600))
+    assert started == [(400, 600, False)]
 
 
-def test_play_audio_all_channels_passes_multichannel_buffer():
+def test_play_audio_all_channels_uses_qt_window_playhead():
     class SongRaw:
         data = np.arange(2_000).reshape(1_000, 2)
 
@@ -568,18 +579,7 @@ def test_play_audio_all_channels_passes_multichannel_buffer():
         def __contains__(self, key):
             return key == "song_raw"
 
-    class AudioPlayer:
-        player = object()
-
-        def play(self, y, fs):
-            played.append((y, fs))
-            return 1
-
-        def stop(self):
-            stopped.append(True)
-
-    played = []
-    stopped = []
+    started = []
     window = PSV.__new__(PSV)
     window.ds = Dataset()
     window.tmin = 0
@@ -592,14 +592,13 @@ def test_play_audio_all_channels_passes_multichannel_buffer():
     window._playback_window_stop = None
     window.audio_channel_settings = AudioChannelSettings(playback_all=True)
     window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
-    window.audio_player = AudioPlayer()
-    window._start_window_audio_playhead = lambda window_start, window_stop: None
+    window._start_window_audio_playhead = lambda window_start, window_stop, *, all_channels: started.append(
+        (window_start, window_stop, all_channels)
+    )
 
     window.play_audio("E")
 
-    assert played[0][1] == 1_000
-    np.testing.assert_array_equal(played[0][0], np.arange(800, 1_200).reshape(200, 2))
-    assert stopped == [True]
+    assert started == [(400, 600, True)]
 
 
 def test_window_audio_playhead_sweeps_without_advancing_window():
@@ -614,15 +613,26 @@ def test_window_audio_playhead_sweeps_without_advancing_window():
         def stop(self):
             self.stopped = True
 
-    class Clock:
+    class Sink:
         def __init__(self):
             self.elapsed = 0
+            self.stopped = False
 
-        def restart(self):
-            self.elapsed = 0
-
-        def nsecsElapsed(self):
+        def processedUSecs(self):
             return self.elapsed
+
+        def stop(self):
+            self.stopped = True
+
+    class ChannelCombo:
+        def __init__(self):
+            self.enabled = []
+
+        def count(self):
+            return 2
+
+        def setEnabled(self, enabled):
+            self.enabled.append(enabled)
 
     window = PSV.__new__(PSV)
     window.tmin = 0
@@ -635,33 +645,69 @@ def test_window_audio_playhead_sweeps_without_advancing_window():
     window._playback_window_start = None
     window._playback_window_stop = None
     window._window_audio_timer = Timer()
-    window._window_audio_clock = Clock()
+    window._array_audio_sink = Sink()
+    window._array_audio_buffer = None
+    window._array_audio_bytes = None
     window.x = np.arange(400, 600) / 1_000
     window.vr = None
     window.update_xy = lambda: None
     window.update_frame = lambda: None
+    window.cb2 = ChannelCombo()
+    window._start_qt_array_audio_window = lambda window_start, window_stop, *, all_channels: True
 
-    window._start_window_audio_playhead(400, 600)
+    window._start_window_audio_playhead(400, 600, all_channels=False)
 
     assert window.t0 == 400
     assert window.time0 == 400
     assert window.time1 == 600
     assert window._window_audio_timer.started is True
+    assert window.cb2.enabled[-1] is False
 
-    window._window_audio_clock.elapsed = 50_000_000
+    window._array_audio_sink.elapsed = 50_000
     window._on_window_audio_tick()
 
     assert window.t0 == 450
     assert window.time0 == 400
     assert window.time1 == 600
 
-    window._window_audio_clock.elapsed = 250_000_000
+    window._array_audio_sink.elapsed = 250_000
     window._on_window_audio_tick()
 
     assert window.t0 == 599
     assert window.time0 == 400
     assert window.time1 == 600
     assert window._window_audio_timer.stopped is True
+    assert window.cb2.enabled[-1] is True
+
+
+def test_channel_shortcuts_ignore_playback_locked_selector():
+    class ChannelCombo:
+        def __init__(self):
+            self.index = 0
+
+        def currentIndex(self):
+            return self.index
+
+        def count(self):
+            return 2
+
+        def setCurrentIndex(self, index):
+            self.index = index
+
+    window = PSV.__new__(PSV)
+    window.cb2 = ChannelCombo()
+    window.select_loudest_channel = True
+    window._window_audio_start_sample = None
+    window._is_playing = True
+
+    window.set_next_channel(None)
+
+    assert window.cb2.index == 0
+
+    window._is_playing = False
+    window.set_next_channel(None)
+
+    assert window.cb2.index == 1
 
 
 def test_start_playback_starts_at_visible_window_beginning():
@@ -694,6 +740,19 @@ def test_start_playback_starts_at_visible_window_beginning():
         def processEvents(self):
             pass
 
+    class ChannelCombo:
+        def __init__(self):
+            self.enabled = []
+
+        def currentText(self):
+            return "Channel 0"
+
+        def count(self):
+            return 2
+
+        def setEnabled(self, enabled):
+            self.enabled.append(enabled)
+
     class SongRaw:
         data = np.arange(1_000)[:, None]
 
@@ -703,18 +762,6 @@ def test_start_playback_starts_at_visible_window_beginning():
         def __contains__(self, key):
             return key == "song_raw"
 
-    class BufferAudioPlayer:
-        player = object()
-
-        def play(self, y, fs):
-            played.append((y, fs))
-            return 1
-
-        def stop(self):
-            stopped.append(True)
-
-    played = []
-    stopped = []
     window = PSV.__new__(PSV)
     window.ds = Dataset()
     window.tmin = 0
@@ -728,8 +775,7 @@ def test_start_playback_starts_at_visible_window_beginning():
     window._playback_timer = Timer()
     window._playback_clock = Clock()
     window._audio_player = QMediaPlayer()
-    window.audio_player = BufferAudioPlayer()
-    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+    window.cb2 = ChannelCombo()
     window._playback_window_start = None
     window._playback_window_stop = None
     window.vr = None
@@ -752,22 +798,22 @@ def test_start_playback_starts_at_visible_window_beginning():
     assert window._playback_clock.restarted is True
     assert window._audio_player.positions == [400]
     assert window._audio_player.played is True
-    assert played == []
-    assert stopped == [True]
     assert states == [True]
+    assert window.cb2.enabled[-1] is False
 
 
-def test_start_playback_buffer_fallback_uses_integer_window_bounds():
+def test_start_playback_qt_array_audio_queues_before_transport_clock():
     class Timer:
         def __init__(self):
             self.started = False
 
         def start(self):
             self.started = True
+            events.append("timer_start")
 
     class Clock:
         def restart(self):
-            pass
+            events.append("clock_restart")
 
     class App:
         def processEvents(self):
@@ -782,17 +828,7 @@ def test_start_playback_buffer_fallback_uses_integer_window_bounds():
         def __contains__(self, key):
             return key == "song_raw"
 
-    class BufferAudioPlayer:
-        player = object()
-
-        def play(self, y, fs):
-            played.append((y, fs))
-            return 1
-
-        def stop(self):
-            pass
-
-    played = []
+    events = []
     window = PSV.__new__(PSV)
     window.ds = Dataset()
     window.tmin = 0
@@ -806,7 +842,6 @@ def test_start_playback_buffer_fallback_uses_integer_window_bounds():
     window._playback_timer = Timer()
     window._playback_clock = Clock()
     window._audio_player = None
-    window.audio_player = BufferAudioPlayer()
     window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
     window._playback_window_start = None
     window._playback_window_stop = None
@@ -815,13 +850,16 @@ def test_start_playback_buffer_fallback_uses_integer_window_bounds():
     window.update_xy = lambda: None
     window.update_frame = lambda: None
     window._set_play_button_state = lambda *, playing: None
+    window._start_qt_array_audio_window = lambda start, stop, *, all_channels: events.append(
+        ("audio_play", start, stop, all_channels)
+    ) or True
 
     window._start_playback()
 
     assert window._playback_window_start == 400
     assert window._playback_window_stop == 600
-    assert played[0][1] == 1_000
-    np.testing.assert_array_equal(played[0][0], np.arange(400, 600))
+    assert window._playback_audio_stop_sample == 1_000
+    assert events == [("audio_play", 400, 1_000, False), "clock_restart", "timer_start"]
 
 
 def test_playback_tick_flips_to_next_window_at_visible_end():
@@ -876,6 +914,120 @@ def test_playback_tick_flips_to_next_window_at_visible_end():
     assert window.time1 == 800
     assert window._audio_player.positions == []
     assert window._audio_player.play_count == 0
+
+
+def test_playback_tick_does_not_replay_continuous_array_audio_at_visible_end():
+    class App:
+        def processEvents(self):
+            pass
+
+    class Clock:
+        def nsecsElapsed(self):
+            return 201_000_000
+
+    window = PSV.__new__(PSV)
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 500
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200
+    window.STOP = False
+    window._is_playing = True
+    window._playback_anchor_sample = 400
+    window._playback_window_start = 400
+    window._playback_window_stop = 600
+    window._playback_audio_stop_sample = 1_000
+    window._audio_player = None
+    window._playback_clock = Clock()
+    window.vr = None
+    window.app = App()
+    window.update_xy = lambda: None
+    window.update_frame = lambda: None
+    window._set_play_button_state = lambda *, playing: None
+    calls = []
+    window._start_transport_array_audio = lambda: calls.append(True)
+
+    window._on_playback_tick()
+
+    assert window._playback_window_start == 600
+    assert window._playback_window_stop == 800
+    assert window.t0 == 601
+    assert calls == []
+
+
+def test_start_transport_array_audio_prefers_qt_array_audio():
+    class SongRaw:
+        data = np.arange(1_000)[:, None]
+
+    class Dataset:
+        song_raw = SongRaw()
+
+        def __contains__(self, key):
+            return key == "song_raw"
+
+    window = PSV.__new__(PSV)
+    window.ds = Dataset()
+    window.tmax = 1_000
+    window.fs_song = 1_000
+    window._playback_window_start = 400
+    window._playback_window_stop = 600
+    window._playback_audio_stop_sample = None
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+    window._audio_player = None
+    window._start_qt_array_audio_window = lambda start, stop, *, all_channels: calls.append(
+        (start, stop, all_channels)
+    ) or True
+
+    calls = []
+
+    assert window._start_transport_array_audio() is True
+    assert calls == [(400, 1_000, False)]
+    assert window._playback_audio_stop_sample == 1_000
+
+
+def test_playback_tick_uses_qt_array_audio_processed_clock():
+    class App:
+        def processEvents(self):
+            pass
+
+    class Sink:
+        def processedUSecs(self):
+            return 201_000
+
+    class Clock:
+        def nsecsElapsed(self):
+            return 999_000_000
+
+    window = PSV.__new__(PSV)
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 400
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200
+    window.STOP = False
+    window._is_playing = True
+    window._playback_anchor_sample = 400
+    window._playback_window_start = 400
+    window._playback_window_stop = 600
+    window._playback_audio_stop_sample = 1_000
+    window._audio_player = None
+    window._array_audio_sink = Sink()
+    window._array_audio_start_sample = 400
+    window._playback_clock = Clock()
+    window.vr = None
+    window.app = App()
+    window.update_xy = lambda: None
+    window.update_frame = lambda: None
+    window._set_play_button_state = lambda *, playing: None
+    window._start_transport_array_audio = lambda: False
+
+    window._on_playback_tick()
+
+    assert window.t0 == 601
+    assert window._playback_window_start == 600
+    assert window._playback_window_stop == 800
 
 
 def test_navigation_seek_clears_playback_window_and_recenters():

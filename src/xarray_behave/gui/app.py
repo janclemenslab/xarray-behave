@@ -28,16 +28,19 @@ import xarray_behave
 from .. import _dataset_service as dataset_service, xarray_behave as xb, loaders as ld, annot
 from .formbuilder import YamlDialog
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
-from . import utils, views, table, audio_player, event_widgets, modern_video
+from . import utils, views, event_widgets, modern_video
 from .style_profile import WINDOW_STYLESHEET
 
 logger = logging.getLogger(__name__)
 
 try:
     from PySide6.QtCore import QUrl
-    from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+    from PySide6.QtMultimedia import QAudioFormat, QAudioOutput, QAudioSink, QMediaDevices, QMediaPlayer
 except Exception:  # pragma: no cover - optional Qt runtime module
+    QAudioFormat = None
     QAudioOutput = None
+    QAudioSink = None
+    QMediaDevices = None
     QMediaPlayer = None
     QUrl = None
 
@@ -60,6 +63,18 @@ class DataSource:
 
 def _num_flies(ds):
     return int(ds.sizes["flies"]) if "flies" in ds.sizes else 1
+
+
+def _apply_cli_bandpass_filter(form, spec_freq_min, spec_freq_max, skip_dialog: bool):
+    if not skip_dialog or (spec_freq_min is None and spec_freq_max is None):
+        return
+
+    form_data = {"filter_song": "yes"}
+    if spec_freq_min is not None:
+        form_data["f_low"] = spec_freq_min
+    if spec_freq_max is not None:
+        form_data["f_high"] = spec_freq_max
+    form.set_form_data(form_data)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -558,6 +573,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 dialog.form["target_samplingrate"] = target_samplingrate
             if len(events_string):
                 dialog.form["events_string"] = events_string
+            _apply_cli_bandpass_filter(dialog.form, spec_freq_min, spec_freq_max, skip_dialog)
 
             if not skip_dialog:
                 dialog.show()
@@ -616,6 +632,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if len(events_string):
                 dialog.form["init_annotations"] = True
                 dialog.form["events_string"] = events_string
+            _apply_cli_bandpass_filter(dialog.form, spec_freq_min, spec_freq_max, skip_dialog)
 
             if not skip_dialog:
                 dialog.show()
@@ -691,6 +708,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 dialog.form["spec_freq_max"] = spec_freq_max
             if box_size is not None:
                 dialog.form["box_size"] = box_size
+            _apply_cli_bandpass_filter(dialog.form, spec_freq_min, spec_freq_max, skip_dialog)
 
             if not skip_dialog:
                 dialog.show()
@@ -924,14 +942,18 @@ class PSV(MainWindow):
         self._playback_anchor_sample = 0.0
         self._playback_window_start = None
         self._playback_window_stop = None
+        self._playback_audio_stop_sample = None
         self._window_audio_timer = QtCore.QTimer(self)
         self._window_audio_timer.setInterval(20)
         self._window_audio_timer.timeout.connect(self._on_window_audio_tick)
-        self._window_audio_clock = QtCore.QElapsedTimer()
         self._window_audio_start_sample = None
         self._window_audio_stop_sample = None
         self._audio_output = None
         self._audio_player = None
+        self._array_audio_sink = None
+        self._array_audio_buffer = None
+        self._array_audio_bytes = None
+        self._array_audio_start_sample = None
 
         self.resize(1000, 800)
 
@@ -1069,7 +1091,6 @@ class PSV(MainWindow):
         view_audio.addSeparator()
 
         view_annotations = self.bar.addMenu("Annotations")
-        self._add_keyed_menuitem(view_annotations, "Add or edit events", self.edit_annotation_types)
         self._add_keyed_menuitem(
             view_annotations,
             "Show annotations",
@@ -1554,6 +1575,15 @@ class PSV(MainWindow):
         self._play_button.setText("||" if playing else ">")
         self._play_button.setToolTip("Pause playback" if playing else "Start playback")
 
+    def _channel_switching_locked(self) -> bool:
+        return bool(getattr(self, "_is_playing", False)) or getattr(self, "_window_audio_start_sample", None) is not None
+
+    def _sync_channel_selector_enabled(self) -> None:
+        combo = getattr(self, "cb2", None)
+        if combo is None or not hasattr(combo, "setEnabled"):
+            return
+        combo.setEnabled(not self._channel_switching_locked() and combo.count() > 1)
+
     def _format_seconds(self, seconds: float) -> str:
         seconds = max(0.0, float(seconds))
         minutes, rem = divmod(seconds, 60.0)
@@ -1599,9 +1629,10 @@ class PSV(MainWindow):
         timer = getattr(self, "_window_audio_timer", None)
         if timer is not None:
             timer.stop()
-        self._stop_buffer_audio()
+        self._stop_qt_array_audio()
         self._window_audio_start_sample = None
         self._window_audio_stop_sample = None
+        self._sync_channel_selector_enabled()
 
     def _set_playhead_sample(
         self,
@@ -1690,17 +1721,6 @@ class PSV(MainWindow):
             if hasattr(self, "_clock_label"):
                 self._clock_label.setToolTip("Timer-backed playback")
 
-    def _ensure_buffer_audio_player(self) -> bool:
-        if not hasattr(self, "audio_player"):
-            self.audio_player = audio_player.AudioPlayer()
-        return self.audio_player.player is not None
-
-    def _stop_buffer_audio(self) -> None:
-        if hasattr(self, "audio_player") and self.audio_player.player is not None:
-            stop = getattr(self.audio_player, "stop", None)
-            if stop is not None:
-                stop()
-
     def _materialize_audio_data(self, data):
         try:
             data = data.compute()
@@ -1722,26 +1742,92 @@ class PSV(MainWindow):
             return self._materialize_audio_data(self.ds.song.data[window_start:window_stop])
         return None
 
-    def _play_audio_window(
-        self,
-        window_start: int,
-        window_stop: int,
-        *,
-        all_channels: bool,
-        stop_existing: bool = True,
-    ) -> bool:
-        if not self._ensure_buffer_audio_player():
-            logger.info("No sound module installed - install 'sounddevice' or 'simpleaudio'")
+    def _transport_uses_qmedia_audio(self) -> bool:
+        return self._audio_player is not None
+
+    def _transport_uses_qt_array_audio(self) -> bool:
+        return getattr(self, "_array_audio_sink", None) is not None
+
+    def _stop_qt_array_audio(self) -> None:
+        sink = getattr(self, "_array_audio_sink", None)
+        if sink is not None:
+            sink.stop()
+        buffer = getattr(self, "_array_audio_buffer", None)
+        if buffer is not None:
+            buffer.close()
+        self._array_audio_sink = None
+        self._array_audio_buffer = None
+        self._array_audio_bytes = None
+        self._array_audio_start_sample = None
+
+    def _qt_array_audio_format(self, y) -> tuple[object, np.ndarray] | tuple[None, None]:
+        if QAudioFormat is None or QAudioSink is None or QMediaDevices is None:
+            return None, None
+        y = np.asarray(y)
+        if y.ndim == 1:
+            channel_count = 1
+        elif y.ndim == 2:
+            channel_count = int(y.shape[1])
+        else:
+            return None, None
+        pcm = y.astype(np.float32, copy=False)
+        peak = np.nanmax(np.abs(pcm)) if pcm.size else 0.0
+        if np.isfinite(peak) and peak > 1.0:
+            pcm = pcm / peak * 0.95
+        pcm = np.nan_to_num(pcm, copy=False)
+        pcm = np.ascontiguousarray(pcm)
+
+        audio_format = QAudioFormat()
+        audio_format.setSampleRate(int(round(self.fs_song)))
+        audio_format.setChannelCount(channel_count)
+        audio_format.setSampleFormat(QAudioFormat.SampleFormat.Float)
+        device = QMediaDevices.defaultAudioOutput()
+        if not device.isFormatSupported(audio_format):
+            return None, None
+        return audio_format, pcm
+
+    def _start_qt_array_audio_window(self, window_start: int, window_stop: int, *, all_channels: bool) -> bool:
+        if getattr(self, "_disable_qt_array_audio", False):
             return False
         y = self._audio_window_data(window_start, window_stop, all_channels=all_channels)
         if y is None or len(y) == 0:
             return False
-        if stop_existing:
-            self._stop_buffer_audio()
-        return self.audio_player.play(y, self.fs_song) != 0
+        audio_format, pcm = self._qt_array_audio_format(y)
+        if audio_format is None:
+            return False
+        self._stop_qt_array_audio()
+        try:
+            self._array_audio_bytes = QtCore.QByteArray(pcm.tobytes())
+            self._array_audio_buffer = QtCore.QBuffer(self)
+            self._array_audio_buffer.setData(self._array_audio_bytes)
+            self._array_audio_buffer.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
+            self._array_audio_sink = QAudioSink(audio_format, self)
+            self._array_audio_start_sample = float(window_start)
+            self._array_audio_sink.start(self._array_audio_buffer)
+            return True
+        except Exception as exc:
+            logger.debug("Could not start Qt array audio playback: %s", exc)
+            self._stop_qt_array_audio()
+            return False
 
-    def _transport_uses_qmedia_audio(self) -> bool:
-        return self._audio_player is not None
+    def _transport_array_stop_sample(self) -> int:
+        if self._audio_playback_all_channels():
+            return int(self._playback_window_stop)
+        return int(self.tmax)
+
+    def _start_transport_array_audio(self) -> bool:
+        window_start = int(self._playback_window_start)
+        window_stop = self._transport_array_stop_sample()
+        self._playback_audio_stop_sample = None
+        if self._start_qt_array_audio_window(
+            window_start,
+            window_stop,
+            all_channels=self._audio_playback_all_channels(),
+        ):
+            self._playback_audio_stop_sample = window_stop
+            return True
+        logger.info("Could not start Qt array audio playback.")
+        return False
 
     def _seek_audio_to_playhead(self) -> None:
         if self._transport_uses_qmedia_audio():
@@ -1771,6 +1857,7 @@ class PSV(MainWindow):
         self._set_playback_window(page_start)
         self.STOP = False
         self._is_playing = True
+        self._sync_channel_selector_enabled()
         self._set_playhead_sample(
             self._playback_window_start,
             refresh=True,
@@ -1778,19 +1865,19 @@ class PSV(MainWindow):
             force_refresh=True,
         )
         self._playback_anchor_sample = float(self.t0)
-        self._playback_clock.restart()
         self._seek_audio_to_playhead()
-        self._playback_timer.start()
         self._set_play_button_state(playing=True)
         if self._transport_uses_qmedia_audio():
+            self._playback_clock.restart()
+            self._playback_timer.start()
             self._audio_player.play()
         else:
-            self._play_audio_window(
-                self._playback_window_start,
-                self._playback_window_stop,
-                all_channels=self._audio_playback_all_channels(),
-                stop_existing=False,
-            )
+            if self._start_transport_array_audio():
+                self._playback_anchor_sample = float(self.t0)
+                self._playback_clock.restart()
+                self._playback_timer.start()
+            else:
+                self._pause_playback()
 
     def _advance_playback_window(self, target_sample: float) -> bool:
         changed = False
@@ -1814,15 +1901,18 @@ class PSV(MainWindow):
         if self._transport_uses_qmedia_audio():
             self._audio_player.pause()
         else:
-            self._stop_buffer_audio()
+            self._stop_qt_array_audio()
+            self._playback_audio_stop_sample = None
+        self._sync_channel_selector_enabled()
 
-    def _start_window_audio_playhead(self, window_start: int, window_stop: int) -> None:
+    def _start_window_audio_playhead(self, window_start: int, window_stop: int, *, all_channels: bool) -> bool:
         if self._is_playing:
             self._pause_playback()
         self._playback_window_start = int(window_start)
         self._playback_window_stop = int(window_stop)
         self._window_audio_start_sample = float(window_start)
         self._window_audio_stop_sample = float(max(window_start, min(window_stop - 1, self.tmax_playhead)))
+        self._sync_channel_selector_enabled()
         self._set_playhead_sample(
             self._window_audio_start_sample,
             refresh=True,
@@ -1830,8 +1920,11 @@ class PSV(MainWindow):
             preserve_playback_window=True,
             force_refresh=True,
         )
-        self._window_audio_clock.restart()
+        if not self._start_qt_array_audio_window(window_start, window_stop, all_channels=all_channels):
+            self._stop_window_audio_playhead()
+            return False
         self._window_audio_timer.start()
+        return True
 
     def _on_window_audio_tick(self) -> None:
         start_sample = self._window_audio_start_sample
@@ -1839,7 +1932,10 @@ class PSV(MainWindow):
         if start_sample is None or stop_sample is None:
             self._stop_window_audio_playhead()
             return
-        target_sample = start_sample + self._window_audio_clock.nsecsElapsed() / 1e9 * self.fs_song
+        if not self._transport_uses_qt_array_audio():
+            self._stop_window_audio_playhead()
+            return
+        target_sample = start_sample + self._array_audio_sink.processedUSecs() / 1e6 * self.fs_song
         if target_sample >= stop_sample:
             self._set_playhead_sample(
                 stop_sample,
@@ -1861,6 +1957,8 @@ class PSV(MainWindow):
             return
         if self._transport_uses_qmedia_audio():
             target_sample = self._audio_player.position() / 1000 * self.fs_song
+        elif self._transport_uses_qt_array_audio():
+            target_sample = self._array_audio_start_sample + self._array_audio_sink.processedUSecs() / 1e6 * self.fs_song
         else:
             target_sample = self._playback_anchor_sample + self._playback_clock.nsecsElapsed() / 1e9 * self.fs_song
         if self._playback_window_start is not None:
@@ -1880,11 +1978,11 @@ class PSV(MainWindow):
                     force_refresh=True,
                 )
                 if not self._transport_uses_qmedia_audio():
-                    self._play_audio_window(
-                        self._playback_window_start,
-                        self._playback_window_stop,
-                        all_channels=self._audio_playback_all_channels(),
-                    )
+                    buffer_stop = getattr(self, "_playback_audio_stop_sample", None)
+                    if buffer_stop is None or target_sample >= buffer_stop:
+                        if self._start_transport_array_audio():
+                            self._playback_anchor_sample = float(self.t0)
+                            self._playback_clock.restart()
             return
         if target_sample >= self.tmax_playhead:
             self._set_playhead_sample(self.tmax_playhead, refresh=True, preserve_playback_window=True)
@@ -2598,6 +2696,8 @@ class PSV(MainWindow):
         return env
 
     def set_prev_channel(self, qt_keycode):
+        if self._channel_switching_locked():
+            return
         idx = self.cb2.currentIndex()
         idx -= 1
         idx = idx % self.cb2.count()
@@ -2608,6 +2708,8 @@ class PSV(MainWindow):
         self.select_loudest_channel = old_status
 
     def set_next_channel(self, qt_keycode):
+        if self._channel_switching_locked():
+            return
         idx = self.cb2.currentIndex()
         idx += 1
         idx = idx % self.cb2.count()
@@ -2751,7 +2853,7 @@ class PSV(MainWindow):
                 channel_list = np.delete(np.arange(self.nb_channels), self.current_channel_index)
                 self.y_other = y_all[:, channel_list]
 
-            if self.select_loudest_channel:
+            if self.select_loudest_channel and not self._channel_switching_locked():
                 self.loudest_channel = np.argmax(np.max(y_all, axis=0))
                 self.cb2.setCurrentIndex(self.loudest_channel)
         else:
@@ -3093,10 +3195,10 @@ class PSV(MainWindow):
         song event at click position.
         """
         if self.current_event_index is None:
-            msgbox = NoEventsRegisteredWarning(parent=self)  # display dialog with button leading to the add/edit events dialog
+            msgbox = NoEventsRegisteredWarning(parent=self)
             msgbox.exec()
             if msgbox.clickedButton() == msgbox.button:
-                self.edit_annotation_types(dialog=None)
+                self._create_preset_from_panel()
 
         modifiers = QtWidgets.QApplication.keyboardModifiers()
 
@@ -3174,17 +3276,15 @@ class PSV(MainWindow):
             self.update_xy()
 
     def play_audio(self, qt_keycode):
-        """Play vector as audio using the simpleaudio package."""
-
+        """Play the visible audio window using Qt audio."""
         if "song" in self.ds or "song_raw" in self.ds:
             window_start = self.time0
             window_stop = self.time1
-            if self._play_audio_window(
+            self._start_window_audio_playhead(
                 window_start,
                 window_stop,
                 all_channels=self._audio_playback_all_channels(),
-            ):
-                self._start_window_audio_playhead(window_start, window_stop)
+            )
         else:
             logger.info("Could not play sound - no sound data in the dataset.")
 
@@ -3243,87 +3343,6 @@ class PSV(MainWindow):
 
         logger.info("Done.")
         self.update_xy()
-
-    def edit_annotation_types(self, qt_keycode=None, dialog=None):
-        if dialog is None:
-            if hasattr(self, "event_times"):
-                types = self.event_times.names
-                table_data = [[typ] for typ in types]
-            else:
-                table_data = []
-
-            dialog = table.Table(table_data, self, as_dialog=True)
-            dialog.show()
-            result = dialog.exec_()
-        else:
-            result = QtWidgets.QDialog.Accepted
-
-        if result == QtWidgets.QDialog.Accepted:
-            data = dialog.get_table_data()
-
-            # now edit self.event_times
-            event_names = []
-            event_names_old = []
-            for item in data:
-                event_name, event_name_old = item[0]
-                if len(event_name):
-                    event_names.append(event_name)
-                    event_names_old.append(event_name_old)
-
-            # deletions: deletion in table will remove the entry from the list -
-            # so it's name will not even be in event_names_old anymore
-            event_names_current = self.event_times.names
-            for event_name_current in event_names_current:
-                if event_name_current not in event_names_old:
-                    del self.event_times[event_name_current]
-                    self.event_times.categories.pop(event_name_current, None)
-                    if hasattr(self, "event_presets"):
-                        self.event_presets.pop(event_name_current, None)
-
-            # propagate existing and create new
-            for event_name, event_name_old in zip(event_names, event_names_old):
-                if event_name_old in self.event_times and event_name != event_name_old:  # rename existing
-                    self.event_times[event_name] = self.event_times.pop(event_name_old)
-                    self.event_times.categories.pop(event_name_old, None)
-                    self.event_times.categories[event_name] = "event"
-                    if hasattr(self, "event_presets"):
-                        preset = self.event_presets.pop(event_name_old, None)
-                        if preset is not None:
-                            self.event_presets[event_name] = preset.with_name(event_name)
-                elif event_name_old not in self.event_times:  # create new empty
-                    self.event_times.add_name(event_name, "event")
-                    self._event_preset(event_name)
-                else:
-                    self.event_times.categories[event_name] = "event"
-
-            # update event-related attrs
-            if "song_events" in self.ds:
-                self.fs_other = self.ds.song_events.attrs["sampling_rate_Hz"]
-            elif "target_sampling_rate_Hz" in self.ds.attrs:
-                self.fs_other = self.ds.attrs["target_sampling_rate_Hz"]
-            else:
-                self.fs_other = self.fs_song
-
-            self._sync_event_colors_from_presets()
-
-            self.update_eventtype_selector()
-        if dialog is not None:  # update docked table widget
-            self.update_eventtype_dialog()
-
-    def update_eventtype_dialog(self):
-        if hasattr(self, "event_times"):
-            types = self.event_times.names
-            table_data = [[typ] for typ in types]
-        else:
-            table_data = []
-
-        self.dialog = table.Table(table_data, as_dialog=False)
-        self.dialog.save_button = QtWidgets.QPushButton("Apply", self.dialog)
-        self.dialog.save_button.clicked.connect(functools.partial(self.edit_annotation_types, dialog=self.dialog))
-        self.dialog.button_layout.addWidget(self.dialog.save_button)
-        self.dialog.revert_button = QtWidgets.QPushButton("Revert", self.dialog)
-        self.dialog.revert_button.clicked.connect(self.update_eventtype_dialog)
-        self.dialog.button_layout.addWidget(self.dialog.revert_button)
 
     def update_eventtype_selector(self, selected_name: str = None):
         if selected_name is None:
@@ -3396,8 +3415,10 @@ def main(
                              "event_name" can be any string w/o space, ",", or ";"
         target_samplingrate (Optional[float]): [description]. If 0, will use frame times. Defaults to None.
                                      Only used if source is a data folder or a wav audio file.
-        spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
-        spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
+        spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view.
+                                       With skip_dialog, also sets the lower bandpass cutoff. Defaults to 0 Hz.
+        spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view.
+                                       With skip_dialog, also sets the upper bandpass cutoff. Defaults to samplerate/2.
         box_size (int): Crop size around tracked fly. Not used for wav audio files (no videos).
         pixel_size_mm (Optional[float]): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
@@ -3480,8 +3501,10 @@ def main_das(
                              Avoid spaces or trailing ';'.
                              Need to wrap the string in "..." in the terminal
                              "event_name" can be any string w/o space, ",", or ";"
-        spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view. Defaults to 0 Hz.
-        spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view. Defaults to samplerate/2.
+        spec_freq_min (Optional[float]): Smallest frequency displayed in the spectrogram view.
+                                       With skip_dialog, also sets the lower bandpass cutoff. Defaults to 0 Hz.
+        spec_freq_max (Optional[float]): Largest frequency displayed in the spectrogram view.
+                                       With skip_dialog, also sets the upper bandpass cutoff. Defaults to samplerate/2.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
     """
     main(

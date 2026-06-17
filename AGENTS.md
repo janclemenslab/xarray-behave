@@ -245,13 +245,6 @@ alignment throughout the package.
   - Shared dark Qt stylesheet and timeline colors adapted from `xb_gui`.
     Prefer using these constants for new GUI widgets instead of introducing a
     separate look.
-- `src/xarray_behave/gui/audio_player.py`
-  - Runtime fallback between `sounddevice` and `simpleaudio` for explicit short
-    audio playback commands. It is not the transport clock/audio path.
-- `src/xarray_behave/gui/debug_play_wav.py`
-  - Small diagnostic CLI for comparing QMediaPlayer and sounddevice playback:
-    `python -m xarray_behave.gui.debug_play_wav scratch/dat/Dmel_male.wav --backend qmedia`.
-
 GUI tests are written to avoid opening real windows where possible by using
 `__new__`, monkeypatching imported modules, and faking datasets.
 
