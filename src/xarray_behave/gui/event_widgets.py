@@ -1099,6 +1099,81 @@ class EventPresetPanel(QtWidgets.QWidget):
         return f"{preset.name}: fixed duration {preset.duration_seconds:g}s, {edit_text}, {visibility_text}, {editability_text}"
 
 
+class WaveformSettingsDialog(QtWidgets.QDialog):
+    def __init__(self, waveform: "WaveformPane", parent=None) -> None:
+        super().__init__(parent)
+        self.waveform = waveform
+        self.setWindowTitle("Waveform display settings")
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
+
+        color_row = QtWidgets.QHBoxLayout()
+        color_label = QtWidgets.QLabel("Color")
+        color_label.setFixedWidth(120)
+        self.color_combo = QtWidgets.QComboBox(self)
+        for name, color in EVENT_COLOR_PALETTE:
+            self.color_combo.addItem(_color_swatch_icon(color), name, color)
+        current_color = self.waveform.waveform_color
+        color_index = self.color_combo.findData(current_color)
+        if color_index < 0:
+            self.color_combo.addItem(_color_swatch_icon(current_color), current_color, current_color)
+            color_index = self.color_combo.count() - 1
+        self.color_combo.setCurrentIndex(color_index)
+        self.color_combo.currentIndexChanged.connect(self._on_color_changed)
+        color_row.addWidget(color_label)
+        color_row.addWidget(self.color_combo, 1)
+        layout.addLayout(color_row)
+
+        self.auto_limits_checkbox = QtWidgets.QCheckBox("Auto y limits", self)
+        self.auto_limits_checkbox.setChecked(self.waveform.waveform_y_limits is None)
+        self.auto_limits_checkbox.stateChanged.connect(self._on_limits_changed)
+        layout.addWidget(self.auto_limits_checkbox)
+
+        limits = self.waveform.waveform_y_limits
+        if limits is None:
+            limits = tuple(float(value) for value in self.waveform.viewRange()[1])
+        self.lower_spin = self._limit_spin(limits[0])
+        self.upper_spin = self._limit_spin(limits[1])
+        self.lower_spin.valueChanged.connect(lambda _value: self._on_limits_changed())
+        self.upper_spin.valueChanged.connect(lambda _value: self._on_limits_changed())
+
+        limits_layout = QtWidgets.QGridLayout()
+        limits_layout.addWidget(QtWidgets.QLabel("Lower"), 0, 0)
+        limits_layout.addWidget(self.lower_spin, 0, 1)
+        limits_layout.addWidget(QtWidgets.QLabel("Upper"), 1, 0)
+        limits_layout.addWidget(self.upper_spin, 1, 1)
+        layout.addLayout(limits_layout)
+        self._sync_limit_controls()
+
+        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _limit_spin(self, value: float) -> QtWidgets.QDoubleSpinBox:
+        spin = QtWidgets.QDoubleSpinBox(self)
+        spin.setRange(-1.0e12, 1.0e12)
+        spin.setDecimals(6)
+        spin.setValue(float(value))
+        return spin
+
+    def _on_color_changed(self) -> None:
+        self.waveform.set_waveform_color(str(self.color_combo.currentData()))
+
+    def _on_limits_changed(self) -> None:
+        self._sync_limit_controls()
+        if self.auto_limits_checkbox.isChecked():
+            self.waveform.set_waveform_y_limits(None)
+            return
+        self.waveform.set_waveform_y_limits((self.lower_spin.value(), self.upper_spin.value()))
+
+    def _sync_limit_controls(self) -> None:
+        enabled = not self.auto_limits_checkbox.isChecked()
+        self.lower_spin.setEnabled(enabled)
+        self.upper_spin.setEnabled(enabled)
+
+
 class WaveformPane(pg.PlotWidget):
     threshold_changed = QtCore.Signal(float)
 
@@ -1120,7 +1195,16 @@ class WaveformPane(pg.PlotWidget):
         self.callback = callback
         self.region_changed_callback = region_changed_callback
         self.position_changed_callback = position_changed_callback
-        self._curve = self.plot(pen=pg.mkPen("#36cfc9", width=1.6))
+        self._waveform_color = "#36cfc9"
+        self._waveform_y_limits: tuple[float, float] | None = None
+        self._last_waveform_y: np.ndarray | None = None
+        self._last_waveform_y_other: np.ndarray | None = None
+        self.settings_button = _compact_tool_button(_settings_icon(), "Waveform display settings", self)
+        self.settings_button.setObjectName("waveformSettingsButton")
+        self.settings_button.setProperty("role", "presetGlobal")
+        self.settings_button.setFixedSize(22, 22)
+        self.settings_button.clicked.connect(self._open_settings_dialog)
+        self._curve = self.plot(pen=pg.mkPen(self._waveform_color, width=1.6))
         self._curve.setZValue(0)
         self._other_curves: list[pg.PlotCurveItem] = []
         self._threshold_curve = pg.PlotCurveItem(pen=pg.mkPen(color=[196, 98, 98], width=1))
@@ -1142,10 +1226,54 @@ class WaveformPane(pg.PlotWidget):
         self.threshold_line.setZValue(9)
         self.threshold_line.sigPositionChangeFinished.connect(self._on_threshold_line_changed)
         self.getPlotItem().mouseClickEvent = self._click
+        self._position_settings_button()
 
     @property
     def threshold(self) -> float:
         return float(self.threshold_line.value())
+
+    @property
+    def waveform_color(self) -> str:
+        return self._waveform_color
+
+    @property
+    def waveform_y_limits(self) -> tuple[float, float] | None:
+        return self._waveform_y_limits
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._position_settings_button()
+
+    def _position_settings_button(self) -> None:
+        if not hasattr(self, "settings_button"):
+            return
+        margin = 8
+        left = max(margin, self.width() - self.settings_button.width() - margin)
+        self.settings_button.move(left, margin)
+        self.settings_button.raise_()
+
+    def _open_settings_dialog(self) -> None:
+        dialog = WaveformSettingsDialog(self, parent=self.window())
+        dialog.show()
+        dialog.exec_()
+
+    def set_waveform_color(self, color: str) -> None:
+        qcolor = QtGui.QColor(color)
+        if not qcolor.isValid():
+            return
+        self._waveform_color = qcolor.name()
+        self._curve.setPen(pg.mkPen(self._waveform_color, width=1.6))
+
+    def set_waveform_y_limits(self, limits: tuple[float, float] | None) -> None:
+        if limits is None:
+            self._waveform_y_limits = None
+        else:
+            lower, upper = sorted(float(value) for value in limits)
+            if lower == upper:
+                upper = lower + 1.0
+            self._waveform_y_limits = (lower, upper)
+        if self._last_waveform_y is not None:
+            self._set_visible_y_range(self._last_waveform_y, self._last_waveform_y_other)
 
     def set_waveform(
         self,
@@ -1163,10 +1291,13 @@ class WaveformPane(pg.PlotWidget):
         y = np.asarray(y, dtype=float)
         if y.ndim > 1:
             y = y.mean(axis=1)
+        self._last_waveform_y = y
+        self._last_waveform_y_other = y_other if y_other is None else np.asarray(y_other, dtype=float)
         if y_other is not None:
-            y_other = np.asarray(y_other, dtype=float)
+            y_other = self._last_waveform_y_other
             if y_other.ndim == 1:
                 y_other = y_other[:, None]
+                self._last_waveform_y_other = y_other
             for channel in range(y_other.shape[1]):
                 curve = pg.PlotCurveItem(pen=pg.mkPen("#4d5968", width=0.9))
                 curve.setZValue(-5)
@@ -1220,6 +1351,9 @@ class WaveformPane(pg.PlotWidget):
             self.removeItem(self.threshold_line)
 
     def _include_threshold_y_range(self, envelope: np.ndarray | None = None) -> None:
+        if self._waveform_y_limits is not None:
+            self.setYRange(*self._waveform_y_limits, padding=0)
+            return
         values = [np.array([self.threshold], dtype=float)]
         if envelope is not None:
             values.append(np.ravel(envelope))
@@ -1243,6 +1377,9 @@ class WaveformPane(pg.PlotWidget):
         self._other_curves = []
 
     def _set_visible_y_range(self, y: np.ndarray, y_other: np.ndarray | None = None) -> None:
+        if self._waveform_y_limits is not None:
+            self.setYRange(*self._waveform_y_limits, padding=0)
+            return
         values = [np.ravel(y)]
         if y_other is not None:
             values.append(np.ravel(y_other))

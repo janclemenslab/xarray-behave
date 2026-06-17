@@ -332,6 +332,44 @@ class TextSlider(QtWidgets.QWidget):
             self.model.__setattr__(self.attr_name, self.value)
 
 
+class SpectrogramResolutionControl(QtWidgets.QWidget):
+    def __init__(self, model, parent=None):
+        super().__init__(parent)
+        self.model = model
+        self._last_value = 0
+
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal, self)
+        self.slider.setRange(-4, 4)
+        self.slider.setValue(0)
+        self.slider.setTickInterval(1)
+        self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
+        self.slider.valueChanged.connect(self._on_value_changed)
+
+        left_label = QtWidgets.QLabel("Increase freq / decrease time", self)
+        right_label = QtWidgets.QLabel("Decrease freq / increase time", self)
+        left_label.setProperty("role", "muted")
+        right_label.setProperty("role", "muted")
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        labels = QtWidgets.QHBoxLayout()
+        labels.addWidget(left_label)
+        labels.addStretch(1)
+        labels.addWidget(right_label)
+        layout.addLayout(labels)
+        layout.addWidget(self.slider)
+
+    def _on_value_changed(self, value: int):
+        delta = int(value) - self._last_value
+        self._last_value = int(value)
+        if delta < 0:
+            for _ in range(abs(delta)):
+                self.model.inc_freq_res(None)
+        elif delta > 0:
+            for _ in range(delta):
+                self.model.dec_freq_res(None)
+
+
 class QHSeperationLine(QtWidgets.QFrame):
     def __init__(self):
         super().__init__()
@@ -385,6 +423,10 @@ class SpectrogramSettingsDialog(QtWidgets.QDialog):
             attr_name="spec_compression_ratio",
         )
         layout.addWidget(self.compression_slider)
+
+        layout.addWidget(QtWidgets.QLabel("<b>Resolution</b>"))
+        self.resolution_slider = SpectrogramResolutionControl(self.model, self)
+        layout.addWidget(self.resolution_slider)
 
         button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
         button_box.rejected.connect(self.reject)

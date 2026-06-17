@@ -17,6 +17,7 @@ from xarray_behave.gui.event_widgets import (
     EventsTableWidget,
     ThresholdingPanel,
     WaveformPane,
+    WaveformSettingsDialog,
     records_from_events,
 )
 
@@ -236,6 +237,33 @@ def test_waveform_pane_draws_threshold_overlay_only_when_enabled():
 
     assert widget.threshold_line not in widget.getPlotItem().items
     assert widget._threshold_curve not in widget.getPlotItem().items
+
+
+def test_waveform_settings_dialog_updates_color_and_limits_live():
+    _app()
+    widget = WaveformPane()
+    yranges = []
+    widget.setYRange = lambda ymin, ymax, padding=0: yranges.append((ymin, ymax, padding))
+    widget.set_waveform(np.array([0.0, 1.0]), np.array([-0.25, 0.5]))
+    dialog = WaveformSettingsDialog(widget)
+
+    assert widget.settings_button.objectName() == "waveformSettingsButton"
+    assert widget.settings_button.size() == QtCore.QSize(22, 22)
+    color_index = dialog.color_combo.findData("#ff6a74")
+    dialog.color_combo.setCurrentIndex(color_index)
+    dialog.auto_limits_checkbox.setChecked(False)
+    dialog.lower_spin.setValue(-2.0)
+    dialog.upper_spin.setValue(3.0)
+
+    assert widget.waveform_color == "#ff6a74"
+    assert widget.waveform_y_limits == (-2.0, 3.0)
+    assert yranges[-1] == (-2.0, 3.0, 0)
+
+    dialog.auto_limits_checkbox.setChecked(True)
+
+    assert widget.waveform_y_limits is None
+    dialog.close()
+    widget.close()
 
 
 def test_audio_settings_dialog_defaults_and_accepts_changes():
@@ -1334,6 +1362,34 @@ def test_spectrogram_view_opens_settings_dialog(monkeypatch):
     widget.close()
 
 
+def test_spectrogram_invalid_frequency_bounds_keep_nonempty_display():
+    _app()
+
+    x = np.linspace(0.0, 0.25, 1024)
+    y = np.sin(2 * np.pi * 120 * x)
+
+    class Model:
+        fs_song = 4_096
+        spec_mel = False
+        spec_win = 128
+        spec_compression_ratio = 0.0
+        fmin = 10_000.0
+        fmax = -20.0
+        spec_denoise = False
+        spec_levels = [None, None]
+        t0 = 0
+
+    model = Model()
+    model.x = x
+    widget = views.SpecView(model=model, callback=lambda *args: None)
+
+    widget.update_spec(x, y)
+
+    assert widget.S.size > 0
+    assert widget.S.shape[0] >= 1
+    widget.close()
+
+
 def test_spectrogram_settings_dialog_updates_model_live():
     _app()
 
@@ -1348,6 +1404,13 @@ def test_spectrogram_settings_dialog_updates_model_live():
         spec_compression_ratio = 0.0
         spec_colormap = "turbo"
         spec_view = SpecView()
+        resolution_calls = []
+
+        def inc_freq_res(self, key):
+            self.resolution_calls.append(("inc", key))
+
+        def dec_freq_res(self, key):
+            self.resolution_calls.append(("dec", key))
 
     model = Model()
     dialog = view_dialog.SpectrogramSettingsDialog(model=model)
@@ -1357,9 +1420,12 @@ def test_spectrogram_settings_dialog_updates_model_live():
     dialog.level_slider.checkbox.setChecked(False)
     dialog.level_slider.sld.setValue((0.5, 1.5))
     dialog.compression_slider.sld.setValue(4.0)
+    dialog.resolution_slider.slider.setValue(-1)
+    dialog.resolution_slider.slider.setValue(1)
 
     assert model.spec_colormap == "magma"
     np.testing.assert_allclose([model.fmin, model.fmax], [100.0, 200.0])
     np.testing.assert_allclose(model.spec_levels, [0.5, 1.5])
     assert model.spec_compression_ratio == 4.0
+    assert model.resolution_calls == [("inc", None), ("dec", None), ("dec", None)]
     dialog.close()

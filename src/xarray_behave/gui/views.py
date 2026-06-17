@@ -537,18 +537,26 @@ class SpecView(pg.ImageView):
         self.S, f, t = self._calc_spec(
             tuple(y), self.m.spec_win, self.m.spec_compression_ratio, self.m.fmin, self.m.fmax, self.m.spec_denoise, mel
         )
+        if self.S.size == 0 or len(f) == 0 or len(t) == 0:
+            self.clear()
+            return
         trange = self.m.x[-1] - self.m.x[0]
         self.max_pix = 6_000
         self.t_step = max(1, self.S.shape[1] // self.max_pix)
+        frequency_scale = (f[-1] - f[0]) / len(f) if len(f) > 1 else 1.0
         self.setImage(
             self.S.T[:: self.t_step],
             autoRange=False,
-            scale=[trange / len(t) * self.t_step, (f[-1] - f[0]) / len(f)],
+            scale=[trange / len(t) * self.t_step, frequency_scale],
             autoLevels=None in self.m.spec_levels,
             levels=None if None in self.m.spec_levels else self.m.spec_levels,
             pos=[self.m.x[0], f[0]],
         )
-        self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
+        if len(f) > 1:
+            y_range = (f[0], f[-1])
+        else:
+            y_range = (max(0.0, f[0] - 0.5), f[0] + 0.5)
+        self.view.setRange(xRange=self.m.x[[0, -1]], yRange=y_range, padding=0)
         self.pos_line.setValue(self.m.t0 / self.m.fs_song)
 
     def _calc_spec(self, y, spec_win, spec_compression_ratio, fmin, fmax, spec_denoise: bool, mel: bool):
@@ -569,16 +577,23 @@ class SpecView(pg.ImageView):
             t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
             f = librosa.fft_frequencies(sr=self.m.fs_song, n_fft=nfft)
 
-            # select freq limits
-            f_idx0 = 0
-            if fmin is not None:
-                f_idx0 = np.argmax(f >= self.m.fmin)
-            f_idx1 = -1
-            if fmax is not None:
-                f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
+            fmin, fmax = self._valid_frequency_bounds(fmin, fmax)
+            f_idx = np.flatnonzero((f >= fmin) & (f <= fmax))
+            if not len(f_idx):
+                center = np.clip((fmin + fmax) / 2, f[0], f[-1])
+                nearest = int(np.argmin(np.abs(f - center)))
+                start = max(0, nearest - 1)
+                stop = min(len(f), nearest + 2)
+                f_idx = np.arange(start, stop)
+            elif len(f_idx) == 1 and len(f) > 1:
+                idx = int(f_idx[0])
+                if idx == 0:
+                    f_idx = np.array([0, 1])
+                else:
+                    f_idx = np.array([idx - 1, idx])
 
-            S = np.abs(psd[f_idx0:f_idx1, :])
-            f = f[f_idx0:f_idx1]
+            S = np.abs(psd[f_idx, :])
+            f = f[f_idx]
         # else:
         #     import librosa.feature
         #     fmin = 0 if fmin is None else fmin
@@ -598,6 +613,28 @@ class SpecView(pg.ImageView):
         S = np.log2(1.0 + 2.0**spec_compression_ratio * S)
         # S = S / np.max(S) * 255  # normalize to 0...255
         return S, f, t
+
+    def _valid_frequency_bounds(self, fmin, fmax):
+        nyquist = float(self.m.fs_song) / 2
+
+        def valid_or_default(value, default):
+            if value is None:
+                return default
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                return default
+            if not np.isfinite(value):
+                return default
+            return float(np.clip(value, 0.0, nyquist))
+
+        fmin = valid_or_default(fmin, 0.0)
+        fmax = valid_or_default(fmax, nyquist)
+        if fmin > fmax:
+            fmin, fmax = fmax, fmin
+        if fmin == fmax:
+            fmin, fmax = 0.0, nyquist
+        return fmin, fmax
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
         region = SegmentItem(
