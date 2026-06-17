@@ -802,6 +802,76 @@ def test_start_playback_starts_at_visible_window_beginning():
     assert window.cb2.enabled[-1] is False
 
 
+def test_qmedia_start_position_signal_preserves_playback_window():
+    class Timer:
+        def __init__(self):
+            self.active = False
+
+        def start(self):
+            self.active = True
+
+        def isActive(self):
+            return self.active
+
+    class Clock:
+        def restart(self):
+            pass
+
+    class QMediaPlayer:
+        def __init__(self):
+            self.callback = None
+
+        def setPosition(self, value):
+            self.callback(value)
+
+        def play(self):
+            pass
+
+    class App:
+        def processEvents(self):
+            pass
+
+    class SongRaw:
+        data = np.arange(1_000)[:, None]
+
+    class Dataset:
+        song_raw = SongRaw()
+
+        def __contains__(self, key):
+            return key == "song_raw"
+
+    window = PSV.__new__(PSV)
+    window.ds = Dataset()
+    window.tmin = 0
+    window.tmax = 1_000
+    window._t0 = 500
+    window.fs_song = 1_000
+    window.fs_other = 1_000
+    window._span = 200
+    window.STOP = True
+    window._is_playing = False
+    window._playback_timer = Timer()
+    window._playback_clock = Clock()
+    window._audio_player = QMediaPlayer()
+    window._audio_player.callback = window._on_audio_position_changed
+    window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
+    window._playback_window_start = None
+    window._playback_window_stop = None
+    window.vr = None
+    window.app = App()
+    window.update_xy = lambda: None
+    window.update_frame = lambda: None
+    window._set_play_button_state = lambda *, playing: None
+
+    window._start_playback()
+
+    assert window._playback_window_start == 400
+    assert window._playback_window_stop == 600
+    assert window.t0 == 400
+    assert window.time0 == 400
+    assert window.time1 == 600
+
+
 def test_start_playback_qt_array_audio_queues_before_transport_clock():
     class Timer:
         def __init__(self):

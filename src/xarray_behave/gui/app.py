@@ -1995,7 +1995,11 @@ class PSV(MainWindow):
             return
         if self._is_playing and self._playback_timer.isActive():
             return
-        self._set_playhead_sample(position_ms / 1000 * self.fs_song, refresh=True)
+        self._set_playhead_sample(
+            position_ms / 1000 * self.fs_song,
+            refresh=True,
+            preserve_playback_window=getattr(self, "_is_playing", False),
+        )
 
     def _on_audio_playback_state_changed(self, state) -> None:
         if QMediaPlayer is None or self._audio_player is None or not self._transport_uses_qmedia_audio():
