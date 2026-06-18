@@ -29,7 +29,7 @@ import xarray_behave
 from .. import _dataset_service as dataset_service, xarray_behave as xb, loaders as ld, annot
 from .formbuilder import YamlDialog
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
-from . import utils, views, event_widgets, modern_video
+from . import utils, views, event_widgets, gui_config, modern_video
 from .style_profile import WINDOW_STYLESHEET
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,26 @@ except ImportError:
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir: str = xarray_behave.__path__[0]
+
+
+def _get_config_manager() -> gui_config.GuiConfigManager:
+    app = QtWidgets.QApplication.instance()
+    if app is not None and hasattr(app, "_xarray_behave_config_manager"):
+        return app._xarray_behave_config_manager
+    manager = gui_config.GuiConfigManager()
+    if app is not None:
+        app._xarray_behave_config_manager = manager
+    return manager
+
+
+def _set_config_manager(manager: gui_config.GuiConfigManager) -> None:
+    app = QtWidgets.QApplication.instance()
+    if app is not None:
+        app._xarray_behave_config_manager = manager
+
+
+def _apply_dialog_config(form, manager: gui_config.GuiConfigManager, kind: str) -> None:
+    form.set_form_data(manager.dialog_values(kind))
 
 
 class DataSource:
@@ -83,6 +103,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__(parent)
 
         self.parent = parent
+        self.config_manager = _get_config_manager()
 
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
@@ -111,7 +132,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
         self.file_menu.addSeparator()
-        self.file_menu.addAction("Exit")
+        self.file_menu.addAction("Save Configuration As...", self.save_gui_config_as)
+        self.file_menu.addAction("Exit", self.close)
 
         self.das_menu = self.bar.addMenu("DAS")
         self._add_keyed_menuitem(self.das_menu, "Train", self.das_train, None)
@@ -130,8 +152,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cb = pg.GraphicsLayoutWidget()
         self.cb.setLayout(self.hb)
         self.setCentralWidget(self.cb)
+        self._restore_window_geometry()
 
     def closeEvent(self, event):
+        try:
+            self.config_manager.save_global(self._config_snapshot())
+        except Exception:
+            logger.exception("Could not save global GUI configuration to %s", self.config_manager.global_path)
         stuff_to_delete = list(self.__dict__.keys())
         for stuff in stuff_to_delete:
             try:
@@ -144,6 +171,57 @@ class MainWindow(QtWidgets.QMainWindow):
 
         gc.collect()
         event.accept()
+
+    def _config_snapshot(self):
+        config = gui_config.deep_merge({}, self.config_manager.config)
+        geometry = self.geometry()
+        config["version"] = gui_config.CONFIG_VERSION
+        config.setdefault("window", {})["geometry"] = {
+            "x": int(geometry.x()),
+            "y": int(geometry.y()),
+            "width": int(geometry.width()),
+            "height": int(geometry.height()),
+            "maximized": bool(self.isMaximized()),
+        }
+        return gui_config.sanitize_config(config)
+
+    def save_gui_config_as(self, qt_keycode=None):
+        del qt_keycode
+        default_path = (
+            gui_config.local_config_path(self.config_manager.source)
+            if self.config_manager.source
+            else Path.cwd() / gui_config.CONFIG_FILENAME
+        )
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save GUI configuration",
+            str(default_path),
+            "YAML files (*.yaml *.yml);;All files (*)",
+        )
+        if not filename:
+            return
+        try:
+            saved = self.config_manager.save_as(filename, self._config_snapshot())
+            logger.info("Saved GUI configuration to %s", saved)
+        except Exception:
+            logger.exception("Could not save GUI configuration to %s", filename)
+
+    def _restore_window_geometry(self):
+        geometry = self.config_manager.config.get("window", {}).get("geometry", {})
+        try:
+            x = int(geometry["x"])
+            y = int(geometry["y"])
+            width = max(200, int(geometry["width"]))
+            height = max(150, int(geometry["height"]))
+        except (KeyError, TypeError, ValueError):
+            return
+        target = QtCore.QRect(x, y, width, height)
+        screens = QtGui.QGuiApplication.screens()
+        if screens and not any(screen.availableGeometry().intersects(target) for screen in screens):
+            return
+        self.setGeometry(target)
+        if bool(geometry.get("maximized", False)):
+            self.showMaximized()
 
     def add_button(self, text: str, callback: Callable) -> QtWidgets.QPushButton:
         button = QtWidgets.QPushButton(self)
@@ -499,6 +577,8 @@ class MainWindow(QtWidgets.QMainWindow):
             file_filter = "Any file (*.*);;WAV files (*.wav);;HDF5 files (*.h5 *.hdf5);;NPY files (*.npy);;NPZ files (*.npz)"
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select file", filter=file_filter)
         if filename:
+            config_manager = _get_config_manager()
+            config_manager.load_for_source(filename)
             # infer loader from file name and set default in form
             # infer samplerate (catch error) and set default in form
             samplerate = None  # Hz
@@ -565,6 +645,8 @@ class MainWindow(QtWidgets.QMainWindow):
             definition_path = os.path.splitext(filename)[0] + "_definitions.csv"
             dialog.form.fields["definition_path"].setText(definition_path)  # select first
 
+            _apply_dialog_config(dialog.form, config_manager, "from_file")
+
             # initialize form data with cli args
             if spec_freq_min is not None:
                 dialog.form["spec_freq_min"] = spec_freq_min
@@ -586,6 +668,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 form_data = dialog.form.get_form_data()  # why call this twice
 
                 form_data = dialog.form.get_form_data()
+                config_manager.remember_dialog("from_file", form_data)
                 logger.info(f"Making new dataset from {filename}.")
                 # if form_data['target_samplingrate'] is None:
                 #     form_data['target_samplingrate'] = None
@@ -597,6 +680,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
                     data_source=DataSource("file", filename),
+                    config_manager=config_manager,
                 )
 
     @classmethod
@@ -617,15 +701,22 @@ class MainWindow(QtWidgets.QMainWindow):
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption="Select data directory")
         if dirname:
+            config_manager = _get_config_manager()
+            config_manager.load_for_source(dirname)
             dialog = YamlDialog(
                 yaml_file=package_dir + "/gui/forms/from_dir.yaml",
                 title=f"Dataset from data directory {dirname}",
             )
 
+            _apply_dialog_config(dialog.form, config_manager, "from_dir")
+
             # initialize form data with cli args
-            dialog.form["pixel_size_mm"] = pixel_size_mm  # and un-disable
-            dialog.form["spec_freq_min"] = spec_freq_min
-            dialog.form["spec_freq_max"] = spec_freq_max
+            if pixel_size_mm is not None:
+                dialog.form["pixel_size_mm"] = pixel_size_mm  # and un-disable
+            if spec_freq_min is not None:
+                dialog.form["spec_freq_min"] = spec_freq_min
+            if spec_freq_max is not None:
+                dialog.form["spec_freq_max"] = spec_freq_max
             if box_size is not None:
                 dialog.form["box_size_px"] = box_size
             if target_samplingrate is not None:
@@ -643,6 +734,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
+                config_manager.remember_dialog("from_dir", form_data)
                 logger.info(f"Making new dataset from directory {dirname}.")
 
                 _, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
@@ -680,6 +772,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     frame_flipud=dialog.form["frame_flipud"],
                     box_size=dialog.form["box_size_px"],
                     data_source=DataSource("dir", dirname),
+                    config_manager=config_manager,
                 )
 
     @classmethod
@@ -697,10 +790,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if not filename:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select dataset")
         if filename:
+            config_manager = _get_config_manager()
+            config_manager.load_for_source(filename)
             dialog = YamlDialog(
                 yaml_file=package_dir + "/gui/forms/from_zarr.yaml",
                 title=f"Load dataset from zarr file {filename}",
             )
+
+            _apply_dialog_config(dialog.form, config_manager, "from_zarr")
 
             # initialize form data with cli args
             if spec_freq_min is not None:
@@ -719,6 +816,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
+                config_manager.remember_dialog("from_zarr", form_data)
                 logger.info(f"Loading {filename}.")
                 ds = dataset_service.load_from_zarr(filename, form_data)
                 vr = None
@@ -739,6 +837,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     fmax=dialog.form["spec_freq_max"],
                     box_size=dialog.form["box_size"],
                     data_source=DataSource("zarr", filename),
+                    config_manager=config_manager,
                 )
 
     @classmethod
@@ -797,15 +896,26 @@ class PSV(MainWindow):
         ds,
         vr=None,
         title="xb.ui",
-        cmap_name: str = "turbo",
-        box_size: int = 200,
+        cmap_name: Optional[str] = None,
+        box_size: Optional[int] = None,
         fmin: Optional[float] = None,
         fmax: Optional[float] = None,
         data_source: Optional[DataSource] = None,
-        frame_fliplr: bool = False,
-        frame_flipud: bool = False,
+        frame_fliplr: Optional[bool] = None,
+        frame_flipud: Optional[bool] = None,
+        config_manager: Optional[gui_config.GuiConfigManager] = None,
     ):
         super().__init__(title=title)
+        if config_manager is not None:
+            self.config_manager = config_manager
+        config = self.config_manager.config
+        viewer_config = config.get("viewer", {})
+        video_config = viewer_config.get("video", {})
+        spectrogram_config = viewer_config.get("spectrogram", {})
+        audio_config = viewer_config.get("audio", {})
+        annotation_config = viewer_config.get("annotations", {})
+        threshold_config = viewer_config.get("thresholding", {})
+        panel_config = config.get("window", {}).get("panels", {})
         self.setStyleSheet(WINDOW_STYLESHEET)
         pg.setConfigOptions(useOpenGL=False)  # appears to be faster that way
         try:
@@ -824,15 +934,21 @@ class PSV(MainWindow):
         # detect all event times
         self.event_times = dataset_service.event_times_from_dataset(ds)
         self.event_presets = self._initial_event_presets()
-        self._current_event_name = self.event_times.names[-1] if self.event_times.names else None
+        self._merge_configured_event_types(config.get("event_types", []))
+        configured_event = config.get("selection", {}).get("event_type")
+        self._current_event_name = (
+            configured_event
+            if configured_event in self.event_times.names
+            else (self.event_times.names[-1] if self.event_times.names else None)
+        )
         self._sync_event_colors_from_presets()
 
-        self.box_size = box_size
-        self.fmin = fmin
-        self.fmax = fmax
+        self.box_size = int(video_config.get("box_size", 200) if box_size is None else box_size)
+        self.fmin = spectrogram_config.get("fmin") if fmin is None else fmin
+        self.fmax = spectrogram_config.get("fmax") if fmax is None else fmax
         self.ylim = None
-        self.spec_denoise = False
-        self.spec_levels = [None, None]
+        self.spec_denoise = bool(spectrogram_config.get("denoise", False))
+        self.spec_levels = spectrogram_config.get("levels", [None, None])
 
         self.tmin = 0
         if "song" in self.ds:
@@ -844,8 +960,8 @@ class PSV(MainWindow):
         else:
             self.tmax = len(self.ds.time)
 
-        self.crop = True
-        self.maintain_custom_crop = False
+        self.crop = bool(video_config.get("crop", True))
+        self.maintain_custom_crop = bool(video_config.get("maintain_custom_crop", False))
         try:
             self.pose_center_index = list(self.ds.poseparts).index("thorax")
         except:
@@ -854,11 +970,11 @@ class PSV(MainWindow):
             else:  # fallback in case poses are a little different
                 self.pose_center_index = 0
 
-        self.show_dot = True if "body_positions" in self.ds else False
+        self.show_dot = bool(video_config.get("show_dot", "body_positions" in self.ds))
         self.old_show_dot_state = self.show_dot
         self.dot_size = 2
-        self.show_poses = False
-        self.move_poses = False
+        self.show_poses = bool(video_config.get("show_poses", False))
+        self.move_poses = bool(video_config.get("move_poses", False))
         self.circle_size = 8
 
         self.nb_flies = _num_flies(self.ds)
@@ -889,38 +1005,45 @@ class PSV(MainWindow):
             self.swap_events = []
 
         self.STOP = True
-        self.show_spec = True
-        self.show_trace = True
-        self.show_annot = False
-        self.show_tracks = False
-        self.show_movie = True
+        self.show_spec = bool(panel_config.get("spectrogram", True))
+        self.show_trace = bool(panel_config.get("waveform", True))
+        self.show_tracks = bool(panel_config.get("tracks", False))
+        self.show_movie = bool(panel_config.get("movie", True))
+        self.show_sidebar = bool(panel_config.get("sidebar", True))
+        self.show_timeline = bool(panel_config.get("timeline", True))
+        self.show_event_table = bool(panel_config.get("event_table", True))
         self.show_options = True
-        self.show_event_text = True
-        self.spec_win = 200
-        self.show_songevents = True
-        self.movable_events = True
-        self.edit_only_current_events = False
-        self.audio_channel_settings = event_widgets.AudioChannelSettings()
+        self.show_event_text = bool(annotation_config.get("show_labels", True))
+        self.spec_win = max(1, int(spectrogram_config.get("resolution", 200)))
+        self.show_songevents = bool(annotation_config.get("show", True))
+        self.movable_events = bool(annotation_config.get("movable", True))
+        self.edit_only_current_events = bool(annotation_config.get("edit_only_current", False))
+        self.audio_channel_settings = event_widgets.AudioChannelSettings(
+            waveform_all=bool(audio_config.get("waveform_all", True)),
+            events_all=bool(audio_config.get("events_all", True)),
+            playback_all=bool(audio_config.get("playback_all", False)),
+            scale_y_all=bool(audio_config.get("scale_y_all", True)),
+        )
         self.show_all_channels = self.audio_channel_settings.waveform_all
         self._audio_settings_dialog = None
         self._audio_settings_initial = None
-        self.select_loudest_channel = False
-        self.threshold_mode = False
+        self.select_loudest_channel = bool(audio_config.get("select_loudest_channel", False))
+        self.threshold_mode = bool(threshold_config.get("enabled", False))
         self.sinet0 = None
         self.sinet0_event_name = None
 
-        self.frame_fliplr = frame_fliplr
-        self.frame_flipud = frame_flipud
+        self.frame_fliplr = bool(video_config.get("frame_fliplr", False) if frame_fliplr is None else frame_fliplr)
+        self.frame_flipud = bool(video_config.get("frame_flipud", False) if frame_flipud is None else frame_flipud)
 
-        self.thres_min_dist = 0.020  # seconds
-        self.thres_env_std = 0.002  # seconds
-        self.thres_value = 0.0
-        self.thres_duration_enabled = False
-        self.thres_duration_min = 0.0
-        self.thres_duration_max = 1.0
-        self.thres_bandpass_enabled = False
-        self.thres_bandpass_low = 0.0
-        self.thres_bandpass_high = None
+        self.thres_min_dist = float(threshold_config.get("min_distance", 0.020))
+        self.thres_env_std = float(threshold_config.get("envelope_std", 0.002))
+        self.thres_value = float(threshold_config.get("value", 0.0))
+        self.thres_duration_enabled = bool(threshold_config.get("duration_enabled", False))
+        self.thres_duration_min = float(threshold_config.get("duration_min", 0.0))
+        self.thres_duration_max = float(threshold_config.get("duration_max", 1.0))
+        self.thres_bandpass_enabled = bool(threshold_config.get("bandpass_enabled", False))
+        self.thres_bandpass_low = float(threshold_config.get("bandpass_low", 0.0))
+        self.thres_bandpass_high = threshold_config.get("bandpass_high")
 
         if "song_events" in self.ds:
             self.fs_other = self.ds.song_events.attrs["sampling_rate_Hz"]
@@ -983,7 +1106,8 @@ class PSV(MainWindow):
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Save dataset", self.save_dataset)
         self.file_menu.addSeparator()
-        self.file_menu.addAction("Exit")
+        self.file_menu.addAction("Save Configuration As...", self.save_gui_config_as)
+        self.file_menu.addAction("Exit", self.close)
 
         view_play = self.bar.addMenu("Playback")
         self._add_keyed_menuitem(
@@ -1182,10 +1306,12 @@ class PSV(MainWindow):
         view_view = self.bar.addMenu("View")
         self._add_keyed_menuitem(
             view_view,
-            "Video, waveform, and spectrogram display parameters",
-            self.set_spec_freq,
+            "Show sidebar",
+            partial(self.toggle, "show_sidebar"),
+            None,
+            checkable=True,
+            checked=self.show_sidebar,
         )
-        view_view.addSeparator()
         # TODO? only show these if tracks and/or video
         self._add_keyed_menuitem(
             view_view,
@@ -1205,11 +1331,19 @@ class PSV(MainWindow):
         )
         self._add_keyed_menuitem(
             view_view,
-            "Show ethogram",
-            partial(self.toggle, "show_annot"),
+            "Show event timeline",
+            partial(self.toggle, "show_timeline"),
             None,
             checkable=True,
-            checked=self.show_annot,
+            checked=self.show_timeline,
+        )
+        self._add_keyed_menuitem(
+            view_view,
+            "Show event table",
+            partial(self.toggle, "show_event_table"),
+            None,
+            checkable=True,
+            checked=self.show_event_table,
         )
         if "pose_positions_allo" in self.ds:
             self._add_keyed_menuitem(
@@ -1252,6 +1386,12 @@ class PSV(MainWindow):
             for ii, col in zip(range(0, itemList.rowCount()), self.tracks_colors):
                 itemList.item(ii).setForeground(QtGui.QColor(*col))
 
+            configured_tracks = set(config.get("selection", {}).get("tracks", []))
+            for index in range(self.cb3.model().rowCount()):
+                item = self.cb3.model().item(index)
+                item.setCheckState(QtCore.Qt.Checked if item.data() in configured_tracks else QtCore.Qt.Unchecked)
+            self.cb3.updateText()
+
             def on_tracksel_changed(source):
                 if source.STOP:
                     source.update_xy()
@@ -1268,16 +1408,26 @@ class PSV(MainWindow):
             position_changed_callback=self.on_position_change_finished,
         )
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
-        self.annot_view = views.AnnotView(model=self, callback=self.on_trace_clicked)
         self.event_timeline = event_widgets.EventTimelineWidget(show_waveform=False)
         self.events_table = event_widgets.EventsTableWidget()
         self.channel_panel = event_widgets.ChannelSelectorPanel()
         self.channel_panel.set_channels(self._channel_labels())
+        configured_channel = config.get("selection", {}).get("audio_channel")
+        channel_index = self.channel_panel.channel_combo.findText(str(configured_channel))
+        if channel_index >= 0:
+            self.channel_panel.channel_combo.setCurrentIndex(channel_index)
         self.threshold_panel = event_widgets.ThresholdingPanel()
         self.threshold_panel.hide()
         self.preset_panel = event_widgets.EventPresetPanel()
         self.cb2 = self.channel_panel.channel_combo
-        for widget in (self.slice_view, self.tracks_view, self.annot_view, self.event_timeline, self.events_table):
+        waveform_config = viewer_config.get("waveform", {})
+        if "color" in waveform_config:
+            self.slice_view.set_waveform_color(str(waveform_config["color"]))
+        waveform_limits = waveform_config.get("y_limits")
+        if isinstance(waveform_limits, (list, tuple)) and len(waveform_limits) == 2:
+            self.slice_view.set_waveform_y_limits(tuple(waveform_limits))
+        self.events_table.link_checkbox.setChecked(bool(annotation_config.get("table_audio_link", True)))
+        for widget in (self.slice_view, self.tracks_view, self.event_timeline, self.events_table):
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.channel_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
@@ -1308,63 +1458,73 @@ class PSV(MainWindow):
         self.event_timeline.event_selected.connect(self._on_timeline_event_selected)
         self.event_timeline.event_created.connect(self._on_timeline_event_created)
         self.event_timeline.event_changed.connect(self._on_timeline_event_changed)
-        self.spec_compression_ratio = 0
-        self.spec_mel = False
-        self.spec_colormap = cmap_name
+        self.spec_compression_ratio = float(spectrogram_config.get("compression", 0))
+        self.spec_mel = bool(spectrogram_config.get("mel", False))
+        self.spec_colormap = str(cmap_name or spectrogram_config.get("colormap", "turbo"))
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=self.spec_colormap)
         self.spec_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
         self.ly = QtWidgets.QVBoxLayout()
 
-        outer_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        outer_splitter.setHandleWidth(8)
-        outer_splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        splitter.setObjectName("centerWorkspace")
-        splitter.setHandleWidth(8)
-        splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.outer_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.outer_splitter.setHandleWidth(8)
+        self.outer_splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.center_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.center_splitter.setObjectName("centerWorkspace")
+        self.center_splitter.setHandleWidth(8)
+        self.center_splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
         splitter_sizes = []
+        configured_sizes = config.get("window", {}).get("splitter_sizes", {})
+        self._center_panel_names = []
+        self._panel_widgets = {}
+        self._last_panel_sizes = {
+            name: max(1, int(size)) for name, size in configured_sizes.items() if isinstance(size, (int, float))
+        }
 
-        def add_splitter_panel(widget, size: int) -> None:
-            splitter.addWidget(widget)
+        def add_splitter_panel(name: str, widget, default_size: int) -> None:
+            size = max(1, int(configured_sizes.get(name, default_size)))
+            self.center_splitter.addWidget(widget)
+            self._center_panel_names.append(name)
+            self._panel_widgets[name] = widget
+            self._last_panel_sizes[name] = size
             splitter_sizes.append(size)
 
         if self.vr is not None:
-            add_splitter_panel(self.movie_view, 320)
+            add_splitter_panel("movie", self.movie_view, 320)
         if "pose_positions_allo" in self.ds:
-            add_splitter_panel(self.tracks_view, 150)
-        if self.vr is not None or "pose_positions_allo" in self.ds:
-            add_splitter_panel(self.annot_view, 130)
+            add_splitter_panel("tracks", self.tracks_view, 150)
+        add_splitter_panel("waveform", self.slice_view, 100)
+        add_splitter_panel("spectrogram", self.spec_view, 400)
+        add_splitter_panel("timeline", self.event_timeline, 100)
+        add_splitter_panel("event_table", self.events_table, 200)
 
-        add_splitter_panel(self.slice_view, 100)
-        add_splitter_panel(self.spec_view, 400)
-        add_splitter_panel(self.event_timeline, 100)
-        add_splitter_panel(self.events_table, 200)
+        for index in range(self.center_splitter.count()):
+            self.center_splitter.setCollapsible(index, False)
+            self.center_splitter.setStretchFactor(index, splitter_sizes[index])
+        self.center_splitter.setSizes(splitter_sizes)
 
-        for index in range(splitter.count()):
-            splitter.setCollapsible(index, False)
-            splitter.setStretchFactor(index, splitter_sizes[index])
-        splitter.setSizes(splitter_sizes)
-
-        left_sidebar = QtWidgets.QWidget()
-        left_sidebar.setObjectName("leftSidebar")
-        left_sidebar_layout = QtWidgets.QVBoxLayout(left_sidebar)
+        self.left_sidebar = QtWidgets.QWidget()
+        self.left_sidebar.setObjectName("leftSidebar")
+        left_sidebar_layout = QtWidgets.QVBoxLayout(self.left_sidebar)
         left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
         left_sidebar_layout.setSpacing(8)
         left_sidebar_layout.addWidget(self.channel_panel)
         left_sidebar_layout.addWidget(self.threshold_panel)
         left_sidebar_layout.addWidget(self.preset_panel, 1)
 
-        outer_splitter.addWidget(left_sidebar)
-        outer_splitter.addWidget(splitter)
-        outer_splitter.setCollapsible(0, False)
-        outer_splitter.setCollapsible(1, False)
-        outer_splitter.setStretchFactor(0, 0)
-        outer_splitter.setStretchFactor(1, 1)
-        outer_splitter.setSizes([260, 1200])
+        self.outer_splitter.addWidget(self.left_sidebar)
+        self.outer_splitter.addWidget(self.center_splitter)
+        self.outer_splitter.setCollapsible(0, False)
+        self.outer_splitter.setCollapsible(1, False)
+        self.outer_splitter.setStretchFactor(0, 0)
+        self.outer_splitter.setStretchFactor(1, 1)
+        sidebar_size = max(1, int(configured_sizes.get("sidebar", 260)))
+        workspace_size = max(1, int(configured_sizes.get("workspace", 1200)))
+        self._last_panel_sizes.update({"sidebar": sidebar_size, "workspace": workspace_size})
+        self.outer_splitter.setSizes([sidebar_size, workspace_size])
 
-        self.ly.addWidget(outer_splitter)
+        self.ly.addWidget(self.outer_splitter)
 
         def edit_time_finished(source=None):
             try:
@@ -1382,7 +1542,9 @@ class PSV(MainWindow):
             except Exception as e:
                 print(e)
 
-        transport_layout = QtWidgets.QHBoxLayout()
+        self.transport_panel = QtWidgets.QWidget()
+        self.transport_panel.setObjectName("transportPanel")
+        transport_layout = QtWidgets.QHBoxLayout(self.transport_panel)
         transport_layout.setContentsMargins(0, 0, 0, 0)
         transport_layout.setSpacing(8)
         transport_layout.addWidget(self._build_transport(), stretch=10)
@@ -1402,7 +1564,7 @@ class PSV(MainWindow):
             edit_frame_label.setProperty("role", "muted")
             transport_layout.addWidget(edit_frame_label)
 
-        self.ly.addLayout(transport_layout)
+        self.ly.addWidget(self.transport_panel)
         self._setup_audio_clock(self._audio_source_path())
         self._sync_transport_controls()
 
@@ -1411,6 +1573,9 @@ class PSV(MainWindow):
         self.setCentralWidget(self.cw)
 
         self.update_eventtype_selector()
+        self._apply_panel_visibility()
+        self._sync_threshold_mode_ui()
+        self._restore_window_geometry()
 
         self.show()
         self.update_xy()
@@ -1421,6 +1586,122 @@ class PSV(MainWindow):
 
         self.update_xy()
         self.app.processEvents()
+
+    def _remember_splitter_sizes(self):
+        if hasattr(self, "center_splitter"):
+            for name, size in zip(self._center_panel_names, self.center_splitter.sizes()):
+                if size > 0:
+                    self._last_panel_sizes[name] = int(size)
+        if hasattr(self, "outer_splitter"):
+            for name, size in zip(("sidebar", "workspace"), self.outer_splitter.sizes()):
+                if size > 0:
+                    self._last_panel_sizes[name] = int(size)
+
+    def _apply_panel_visibility(self):
+        if not hasattr(self, "_panel_widgets"):
+            return
+        self._remember_splitter_sizes()
+        visible = {
+            "movie": self.show_movie,
+            "tracks": self.show_tracks,
+            "waveform": self.show_trace,
+            "spectrogram": self.show_spec,
+            "timeline": self.show_timeline,
+            "event_table": self.show_event_table,
+        }
+        for name, widget in self._panel_widgets.items():
+            widget.setVisible(bool(visible[name]))
+        self.left_sidebar.setVisible(bool(self.show_sidebar))
+        self.center_splitter.setSizes([self._last_panel_sizes[name] for name in self._center_panel_names])
+        self.outer_splitter.setSizes(
+            [self._last_panel_sizes.get("sidebar", 260), self._last_panel_sizes.get("workspace", 1200)]
+        )
+
+    def _config_snapshot(self):
+        self._remember_splitter_sizes()
+        config = super()._config_snapshot()
+        config["window"]["panels"] = {
+            "sidebar": bool(self.show_sidebar),
+            "movie": bool(self.show_movie),
+            "tracks": bool(self.show_tracks),
+            "waveform": bool(self.show_trace),
+            "spectrogram": bool(self.show_spec),
+            "timeline": bool(self.show_timeline),
+            "event_table": bool(self.show_event_table),
+        }
+        config["window"]["splitter_sizes"] = dict(self._last_panel_sizes)
+        config["viewer"] = {
+            "waveform": {
+                "color": self.slice_view.waveform_color,
+                "y_limits": list(self.slice_view.waveform_y_limits) if self.slice_view.waveform_y_limits is not None else None,
+            },
+            "spectrogram": {
+                "fmin": None if self.fmin is None else float(self.fmin),
+                "fmax": None if self.fmax is None else float(self.fmax),
+                "levels": [None if value is None else float(value) for value in self.spec_levels],
+                "compression": float(self.spec_compression_ratio),
+                "resolution": int(self.spec_win),
+                "colormap": str(self.spec_colormap),
+                "denoise": bool(self.spec_denoise),
+                "mel": bool(self.spec_mel),
+            },
+            "video": {
+                "box_size": int(self.box_size),
+                "crop": bool(self.crop),
+                "maintain_custom_crop": bool(self.maintain_custom_crop),
+                "frame_fliplr": bool(self.frame_fliplr),
+                "frame_flipud": bool(self.frame_flipud),
+                "show_dot": bool(self.show_dot),
+                "show_poses": bool(self.show_poses),
+                "move_poses": bool(self.move_poses),
+            },
+            "audio": {
+                "waveform_all": bool(self._audio_settings().waveform_all),
+                "events_all": bool(self._audio_settings().events_all),
+                "playback_all": bool(self._audio_settings().playback_all),
+                "scale_y_all": bool(self._audio_settings().scale_y_all),
+                "select_loudest_channel": bool(self.select_loudest_channel),
+            },
+            "annotations": {
+                "show": bool(self.show_songevents),
+                "movable": bool(self.movable_events),
+                "edit_only_current": bool(self.edit_only_current_events),
+                "show_labels": bool(self.show_event_text),
+                "table_audio_link": bool(self.events_table.sync_enabled),
+            },
+            "thresholding": {
+                "enabled": bool(self.threshold_mode),
+                "value": float(self.thres_value),
+                "envelope_std": float(self.thres_env_std),
+                "min_distance": float(self.thres_min_dist),
+                "duration_enabled": bool(self.thres_duration_enabled),
+                "duration_min": float(self.thres_duration_min),
+                "duration_max": float(self.thres_duration_max),
+                "bandpass_enabled": bool(self.thres_bandpass_enabled),
+                "bandpass_low": float(self.thres_bandpass_low),
+                "bandpass_high": float(self.thres_bandpass_high),
+            },
+        }
+        selection = {
+            "event_type": self.current_event_name,
+            "audio_channel": self.current_channel_name,
+        }
+        if hasattr(self, "cb3"):
+            selection["tracks"] = [str(value) for value in self.cb3.currentData()]
+        config["selection"] = selection
+        config["event_types"] = [
+            {
+                "name": preset.name,
+                "fixed_duration": bool(preset.fixed_duration),
+                "duration_seconds": float(preset.duration_seconds),
+                "duration_editable": bool(preset.duration_editable),
+                "color_hex": preset.color_hex,
+                "visible": bool(preset.visible),
+                "editable": bool(preset.editable),
+            }
+            for preset in self._event_presets_in_order()
+        ]
+        return gui_config.sanitize_config(config)
 
     def _update_model(self):
         try:
@@ -1435,6 +1716,9 @@ class PSV(MainWindow):
     @ylim.setter
     def ylim(self, value: float):
         self._ylim = value
+        if hasattr(self, "slice_view"):
+            limits = None if value is None else (-abs(float(value)), abs(float(value)))
+            self.slice_view.set_waveform_y_limits(limits)
         self._update_model()
 
     @property
@@ -2162,6 +2446,34 @@ class PSV(MainWindow):
             )
         return presets
 
+    def _merge_configured_event_types(self, configured_presets):
+        configured_names = []
+        for values in configured_presets:
+            name = values["name"]
+            if name in configured_names:
+                logger.warning("Ignoring duplicate configured event type %s", name)
+                continue
+            configured_names.append(name)
+            if name not in self.event_times:
+                self.event_times.add_name(name, category="event")
+            base = self.event_presets.get(name, event_widgets.EventTypePreset(name=name))
+            color_hex = str(values.get("color_hex", base.color_hex))
+            if not QtGui.QColor(color_hex).isValid():
+                color_hex = base.color_hex
+            self.event_presets[name] = event_widgets.EventTypePreset(
+                name=name,
+                fixed_duration=bool(values.get("fixed_duration", base.fixed_duration)),
+                duration_seconds=max(0.0, float(values.get("duration_seconds", base.duration_seconds))),
+                duration_editable=bool(values.get("duration_editable", base.duration_editable)),
+                color_hex=color_hex,
+                visible=bool(values.get("visible", base.visible)),
+                editable=bool(values.get("editable", base.editable)),
+            )
+
+        if configured_names:
+            ordered_names = configured_names + [name for name in self.event_times.names if name not in configured_names]
+            self.event_times = annot.Events({name: self.event_times[name] for name in ordered_names})
+
     def _sync_event_colors_from_presets(self):
         self.nb_eventtypes = len(self.event_times.names)
         self.eventtype_colors = np.array(
@@ -2743,6 +3055,7 @@ class PSV(MainWindow):
             if self.STOP:
                 self.update_frame()
                 self.update_xy()
+            self._apply_panel_visibility()
         except KeyError as e:
             logger.exception(e)
 
@@ -3074,13 +3387,6 @@ class PSV(MainWindow):
     def jump_forward(self, qt_keycode):
         self.t0 += self.span / 2
 
-    def set_spec_freq(self, qt_keycode):
-        from . import view_dialog
-
-        dialog = view_dialog.Form(parent=self, model=self)
-        dialog.show()
-        dialog.exec_()
-
     def set_envelope_computation(self, qt_keycode):
         dialog = YamlDialog(
             yaml_file=package_dir + "/gui/forms/envelope_computation.yaml",
@@ -3168,13 +3474,6 @@ class PSV(MainWindow):
                 scale_y_all=self._audio_settings().scale_y_all,
             )
 
-        if self.show_annot:
-            self.annot_view.update_trace()
-            self.annot_view.show()
-        else:
-            self.annot_view.clear()
-            self.annot_view.hide()
-
         if "pose_positions_allo" in self.ds:
             if self.show_tracks:
                 # make this part of the callback?
@@ -3206,7 +3505,7 @@ class PSV(MainWindow):
             self.spec_view.clear()
             self.spec_view.hide()
 
-        if self.show_songevents and (self.show_tracks or self.show_spec or self.show_annot or self.show_trace):
+        if self.show_songevents and (self.show_tracks or self.show_spec or self.show_trace):
             self.plot_song_events(self.x)
 
         self._refresh_event_widgets(sync_table_to_view=True)
@@ -3230,8 +3529,6 @@ class PSV(MainWindow):
 
             event_pen = pg.mkPen(color=self.eventtype_colors[event_index], width=3)
             event_brush = pg.mkBrush(color=[*self.eventtype_colors[event_index], 25])
-            event_brush_annot = pg.mkBrush(color=[*self.eventtype_colors[event_index], 128])
-
             events_in_view = self.event_times.filter_range(event_name, x[0], x[-1], strict=False)
 
             if self.show_event_text:
@@ -3265,16 +3562,6 @@ class PSV(MainWindow):
                             movable=movable,
                             text=event_text,
                         )
-                    if self.show_annot:
-                        self.annot_view.add_segment(
-                            onset,
-                            offset,
-                            event_index,
-                            brush=event_brush_annot,
-                            pen=event_pen,
-                            movable=movable,
-                            text=event_text,
-                        )
                     if self.show_spec:
                         self.spec_view.add_segment(
                             onset,
@@ -3296,14 +3583,6 @@ class PSV(MainWindow):
                     )
                 if self.show_tracks:
                     self.tracks_view.add_event(
-                        point_events[:, 0],
-                        event_index,
-                        event_pen,
-                        movable=movable,
-                        text=event_text,
-                    )
-                if self.show_annot:
-                    self.annot_view.add_event(
                         point_events[:, 0],
                         event_index,
                         event_pen,
@@ -3335,8 +3614,6 @@ class PSV(MainWindow):
             self.slice_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
         if self.show_tracks:
             self.tracks_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
-        if self.show_annot:
-            self.annot_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
         if self.show_spec:
             self.spec_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
 
@@ -3383,19 +3660,6 @@ class PSV(MainWindow):
             f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
         )
 
-        # FIXME for moving annotations in ethogram - fails in pyside6
-        if self.annot_view.mousePoint is not None:
-            mp = self.annot_view.mousePoint.y()
-            if mp > 0 and mp < 1:
-                new_event_idx = int(mp * self.nb_eventtypes)
-                new_event_name = self.event_times.names[new_event_idx]
-                if self._event_type_can_edit(new_event_name):
-                    _, old_name, new_name = self.event_times.change_name(new_region[0], new_event_name)
-                else:
-                    old_name = None
-                if old_name is not None:
-                    logger.info(f"  Changed from {old_name} to {new_name}.")
-
         self.update_xy()
 
     def on_position_change_finished(self, position):
@@ -3426,21 +3690,6 @@ class PSV(MainWindow):
         ):
             self.event_times.move_time(event_name_to_move, position.position, new_position)
         logger.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
-
-        # FIXME for moving annotations in ethogram - fails in pyside6
-        if self.annot_view.mousePoint is not None:
-            mp = self.annot_view.mousePoint.y()
-            if mp > 0 and mp < 1:
-                new_event_idx = int(mp * self.nb_eventtypes)
-                new_event_name = self.event_times.names[new_event_idx]
-                if self._event_type_can_edit(new_event_name):
-                    _, old_name, new_name = self.event_times.change_name(
-                        new_position, new_event_name, old_name=event_name_to_move
-                    )
-                else:
-                    old_name = None
-                if old_name is not None:
-                    logger.info(f"  Changed from {old_name} to {new_name}.")
 
         self.update_xy()
 
@@ -3563,7 +3812,6 @@ class PSV(MainWindow):
         elif mouseButton == QtCore.Qt.MouseButton.RightButton:  # delete nearest event
             self.spec_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self.slice_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-            self.annot_view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
             self._clear_pending_event_creation()
 
             if not self.edit_only_current_events:
@@ -3706,6 +3954,7 @@ class PSV(MainWindow):
 def main(
     source: str = "",
     *,
+    config: Optional[str] = None,
     events_string: str = "",
     target_samplingrate: Optional[float] = None,
     spec_freq_min: Optional[float] = None,
@@ -3725,6 +3974,7 @@ def main(
             - an h5 file
             - an xarray-behave dataset constructed from an ethodrome data folder saved as a zarr file,
             - an ethodrome data folder (e.g. 'dat/localhost-xxx').
+        config (Optional[str]): Additional GUI configuration file. Overrides global and local configuration.
         events_string (str): Initialize event names for annotations.
                              String of the form "event_name;event_name".
                              Avoid spaces or trailing ';'.
@@ -3742,6 +3992,9 @@ def main(
         is_das (bool): reduced GUI for audio only data
     """
     app = pg.mkQApp()
+    config_manager = gui_config.GuiConfigManager(config)
+    config_manager.load_for_source(source or None)
+    _set_config_manager(config_manager)
 
     mainwin = None
     if not len(source):
@@ -3797,6 +4050,7 @@ def main(
 def main_das(
     source: str = "",
     *,
+    config: Optional[str] = None,
     song_types_string: str = "",
     spec_freq_min: Optional[float] = None,
     spec_freq_max: Optional[float] = None,
@@ -3813,6 +4067,7 @@ def main_das(
             - an h5 file
             - an xarray-behave dataset constructed from an ethodrome data folder saved as a zarr file,
             - an ethodrome data folder (e.g. 'dat/localhost-xxx').
+        config (Optional[str]): Additional GUI configuration file. Overrides global and local configuration.
         song_types_string (str): Initialize event names for annotations.
                              String of the form "event_name;event_name".
                              Avoid spaces or trailing ';'.
@@ -3826,6 +4081,7 @@ def main_das(
     """
     main(
         source,
+        config=config,
         events_string=song_types_string,
         spec_freq_min=spec_freq_min,
         spec_freq_max=spec_freq_max,

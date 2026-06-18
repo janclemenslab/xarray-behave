@@ -195,8 +195,7 @@ alignment throughout the package.
     `xarray_behave._dataset_service`; keep new non-Qt dataset orchestration
     there instead of adding it directly to GUI methods.
   - `PSV` is the main viewer/controller for synchronized waveform, spectrogram,
-    event timeline/table widgets, annotation view, transport controls, and
-    optional movie view.
+    event timeline/table widgets, transport controls, and optional movie view.
   - In the audio-focused layout the center stack is waveform, spectrogram,
     event timeline, then event table, with initial splitter weights `1:4:1:2`.
     Event presets live in the left preset panel. The current audio channel

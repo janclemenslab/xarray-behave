@@ -1,9 +1,10 @@
 import numpy as np
+import xarray as xr
 
 import xarray_behave  # noqa: F401 - sets QT_API before qtpy imports
 from qtpy import QtCore, QtWidgets
 from xarray_behave.annot import Events
-from xarray_behave.gui import app as gui_app, view_dialog, views
+from xarray_behave.gui import app as gui_app, gui_config, view_dialog, views
 from xarray_behave.gui.app import PSV
 from xarray_behave.gui.event_widgets import (
     AudioChannelSettings,
@@ -27,6 +28,89 @@ def _app():
     if app is None:
         app = QtWidgets.QApplication([])
     return app
+
+
+def _audio_dataset(event_times=None):
+    sampletime = np.arange(1_000) / 1_000
+    ds = xr.Dataset(
+        {"song_raw": (("sampletime", "channels"), np.zeros((len(sampletime), 2)))},
+        coords={"sampletime": sampletime},
+        attrs={"target_sampling_rate_Hz": 1_000},
+    )
+    ds.song_raw.attrs["sampling_rate_Hz"] = 1_000
+    if event_times is not None:
+        ds.attrs["event_times"] = event_times
+    return ds
+
+
+def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
+    _app()
+    manager = gui_config.GuiConfigManager(home=tmp_path)
+    manager.config = {
+        "version": 1,
+        "window": {
+            "panels": {"timeline": False, "event_table": True, "sidebar": False},
+            "splitter_sizes": {"waveform": 150, "spectrogram": 350},
+        },
+        "viewer": {
+            "waveform": {"color": "#ff6a74", "y_limits": [-2.0, 3.0]},
+            "spectrogram": {"compression": 3, "resolution": 128, "colormap": "magma"},
+            "audio": {"waveform_all": False, "events_all": False, "playback_all": True, "scale_y_all": False},
+            "annotations": {"table_audio_link": False, "show_labels": False},
+            "thresholding": {"enabled": True, "value": 0.4, "min_distance": 0.05},
+        },
+        "selection": {"event_type": "pulse", "audio_channel": "Channel 1"},
+        "event_types": [
+            {
+                "name": "pulse",
+                "fixed_duration": True,
+                "duration_seconds": 0.01,
+                "duration_editable": False,
+                "color_hex": "#ffd166",
+                "visible": True,
+                "editable": False,
+            }
+        ],
+    }
+    window = PSV(
+        _audio_dataset(Events({"song": np.array([[0.1, 0.2, 0]])})),
+        config_manager=manager,
+    )
+
+    assert window.event_times.names == ["pulse", "song"]
+    assert window.current_event_name == "pulse"
+    assert window._event_preset("pulse").duration_seconds == 0.01
+    assert window._event_preset("pulse").editable is False
+    assert window.current_channel_name == "Channel 1"
+    assert window.slice_view.waveform_color == "#ff6a74"
+    assert window.slice_view.waveform_y_limits == (-2.0, 3.0)
+    assert window.spec_compression_ratio == 3
+    assert window.spec_win == 128
+    assert window.spec_colormap == "magma"
+    assert window.events_table.sync_enabled is False
+    assert window.threshold_mode is True
+    assert window.thres_value == 0.4
+    assert window.show_timeline is False
+    assert window.show_sidebar is False
+    assert window.transport_panel.isVisible() is True
+    assert not hasattr(window, "annot_view")
+
+    view_menu = next(menu for menu in window.bar.findChildren(QtWidgets.QMenu) if menu.title() == "View")
+    view_labels = {action.text() for action in view_menu.actions()}
+    assert "Show transport" not in view_labels
+    assert "Show ethogram" not in view_labels
+    assert "Video, waveform, and spectrogram display parameters" not in view_labels
+
+    snapshot = window._config_snapshot()
+    assert snapshot["selection"] == {"event_type": "pulse", "audio_channel": "Channel 1"}
+    assert snapshot["window"]["panels"]["timeline"] is False
+    assert "transport" not in snapshot["window"]["panels"]
+    assert "ethogram" not in snapshot["window"]["panels"]
+    assert snapshot["viewer"]["audio"]["playback_all"] is True
+    assert [item["name"] for item in snapshot["event_types"]] == ["pulse", "song"]
+
+    window.close()
+    assert gui_config.read_config(tmp_path / ".das.yaml")["selection"]["event_type"] == "pulse"
 
 
 def test_records_from_events_preserves_intervals_and_channels():
@@ -767,7 +851,6 @@ def test_pending_non_fixed_boundary_is_drawn():
     window.show_event_text = False
     window.show_trace = True
     window.show_tracks = False
-    window.show_annot = False
     window.show_spec = False
     calls = []
     window.slice_view = type(
@@ -1455,7 +1538,6 @@ def test_point_event_drag_accepts_qpointf_and_persists():
     window._current_event_name = "pulse"
     window.tmax = 10_000
     window.fs_song = 1_000
-    window.annot_view = type("AnnotView", (), {"mousePoint": None})()
     window.update_xy = lambda: None
 
     window.on_position_change_finished(Position())

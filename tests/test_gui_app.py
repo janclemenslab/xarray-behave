@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import xarray as xr
 
-from xarray_behave.gui import app as gui_app
+from xarray_behave.gui import app as gui_app, gui_config
 
 
 class _FakeForm:
@@ -79,3 +79,48 @@ def test_from_dir_cli_spec_bounds_enable_bandpass_when_skipping_dialog(monkeypat
     assert captured["form_data"]["f_high"] == 1000
     assert captured["psv"].kwargs["fmin"] == 50
     assert captured["psv"].kwargs["fmax"] == 1000
+
+
+def test_from_dir_applies_local_config_before_cli_overrides(monkeypatch, tmp_path):
+    captured = {}
+    source = tmp_path / "recording"
+    source.mkdir()
+    gui_config.write_config(
+        source / ".das.yaml",
+        {
+            "version": 1,
+            "load_dialogs": {
+                "from_dir": {
+                    "target_samplingrate": 500,
+                    "frame_fliplr": True,
+                    "spec_freq_min": 25,
+                }
+            },
+        },
+    )
+    manager = gui_config.GuiConfigManager(home=tmp_path / "home")
+
+    def fake_assemble_from_dir(dirname, form_data, pixel_size_mm=None):
+        captured["form_data"] = form_data
+        captured["pixel_size_mm"] = pixel_size_mm
+        return xr.Dataset()
+
+    monkeypatch.setattr(gui_app, "_get_config_manager", lambda: manager)
+    monkeypatch.setattr(gui_app, "YamlDialog", _FakeDialog)
+    monkeypatch.setattr(gui_app.dataset_service, "assemble_from_dir", fake_assemble_from_dir)
+    monkeypatch.setattr(gui_app.modern_video, "PyAVVideoReader", lambda filename: (_ for _ in ()).throw(FileNotFoundError(filename)))
+    monkeypatch.setattr(gui_app, "PSV", lambda ds, **kwargs: SimpleNamespace(ds=ds, kwargs=kwargs))
+
+    result = gui_app.MainWindow.from_dir(
+        str(source),
+        target_samplingrate=2_000,
+        spec_freq_max=900,
+        skip_dialog=True,
+    )
+
+    assert captured["form_data"]["target_samplingrate"] == 2_000
+    assert captured["form_data"]["frame_fliplr"] is True
+    assert captured["form_data"]["spec_freq_min"] == 25
+    assert captured["form_data"]["spec_freq_max"] == 900
+    assert captured["pixel_size_mm"] is None
+    assert result.kwargs["config_manager"] is manager
