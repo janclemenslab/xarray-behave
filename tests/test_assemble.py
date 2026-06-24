@@ -1,6 +1,7 @@
 import xarray_behave as xb
 import logging
 import numpy as np
+import pandas as pd
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -142,6 +143,34 @@ def test_video_only_assembly_uses_pyav_reader(monkeypatch, tmp_path):
     assert np.isclose(ds.attrs["target_sampling_rate_Hz"], 20.0)
     assert np.isclose(ds.attrs["sampling_rate_Hz"], 200.0)
     assert "nearest_frame" in ds.coords
+
+
+def test_assemble_loads_custom_raven_annotation_column(tmp_path):
+    annotation_path = tmp_path / "Dmel_male.Table.1.selections.txt"
+    pd.DataFrame(
+        {
+            "Selection": [1],
+            "Channel": [1],
+            "Begin Time (s)": [0.1],
+            "End Time (s)": [0.2],
+            "Species": ["Dmel"],
+        }
+    ).to_csv(annotation_path, sep="\t", index=False)
+
+    ds = xb.assemble(
+        "Dmel_male",
+        filepath_daq="tests/data/dat/Dmel_male.wav",
+        filepath_annotations=str(annotation_path),
+        annotation_column="Species",
+        target_sampling_rate=100,
+        include_tracks=False,
+        include_poses=False,
+        include_balltracker=False,
+        include_movieparams=False,
+    )
+
+    assert ds.event_names.data.tolist() == ["Dmel"]
+    np.testing.assert_allclose(ds.event_times.data, np.array([[0.1, 0.2, 0]]))
 
 
 if __name__ == '__main__':

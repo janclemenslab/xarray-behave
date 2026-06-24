@@ -45,6 +45,7 @@ def assemble(
     pixel_size_mm: Optional[float] = None,
     lazy_load_song: bool = False,
     make_song_events: bool = False,
+    annotation_column: str = "Annotation",
 ) -> xr.Dataset:
     """[summary]
 
@@ -80,6 +81,7 @@ def assemble(
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
         make_song_events (bool, optional): Make binary matrix of song events. Defaults to False.
+        annotation_column (str, optional): Raven Pro column containing event names. Defaults to 'Annotation'.
     Returns:
         xarray.Dataset
     """
@@ -374,7 +376,14 @@ def assemble(
         )
         if manual_annot_loader:
             try:
-                manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(manual_annot_loader.path)
+                if isinstance(manual_annot_loader, io.annotations_manual.RavenPro):
+                    manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(
+                        manual_annot_loader.path, annotation_column=annotation_column
+                    )
+                else:
+                    manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(
+                        manual_annot_loader.path
+                    )
                 manual_event_seconds.update(manual_event_seconds_loaded)
                 manual_event_categories.update(manual_event_categories_loaded)
                 logger.info(f"   {manual_annot_loader.path} loaded.")
