@@ -3,39 +3,9 @@
 import numpy as np
 import pandas as pd
 import scipy.interpolate
-import scipy.ndimage
-import scipy.signal
 import scipy.stats
-from scipy.ndimage import maximum_filter1d
 from .io.samplestamps import SampStamp
 from . import io
-
-
-def merge_channels(data, sampling_rate, filter_data: bool = True):
-    """Merge channels based on a running maximum.
-
-    Args:
-        data (ndarray): [samples, channels]
-        sampling_rate (num): in Hz
-
-    Returns:
-        ndarray: merged across
-    """
-    data = np.array(data)  # ensure data is an np.array (and not dask) - otherwise np.interp will fail
-    mask = ~np.isfinite(data)  # remove all nan/inf data
-    data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
-    # band-pass filter out noise on each channel
-    b, a = scipy.signal.butter(6, (25, 1500), btype="bandpass", fs=sampling_rate)
-    data = scipy.signal.filtfilt(b, a, data, axis=0, method="pad")
-    # find loudest channel in 101-sample windows
-    if filter_data:
-        sng_max = maximum_filter1d(np.abs(data), size=101, axis=0)
-        loudest_channel = np.argmax(sng_max, axis=-1)
-    # get linear index and merge channels
-    idx = np.ravel_multi_index((np.arange(sng_max.shape[0]), loudest_channel), data.shape)
-    data_merged_max = data.ravel()[idx]
-    data_merged_max = data_merged_max[:, np.newaxis]  # shape needs to be [nb_samples, 1]
-    return data_merged_max
 
 
 def load_swap_indices(filepath):
@@ -103,16 +73,6 @@ def load_times(filepath_timestamps, filepath_daq):
         sample_numbers=daq_samplenumber,
         auto_monotonize=False,
     )
-    # # different refs:
-    #
-    # # first sample is 0 seconds
-    # s0 = ss.sample_time(0)
-    # ss = SampStamp(sample_times=daq_stamps[:, 0] - s0, frame_times=cam_stamps[:, 0] - s0, sample_numbers=daq_samplenumber[:, 0])
-    #
-    # # first frame is 0 seconds - for no-resample-video-data
-    # f0 = ss.frame_time(0)
-    # ss = SampStamp(sample_times=daq_stamps[:, 0] - f0, frame_times=cam_stamps[:, 0] - f0, sample_numbers=daq_samplenumber[:, 0])
-
     return ss, last_sample, sampling_rate_Hz
 
 

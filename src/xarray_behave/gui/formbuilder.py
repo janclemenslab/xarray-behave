@@ -1,10 +1,7 @@
 """
 Widgets and dialogues for YAML-based forms.
 
-Most of the time you can use :py:class:`YamlFormWidget`. If you want to show
-the widget as a model dialog, :py:class:`FormBuilderModalDialog` makes this
-a little more convenient (it provides methods for adding a message for the
-dialog and for getting the results when the dialog is closed).
+Most of the time you can use :py:class:`YamlFormWidget`.
 
 Example of form widget:
 
@@ -13,13 +10,6 @@ Example of form widget:
 
 my_function will get called with form data when user clicks the main button
 (main button has type "button" and default "main action")
-
-Example of modal dialog:
-
->>> results = FormBuilderModalDialog(form_name="example").get_results()
-
-The results will be empty dictionary if the user hit "cancel", otherwise it
-will contain all data from form (dict keys matching names of fields).
 
 The logic which creates each form field based on the data from the YAML file
 is :py:method:`FormBuilderLayout.add_item()`. Look there if you want to know
@@ -64,12 +54,6 @@ class YamlDialog(QtWidgets.QDialog):
 class YamlFormWidget(QtWidgets.QGroupBox):
     """
     Widget which shows form created from a YAML file.
-
-    Typically you'll want to save the YAML in `sleap/config/` and use the
-    :py:meth:`from_name` method to make the form (e.g., if your form data is in
-    `sleap/config/foo.yaml`, then you can create form like so:
-
-    >>> widget = YamlFormWidget.from_name("foo")
 
     Args:
         yaml_file: filename of YAML file to load, or dict.
@@ -150,83 +134,6 @@ class YamlFormWidget(QtWidgets.QGroupBox):
     def trigger_main_action(self):
         """Emit mainAction signal with form data."""
         self.mainAction.emit(self.get_form_data())
-
-
-class FormBuilderModalDialog(QtWidgets.QDialog):
-    """
-    Blocking modal dialog to use with :py:class:`YamlFormWidget` widget.
-
-    You can either initialize with a :py:class:`YamlFormWidget` widget, or
-    provide the name of the YAML form (i.e., the string you'd pass to
-    :py:meth:`YamlFormWidget.from_name()`).
-    """
-
-    def __init__(
-        self,
-        form_widget: Optional[YamlFormWidget] = None,
-        form_name: Optional[Text] = None,
-        *args,
-        **kwargs,
-    ):
-        super(FormBuilderModalDialog, self).__init__()
-
-        if not form_widget and form_name:
-            form_widget = YamlFormWidget.from_name(form_name)
-
-        if not form_widget:
-            raise ValueError("FormBuilderModalDialog must have either form widget or name.")
-
-        self._results = None
-        self.form_widget = form_widget
-        self.message_fields = []
-
-        # Layout for buttons
-        buttons = QtWidgets.QDialogButtonBox()
-        self.cancel_button = buttons.addButton(QtWidgets.QDialogButtonBox.Cancel)
-        self.run_button = buttons.addButton(QtWidgets.QDialogButtonBox.Ok)
-
-        buttons_layout = QtWidgets.QHBoxLayout()
-        buttons_layout.addWidget(buttons, alignment=QtCore.Qt.AlignTop)
-
-        buttons_layout_widget = QtWidgets.QWidget()
-        buttons_layout_widget.setLayout(buttons_layout)
-
-        # Layout for entire dialog
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.form_widget)
-        layout.addWidget(buttons_layout_widget)
-
-        self.setLayout(layout)
-
-        # Connect actions for buttons
-        buttons.accepted.connect(self.on_accept)
-        buttons.rejected.connect(self.reject)
-
-    def add_message(self, message: Text):
-        """Adds text message between form fields and buttons."""
-        field = QtWidgets.QLabel(message)
-        field.setWordWrap(True)
-
-        self.message_fields.append(field)
-
-        self.layout().insertWidget(1, field)
-
-    def set_message(self, message: Text):
-        """Adds/replaces text message between form fields and buttons."""
-        if self.message_fields:
-            self.message_fields[0].setText(message)
-        else:
-            self.add_message(message)
-
-    def on_accept(self):
-        self._results = self.form_widget.get_form_data()
-        self.accept()
-
-    def get_results(self) -> Optional[Dict[Text, Any]]:
-        """Shows dialog, blocks till submitted, returns dict of form data."""
-        self._results = None
-        self.exec_()
-        return self._results
 
 
 class FormBuilderLayout(QtWidgets.QFormLayout):
@@ -410,7 +317,8 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
 
               * name: used as key when we return form data as dict
               * label: string to show in form
-              * type: supports double, int, bool, list, button, stack
+              * type: supports double, int, optional_int, optional_double,
+                bool, list, string, file_open, button, stacked
               * default: default value for form field
               * [options]: comma separated list of options,
                 used for list or stack field-types
@@ -427,17 +335,8 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             self.add_item(item)
 
     def add_item(self, item: Dict[Text, Any]):
-        if item["type"] == "text":
-            field = QtWidgets.QLabel(item["text"])
-            field.setWordWrap(True)
-
-            # We don't need to keep track of this text-only field so we'll
-            # add it to the form and skip the other things we usually do.
-            self.addRow(field)
-            return
-
         # double: show spinbox (number w/ up/down controls)
-        elif item["type"] == "double":
+        if item["type"] == "double":
             field = QtWidgets.QDoubleSpinBox()
 
             min, max = -1000, 1000
@@ -465,13 +364,12 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             field.setValue(item["default"])
             field.valueChanged.connect(lambda: self.valueChanged.emit())
 
-        elif item["type"] in ("optional_int", "optional_double", "auto_int"):
+        elif item["type"] in ("optional_int", "optional_double"):
             spin_type = item["type"].split("_")[-1]
-            none_string = "auto" if item["type"].startswith("auto") else "none"
             none_label = item.get("none_label", None)
             decimals = item.get("decimals", 2)
 
-            field = OptionalSpinWidget(type=spin_type, none_string=none_string, none_label=none_label, decimals=decimals)
+            field = OptionalSpinWidget(type=spin_type, none_label=none_label, decimals=decimals)
             if "range" in item.keys():
                 caster = int if spin_type == "int" else float
                 min, max = list(map(caster, item["range"].split(",")))
@@ -493,21 +391,8 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             field.stateChanged.connect(lambda: self.valueChanged.emit())
 
         # list: show drop-down menu
-        elif item["type"] in ("list", "optional_list"):
-            type_options = item.get("type-options", "")
-
-            result_as_optional_idx = False
-            add_blank_option = False
-            if type_options == "optional_index":
-                result_as_optional_idx = True
-                add_blank_option = True
-            if item["type"] == "optional_list":
-                add_blank_option = True
-
-            field = TextOrListWidget(
-                result_as_idx=result_as_optional_idx,
-                add_blank_option=add_blank_option,
-            )
+        elif item["type"] == "list":
+            field = TextOrListWidget()
 
             if item["name"] in self.field_options_lists:
                 field.set_options(self.field_options_lists[item["name"]])
@@ -522,16 +407,11 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             self.buttons[item["name"]] = field
 
         # string
-        elif item["type"] in ("string", "optional_string"):
+        elif item["type"] == "string":
             field = QtWidgets.QLineEdit()
             val = item.get("default", "")
             val = "" if val is None else val
             field.setText(str(val))
-
-        elif item["type"] == "string_list":
-            field = StringListWidget()
-            val = item.get("default", "")
-            field.setValue(val)
 
         # stacked: show menu and form panel corresponding to menu selection
         elif item["type"] == "stacked":
@@ -572,25 +452,12 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         """Creates the button for a file_* field-type."""
         file_button = QtWidgets.QPushButton("Select " + item["label"])
 
-        if item["type"].split("_")[-1] == "open":
-            # Define function for button to trigger
-            def select_file(*args, x=field):
-                filter = item.get("filter", "Any File (*.*)")
-                filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, caption="Open File", filter=filter)
-                if len(filename):
-                    x.setText(filename)
-                self.valueChanged.emit()
-
-        elif item["type"].split("_")[-1] == "dir":
-            # Define function for button to trigger
-            def select_file(*args, x=field):
-                filename = QtWidgets.QFileDialog.getExistingDirectory(None, caption="Open File")
-                if len(filename):
-                    x.setText(filename)
-                self.valueChanged.emit()
-
-        else:
-            select_file = lambda: print(f"no action set for type {item['type']}")
+        def select_file(*args, x=field):
+            filter = item.get("filter", "Any File (*.*)")
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, caption="Open File", filter=filter)
+            if len(filename):
+                x.setText(filename)
+            self.valueChanged.emit()
 
         file_button.clicked.connect(select_file)
         return file_button
@@ -855,30 +722,6 @@ class FieldComboWidget(QtWidgets.QComboBox):
         if type(val) == int and val < len(self.options_list) and self.result_as_idx:
             val = self.options_list[val]
         super(FieldComboWidget, self).setCurrentText(str(val))
-
-
-class StringListWidget(QtWidgets.QLineEdit):
-    """
-    Free-form text field which converts value to/from list.
-
-    Arguments:
-        delim: the list delimiter to use; note that list values won't be
-            trimmed, so "," and "item a, item b" will result in
-            ["item a", " item b"].
-    """
-
-    def __init__(self, delim=" ", *args, **kwargs):
-        super(StringListWidget, self).__init__(*args, **kwargs)
-        self.delim = delim
-
-    def setValue(self, val):
-        # Check if we have a list (not *sequence* since this would include str)
-        if isinstance(val, list):
-            val = self.delim.join(val)
-        self.setText(str(val))
-
-    def value(self):
-        return self.text().split(self.delim)
 
 
 class TextOrListWidget(QtWidgets.QWidget):

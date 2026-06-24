@@ -1,11 +1,9 @@
-from qtpy import QtGui, QtCore
+from qtpy import QtCore
 import pyqtgraph as pg
 import numpy as np
-import skimage.draw
 import logging
 from typing import Tuple
 
-from .. import xarray_behave as xb
 from . import utils
 from .event_widgets import (
     _activate_dialog,
@@ -35,17 +33,13 @@ def _configure_y_axis_inside(axis, label: str) -> None:
     axis.setTextPen(pg.mkPen(TEXT_MUTED))
 
 
-class Model:
-    def __init__(self, ds):
-        self.ds = ds
-
-    def save(self, filename):
-        xb.save(filename, self.ds)
-
-    @classmethod
-    def from_file(cls, filename):
-        ds = xb.load(filename)
-        return cls(ds)
+def _circle_perimeter(row: int, col: int, radius: int, shape: tuple[int, ...]) -> tuple[np.ndarray, np.ndarray]:
+    n_points = max(16, int(np.ceil(2 * np.pi * radius * 2)))
+    angles = np.linspace(0, 2 * np.pi, n_points, endpoint=False)
+    rows = np.rint(row + radius * np.sin(angles)).astype(int)
+    cols = np.rint(col + radius * np.cos(angles)).astype(int)
+    valid = (rows >= 0) & (rows < shape[0]) & (cols >= 0) & (cols < shape[1])
+    return rows[valid], cols[valid]
 
 
 class SegmentItem(pg.LinearRegionItem):
@@ -532,18 +526,6 @@ class SpecView(pg.ImageView):
 
             S = np.abs(psd[f_idx, :])
             f = f[f_idx]
-        # else:
-        #     import librosa.feature
-        #     fmin = 0 if fmin is None else fmin
-        #     fmin = max(fmin, 1)
-        #     fmax = self.m.fs_song // 2 if fmax is None else fmax
-        #     psd = librosa.feature.melspectrogram(y=y, sr=self.m.fs_song, n_fft=nfft, win_length=spec_win, hop_length=spec_win // 2, fmin=fmin, fmax=fmax)
-        #     # f = np.linspace(fmin, fmax, psd.shape[0])
-        #     f = librosa.mel_frequencies(n_mels=psd.shape[0], fmin=fmin, fmax=fmax, htk=False)
-        #     t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
-        #     # t = np.arange(spec_win // 2, len(y), spec_win // 2)
-        #     S = psd
-
         if spec_denoise:
             noise_floor = np.nanmedian(S, axis=1, keepdims=True)
             S /= noise_floor
@@ -726,9 +708,9 @@ class MovieView(utils.FastImageWidget):
             fly_pos = np.array(fly_pos).astype(np.uintp)  # in case this is a dask.array
             # only plot circle if fly is within the frame (also prevents overflow errors
             # for tracking errors that lead to VERY large position values)
-            if fly_pos[0] <= frame.shape[0] and fly_pos[1] <= frame.shape[1]:
-                xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, method="bresenham")
-                frame[xx, yy, :] = color
+            if fly_pos[0] < frame.shape[0] and fly_pos[1] < frame.shape[1]:
+                rows, cols = _circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, frame.shape)
+                frame[rows, cols, :] = color
         return frame
 
     def annotate_poses(self, frame):

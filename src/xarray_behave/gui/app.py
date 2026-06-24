@@ -19,7 +19,6 @@ import pandas as pd
 import scipy.interpolate
 import scipy.signal
 import scipy.signal.windows
-import peakutils
 from typing import Callable, Optional, List
 
 from qtpy import QtGui, QtCore, QtWidgets
@@ -109,13 +108,6 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.app is None:
             self.app = QtGui.QApplication([])
         self.app.setWindowIcon(QtGui.QIcon(package_dir + "/gui/icon.png"))
-
-        # id = QtGui.QFontDatabase.addApplicationFont(package_dir + "/assets/fonts/HubotSansCondensed-Medium.ttf")
-        # families = QtGui.QFontDatabase.applicationFontFamilies(id)
-        # self.font_condensed = QtGui.QFont(families[0])
-        # id = QtGui.QFontDatabase.addApplicationFont(package_dir + "/assets/fonts/Hubot-Sans.ttf")
-        # families = QtGui.QFontDatabase.applicationFontFamilies(id)
-        # self.font = QtGui.QFont(families[0])
         # self.app.setFont(self.font)  # sets app-wide font
 
         self.resize(400, 200)
@@ -610,8 +602,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     # list all data sets in file and add to list
                     with h5py.File(filename, "r") as f:
-                        datasets = utils.allkeys(f, keys=[])
-                        datasets.remove("/")  # remove root
+                        datasets = []
+                        f.visit(lambda name: datasets.append("/" + name))
                 except:
                     pass
             else:
@@ -839,15 +831,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     data_source=DataSource("zarr", filename),
                     config_manager=config_manager,
                 )
-
-    @classmethod
-    def filter_song(cls, ds, f_low, f_high):
-        return dataset_service.filter_song(ds, f_low, f_high)
-
-    @classmethod
-    def from_npydir(cls, dirname=None, app=None, qt_keycode=None):
-        logger.info("Not implemented yet")
-        pass
 
     def save_dataset(self, qt_keycode=None):
         try:
@@ -2410,10 +2393,6 @@ class PSV(MainWindow):
         self.update_xy()
 
     @property
-    def span_index(self):
-        return self.span / (2 * self.fs_song / self.fs_other)
-
-    @property
     def current_event_index(self):
         name = getattr(self, "_current_event_name", None)
         if name is None or name not in self.event_times.names:
@@ -3196,11 +3175,10 @@ class PSV(MainWindow):
                     logger.info(f"   Added {self.current_event_name} from t={start:1.4f} to {stop:1.4f} seconds.")
             else:
                 min_dist = max(1, int(round(self.thres_min_dist * self.fs_song)))
-                indexes = peakutils.indexes(
+                indexes, _ = scipy.signal.find_peaks(
                     self.envelope,
-                    thres=self.thres_value,
-                    min_dist=min_dist,
-                    thres_abs=True,
+                    height=self.thres_value,
+                    distance=min_dist,
                 )
                 for t in self.x[indexes]:
                     self.event_times.add_time(self.current_event_name, t)
@@ -3317,16 +3295,6 @@ class PSV(MainWindow):
 
     def toggle_playvideo(self, qt_keycode=None):
         self._toggle_playback()
-
-    def toggle_show_poses(self, qt_keycode):
-        self.show_poses = not self.show_poses
-        if self.show_poses:
-            self.old_show_dot_state = self.show_dot
-            self.show_dot = False
-        else:
-            self.show_dot = self.old_show_dot_state
-        if self.STOP:
-            self.update_frame()
 
     def change_focal_fly(self, qt_keycode):
         tmp = (self.focal_fly + 1) % self.nb_flies
@@ -3616,9 +3584,6 @@ class PSV(MainWindow):
             self.tracks_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
         if self.show_spec:
             self.spec_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
-
-    def play_video(self):  # TODO: get rate from ds (video fps attr)
-        self._start_playback()
 
     def on_region_change_finished(self, region):
         """Called when dragging an interval event - will change its bounds."""

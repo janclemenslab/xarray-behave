@@ -1,8 +1,6 @@
 import logging
 import numpy as np
 import xarray as xr
-import pandas as pd
-import scipy
 
 logger = logging.getLogger(__name__)
 
@@ -57,24 +55,6 @@ def _as_start_stop_rows(event_data):
     return rows[:, :2]
 
 
-def infer_class_info_from_df(df: pd.DataFrame):
-    """Based on difference between start_seconds/stop_seconds
-
-    Args:
-        df ([type]): [description]
-
-    Returns:
-        [type]: [description]
-    """
-    class_names, first_indices = np.unique(df["name"], return_index=True)
-    class_names = list(class_names)
-    class_names.insert(0, "noise")
-
-    class_types = ["event"]
-    class_types.extend(["event"] * len(first_indices))
-    return class_names, class_types
-
-
 def infer_event_categories_from_traces(data):
     """Return legacy event categories for trace columns.
 
@@ -82,14 +62,6 @@ def infer_event_categories_from_traces(data):
         data ([type]): binary matrix [samples x events]
     """
     return ["event"] * data.shape[1]
-
-
-def infer_event_categories_from_shape(event_times):
-    """Based on shape of time lists."""
-    event_categories = {}
-    for event_name, event_data in event_times.items():
-        event_categories[event_name] = "event"
-    return event_categories
 
 
 def update_traces(ds, event_times):
@@ -178,30 +150,3 @@ def eventtimes_to_traces(ds, event_times):
     if "event_categories" in ds.song_events.coords:
         ds = ds.assign_coords({"event_categories": (("event_types"), ["event"] * len(event_names))})
     return ds
-
-
-def traces_to_eventtimes(traces, event_names, event_categories, events_are_binary: bool = True):
-    """[summary]
-
-    Args:
-        traces ([type]): list of numpy arrays with the binary traces for each event
-        event_names ([type]): [description]
-        event_categories ([type]): [description]
-        events_are_binary (bool, True): detect events indices where value is 1.0. Otherwise use scipy.signal.find_peaks.
-    Returns:
-        [type]: [description]
-    """
-    assert len(traces) == len(event_names)
-    assert len(traces) == len(event_categories)
-
-    event_times = dict()
-
-    logger.info("Extracting event times from song_events:")
-    for event_idx, (event_name, _event_category) in enumerate(zip(event_names, event_categories)):
-        logger.info(f"   {event_name}")
-        if events_are_binary:
-            event_times[event_name] = _trace_to_start_stop(traces[event_idx])
-        else:
-            peaks, _ = scipy.signal.find_peaks(traces[event_idx])
-            event_times[event_name] = np.stack((peaks, peaks)).T if len(peaks) else np.zeros((0, 2))
-    return event_times

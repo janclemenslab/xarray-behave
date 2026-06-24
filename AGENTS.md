@@ -28,8 +28,7 @@ future agents from re-parsing the whole codebase before small changes.
   `PySide6.QtMultimedia`; do not switch transport playback back to `qtpy`
   multimedia wrappers or split `PySide6-Essentials/Addons` pins without testing
   real audio output.
-- Build backend: `flit_core` in `pyproject.toml`; `setup.py` exists only to read
-  the version for legacy setuptools use.
+- Build backend: `flit_core` in `pyproject.toml`.
 - Version lives in `src/xarray_behave/__init__.py`.
 - `__init__.py` also sets `QT_API=pyside6`.
 
