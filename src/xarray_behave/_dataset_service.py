@@ -4,9 +4,10 @@ import logging
 import os
 from typing import Optional
 
+import numpy as np
 import scipy.signal as ss
 
-from . import annot, event_utils, xarray_behave as xb
+from . import annot, event_utils, io, xarray_behave as xb
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,46 @@ def load_from_zarr(filename: str, form_data: dict):
     ds = ensure_event_categories(ds)
     logger.info(ds)
     return ds
+
+
+def load_annotation_file(filename: str):
+    loader = io.get_loader("annotations_manual", filename, basename_is_full_name=True)
+    if loader is None:
+        raise ValueError(f"No annotation loader found for {filename}.")
+    event_times, categories = loader.load(filename)
+    return annot.Events(event_times, categories=categories)
+
+
+def _event_row_key(name: str, row) -> tuple[str, float, float, int]:
+    channel = row[2] if len(row) > 2 else -1
+    channel = int(channel) if np.isfinite(channel) else -1
+    return str(name), float(row[0]), float(row[1]), channel
+
+
+def merge_event_times(existing, imported):
+    merged = annot.Events(existing)
+    imported = annot.Events(imported)
+    for name in imported.names:
+        imported_rows = np.asarray(imported[name])
+        if name not in merged:
+            merged.add_name(name, times=imported_rows.copy(), overwrite=True)
+            continue
+
+        imported_keys = {_event_row_key(name, row) for row in imported_rows}
+        existing_rows = np.asarray(merged[name])
+        if imported_keys and len(existing_rows):
+            keep = [_event_row_key(name, row) not in imported_keys for row in existing_rows]
+            existing_rows = existing_rows[np.asarray(keep, dtype=bool)]
+        if len(imported_rows):
+            merged[name] = np.vstack([existing_rows, imported_rows])
+        else:
+            merged[name] = existing_rows.copy()
+        merged.categories[name] = "event"
+
+    for name in merged.names:
+        merged.categories[name] = "event"
+    merged.sort()
+    return annot.Events(merged)
 
 
 def filter_song(ds, f_low, f_high):

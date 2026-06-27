@@ -113,6 +113,23 @@ QToolButton:hover {{
 QToolButton:pressed {{
     background-color: {SURFACE_ALT};
 }}
+QToolBar#annotationToolbar {{
+    background-color: {SURFACE_BASE};
+    border: 0;
+    spacing: 4px;
+    padding: 2px 6px;
+}}
+QToolBar#annotationToolbar QToolButton {{
+    min-width: 24px;
+    min-height: 24px;
+    max-width: 28px;
+    max-height: 28px;
+    padding: 2px;
+}}
+QToolBar#annotationToolbar QToolButton:checked {{
+    background-color: {ACCENT_SOFT};
+    border-color: {ACCENT};
+}}
 QToolButton[role="transport"] {{
     background-color: #2f3a4d;
     color: #ffffff;

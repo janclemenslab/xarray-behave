@@ -29,7 +29,7 @@ from .. import _dataset_service as dataset_service, xarray_behave as xb, loaders
 from .formbuilder import YamlDialog
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
 from . import utils, views, event_widgets, gui_config, modern_video
-from .style_profile import WINDOW_STYLESHEET
+from .style_profile import TEXT_PRIMARY, WINDOW_STYLESHEET
 
 logger = logging.getLogger(__name__)
 
@@ -1079,13 +1079,22 @@ class PSV(MainWindow):
         # build UI/controller
         # MENU
         self.file_menu.clear()
-        self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
+        self._viewer_actions = {}
+        self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
+            self.file_menu, "Open audio/annotations", self.from_file
+        )
         self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
         self.file_menu.addSeparator()
+        self._viewer_actions["import_annotations"] = self._add_keyed_menuitem(
+            self.file_menu, "Import annotations...", self.import_annotations
+        )
+        self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Save swap files", self.save_swaps)
-        self._add_keyed_menuitem(self.file_menu, "Save annotations", self.save_annotations)
+        self._viewer_actions["save_annotations"] = self._add_keyed_menuitem(
+            self.file_menu, "Save annotations", self.save_annotations
+        )
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Save dataset", self.save_dataset)
         self.file_menu.addSeparator()
@@ -1258,7 +1267,7 @@ class PSV(MainWindow):
             "Y",
         )
         view_annotations.addSeparator()
-        self._add_keyed_menuitem(
+        self._viewer_actions["threshold_mode"] = self._add_keyed_menuitem(
             view_annotations,
             "Toggle thresholding mode",
             partial(self.toggle, "threshold_mode"),
@@ -1287,7 +1296,7 @@ class PSV(MainWindow):
         )
 
         view_view = self.bar.addMenu("View")
-        self._add_keyed_menuitem(
+        self._viewer_actions["show_sidebar"] = self._add_keyed_menuitem(
             view_view,
             "Show sidebar",
             partial(self.toggle, "show_sidebar"),
@@ -1296,7 +1305,7 @@ class PSV(MainWindow):
             checked=self.show_sidebar,
         )
         # TODO? only show these if tracks and/or video
-        self._add_keyed_menuitem(
+        self._viewer_actions["show_spec"] = self._add_keyed_menuitem(
             view_view,
             "Show spectrogram",
             partial(self.toggle, "show_spec"),
@@ -1304,7 +1313,7 @@ class PSV(MainWindow):
             checkable=True,
             checked=self.show_spec,
         )
-        self._add_keyed_menuitem(
+        self._viewer_actions["show_trace"] = self._add_keyed_menuitem(
             view_view,
             "Show waveform",
             partial(self.toggle, "show_trace"),
@@ -1312,7 +1321,7 @@ class PSV(MainWindow):
             checkable=True,
             checked=self.show_trace,
         )
-        self._add_keyed_menuitem(
+        self._viewer_actions["show_timeline"] = self._add_keyed_menuitem(
             view_view,
             "Show event timeline",
             partial(self.toggle, "show_timeline"),
@@ -1320,7 +1329,7 @@ class PSV(MainWindow):
             checkable=True,
             checked=self.show_timeline,
         )
-        self._add_keyed_menuitem(
+        self._viewer_actions["show_event_table"] = self._add_keyed_menuitem(
             view_view,
             "Show event table",
             partial(self.toggle, "show_event_table"),
@@ -1338,7 +1347,7 @@ class PSV(MainWindow):
                 checked=self.show_tracks,
             )
         if self.vr is not None:
-            self._add_keyed_menuitem(
+            self._viewer_actions["show_movie"] = self._add_keyed_menuitem(
                 view_view,
                 "Show movie",
                 partial(self.toggle, "show_movie"),
@@ -1349,6 +1358,7 @@ class PSV(MainWindow):
 
         view_audio.addSeparator()
         self.view_audio = view_audio
+        self._build_annotation_toolbar()
 
         # TRACKS selector
         if "pose_positions_allo" in self.ds and self.bodyparts is not None:
@@ -1599,6 +1609,188 @@ class PSV(MainWindow):
         self.outer_splitter.setSizes(
             [self._last_panel_sizes.get("sidebar", 260), self._last_panel_sizes.get("workspace", 1200)]
         )
+        self._sync_view_action_checks()
+
+    def _toolbar_icon(self, name: str) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(18, 18)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setPen(
+            QtGui.QPen(
+                QtGui.QColor(TEXT_PRIMARY),
+                1.6,
+                QtCore.Qt.SolidLine,
+                QtCore.Qt.RoundCap,
+                QtCore.Qt.RoundJoin,
+            )
+        )
+        painter.setBrush(QtCore.Qt.NoBrush)
+
+        def line(x0, y0, x1, y1):
+            painter.drawLine(QtCore.QPointF(x0, y0), QtCore.QPointF(x1, y1))
+
+        def path(points, close=False):
+            item = QtGui.QPainterPath(QtCore.QPointF(*points[0]))
+            for point in points[1:]:
+                item.lineTo(QtCore.QPointF(*point))
+            if close:
+                item.closeSubpath()
+            painter.drawPath(item)
+
+        if name == "open_audio_annotations":
+            path([(2.5, 6), (2.5, 14.5), (15.5, 14.5), (15.5, 7.5), (8.5, 7.5), (7, 5), (2.5, 5)])
+            path([(5, 11.5), (6.5, 9), (8, 12), (10, 8.5), (12, 12), (13.5, 10)])
+        elif name == "import_annotations":
+            line(9, 3, 9, 10.5)
+            path([(6.5, 8), (9, 10.5), (11.5, 8)])
+            path([(4, 12), (4, 14.5), (14, 14.5), (14, 12)])
+        elif name == "save_annotations":
+            painter.drawRoundedRect(QtCore.QRectF(4, 3, 10, 12), 1.2, 1.2)
+            line(6, 5.5, 11.5, 5.5)
+            line(6, 12.5, 12, 12.5)
+            line(6, 10.5, 12, 10.5)
+        elif name == "show_trace":
+            path([(2.5, 9.5), (4.5, 9.5), (6, 5), (8, 13), (10.5, 6), (12, 10.5), (15.5, 10.5)])
+        elif name == "show_spec":
+            painter.drawRoundedRect(QtCore.QRectF(3, 4, 12, 10), 1.0, 1.0)
+            for x, height in ((5.5, 3), (8, 6), (10.5, 8), (13, 4)):
+                line(x, 12.5, x, 12.5 - height)
+        elif name == "show_timeline":
+            line(3, 9, 15, 9)
+            painter.drawRoundedRect(QtCore.QRectF(4, 6, 3.5, 6), 0.8, 0.8)
+            painter.drawRoundedRect(QtCore.QRectF(10.5, 6, 3.5, 6), 0.8, 0.8)
+        elif name == "show_event_table":
+            painter.drawRoundedRect(QtCore.QRectF(3.5, 4, 11, 10), 1.0, 1.0)
+            line(3.5, 7.5, 14.5, 7.5)
+            line(3.5, 10.5, 14.5, 10.5)
+            line(8, 4, 8, 14)
+        elif name == "show_sidebar":
+            painter.drawRoundedRect(QtCore.QRectF(3, 3.5, 12, 11), 1.0, 1.0)
+            line(7, 3.5, 7, 14.5)
+            line(9, 7, 13, 7)
+            line(9, 10, 13, 10)
+        elif name == "threshold_mode":
+            line(3, 9, 15, 9)
+            path([(4, 12.5), (6.5, 7), (8.5, 11.5), (11, 5.5), (14, 12.5)])
+        elif name == "show_movie":
+            painter.drawRoundedRect(QtCore.QRectF(3, 4, 12, 10), 1.0, 1.0)
+            path([(7.5, 7), (7.5, 11), (11, 9)], close=True)
+
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _build_annotation_toolbar(self) -> None:
+        actions = getattr(self, "_viewer_actions", {})
+        toolbar = QtWidgets.QToolBar("Annotations", self)
+        toolbar.setObjectName("annotationToolbar")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setIconSize(QtCore.QSize(18, 18))
+        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+
+        specs = [
+            ("open_audio_annotations", "Open audio/annotations"),
+            ("import_annotations", "Import annotations"),
+            ("save_annotations", "Save annotations"),
+            ("show_trace", "Show waveform"),
+            ("show_spec", "Show spectrogram"),
+            ("show_timeline", "Show event timeline"),
+            ("show_event_table", "Show annotation table"),
+            ("show_sidebar", "Show annotation type table"),
+            ("threshold_mode", "Thresholding mode"),
+            ("show_movie", "Show movie"),
+        ]
+        for key, tooltip in specs:
+            action = actions.get(key)
+            if action is None:
+                continue
+            action.setToolTip(tooltip)
+            action.setStatusTip(tooltip)
+            action.setIcon(self._toolbar_icon(key))
+            toolbar.addAction(action)
+            if key in {"save_annotations", "show_sidebar"}:
+                toolbar.addSeparator()
+
+        self.annotation_toolbar = toolbar
+        self.addToolBar(toolbar)
+        self._sync_view_action_checks()
+
+    def _sync_view_action_checks(self) -> None:
+        actions = getattr(self, "_viewer_actions", {})
+        action_vars = {
+            "show_trace": "show_trace",
+            "show_spec": "show_spec",
+            "show_timeline": "show_timeline",
+            "show_event_table": "show_event_table",
+            "show_sidebar": "show_sidebar",
+            "threshold_mode": "threshold_mode",
+            "show_movie": "show_movie",
+        }
+        for action_name, var_name in action_vars.items():
+            action = actions.get(action_name)
+            if action is not None:
+                action.setChecked(bool(getattr(self, var_name, False)))
+
+    def _set_imported_event_times(self, event_times) -> None:
+        self.event_times = annot.Events(event_times)
+        self.event_presets = {
+            name: preset for name, preset in getattr(self, "event_presets", {}).items() if name in self.event_times.names
+        }
+        if getattr(self, "_current_event_name", None) not in self.event_times.names:
+            self._current_event_name = self.event_times.names[-1] if self.event_times.names else None
+        self._sync_event_colors_from_presets()
+        self.update_eventtype_selector(selected_name=self._current_event_name)
+        self.update_xy()
+
+    def _choose_annotation_import_mode(self, filename: str) -> str:
+        message = QtWidgets.QMessageBox(self)
+        message.setWindowTitle("Import annotations")
+        message.setText(f"Import annotations from {Path(filename).name}?")
+        merge_button = message.addButton("Merge", QtWidgets.QMessageBox.AcceptRole)
+        replace_button = message.addButton("Replace", QtWidgets.QMessageBox.DestructiveRole)
+        message.addButton(QtWidgets.QMessageBox.Cancel)
+        message.setDefaultButton(merge_button)
+        message.exec_()
+        clicked = message.clickedButton()
+        if clicked is merge_button:
+            return "merge"
+        if clicked is replace_button:
+            return "replace"
+        return "cancel"
+
+    def import_annotations(self, qt_keycode=None, filename: str = None, mode: str = None):
+        del qt_keycode
+        if filename is None:
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Import annotations",
+                "",
+                "Annotation files (*.csv *.txt *.zarr *.mat);;All files (*)",
+            )
+        if not filename:
+            return
+
+        try:
+            imported = dataset_service.load_annotation_file(filename)
+        except Exception as exc:
+            logger.exception("Could not import annotations from %s", filename)
+            QtWidgets.QMessageBox.warning(self, "Import annotations", str(exc))
+            return
+
+        if mode is None:
+            mode = self._choose_annotation_import_mode(filename)
+        if mode == "cancel":
+            return
+        if mode == "replace":
+            updated = imported
+        elif mode == "merge":
+            updated = dataset_service.merge_event_times(self.event_times, imported)
+        else:
+            raise ValueError(f"Unknown annotation import mode {mode!r}.")
+
+        self._set_imported_event_times(updated)
+        logger.info("Imported annotations from %s with mode %s.", filename, mode)
 
     def _config_snapshot(self):
         self._remember_splitter_sizes()
@@ -3030,6 +3222,8 @@ class PSV(MainWindow):
                     scale_y_all=current.scale_y_all,
                 )
             if var_name == "threshold_mode":
+                if self.threshold_mode:
+                    self.show_sidebar = True
                 self._sync_threshold_mode_ui()
             if self.STOP:
                 self.update_frame()

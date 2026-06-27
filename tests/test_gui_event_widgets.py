@@ -113,6 +113,142 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert gui_config.read_config(tmp_path / ".das.yaml")["selection"]["event_type"] == "pulse"
 
 
+def _toolbar_action(window, tooltip: str):
+    for action in window.annotation_toolbar.actions():
+        if action.toolTip() == tooltip:
+            return action
+    raise AssertionError(f"Missing toolbar action {tooltip!r}")
+
+
+def test_psv_annotation_toolbar_exposes_and_toggles_view_actions():
+    _app()
+    window = PSV(_audio_dataset(Events({"song": np.array([[0.1, 0.2, 0]])})))
+
+    tooltips = {action.toolTip() for action in window.annotation_toolbar.actions() if action.toolTip()}
+    assert {
+        "Open audio/annotations",
+        "Import annotations",
+        "Save annotations",
+        "Show waveform",
+        "Show spectrogram",
+        "Show event timeline",
+        "Show annotation table",
+        "Show annotation type table",
+        "Thresholding mode",
+    }.issubset(tooltips)
+    for action in window.annotation_toolbar.actions():
+        if action.toolTip():
+            assert not action.icon().isNull()
+
+    waveform_action = _toolbar_action(window, "Show waveform")
+    waveform_action.trigger()
+    assert window.show_trace is False
+    assert waveform_action.isChecked() is False
+    assert window.slice_view.isVisible() is False
+
+    spectrogram_action = _toolbar_action(window, "Show spectrogram")
+    spectrogram_action.trigger()
+    assert window.show_spec is False
+    assert spectrogram_action.isChecked() is False
+    assert window.spec_view.isVisible() is False
+
+    timeline_action = _toolbar_action(window, "Show event timeline")
+    timeline_action.trigger()
+    assert window.show_timeline is False
+    assert timeline_action.isChecked() is False
+    assert window.event_timeline.isVisible() is False
+
+    table_action = _toolbar_action(window, "Show annotation table")
+    table_action.trigger()
+    assert window.show_event_table is False
+    assert table_action.isChecked() is False
+    assert window.events_table.isVisible() is False
+
+    type_action = _toolbar_action(window, "Show annotation type table")
+    type_action.trigger()
+    assert window.show_sidebar is False
+    assert type_action.isChecked() is False
+    assert window.left_sidebar.isVisible() is False
+
+    threshold_action = _toolbar_action(window, "Thresholding mode")
+    threshold_action.trigger()
+    assert window.threshold_mode is True
+    assert threshold_action.isChecked() is True
+    assert window.show_sidebar is True
+    assert type_action.isChecked() is True
+    assert window.threshold_panel.isVisible() is True
+
+    window.close()
+
+
+def test_psv_annotation_toolbar_includes_movie_action_when_video_is_loaded():
+    _app()
+
+    class FakeVideoReader:
+        frame_rate = 1_000
+        frame_width = 5
+        frame_height = 4
+
+        def __getitem__(self, index):
+            return np.zeros((self.frame_height, self.frame_width, 3), dtype=np.uint8)
+
+    window = PSV(_audio_dataset(Events({"song": np.array([[0.1, 0.2, 0]])})), vr=FakeVideoReader())
+
+    movie_action = _toolbar_action(window, "Show movie")
+    movie_action.trigger()
+    assert window.show_movie is False
+    assert movie_action.isChecked() is False
+    assert window.movie_view.isVisible() is False
+
+    window.close()
+
+
+def test_import_annotations_merge_refreshes_viewer(monkeypatch):
+    _app()
+    window = PSV(_audio_dataset(Events({"pulse": np.array([[0.1, 0.1, 0], [0.2, 0.2, 0]])})))
+
+    imported = Events(
+        {
+            "pulse": np.array([[0.2, 0.2, 0], [0.3, 0.3, 0]]),
+            "chirp": np.array([[0.4, 0.5, -1]]),
+        }
+    )
+    monkeypatch.setattr(gui_app.dataset_service, "load_annotation_file", lambda filename: imported)
+
+    window.import_annotations(filename="/tmp/import_annotations.csv", mode="merge")
+
+    assert window.event_times.names == ["pulse", "chirp"]
+    assert sorted(map(tuple, window.event_times["pulse"])) == [
+        (0.1, 0.1, 0.0),
+        (0.2, 0.2, 0.0),
+        (0.3, 0.3, 0.0),
+    ]
+    assert "chirp" in {record.name for record in window.events_table._records_by_id.values()}
+    assert "chirp" in {
+        window.preset_panel.list_widget.item(row).data(QtCore.Qt.UserRole)
+        for row in range(window.preset_panel.list_widget.count())
+    }
+
+    window.close()
+
+
+def test_import_annotations_replace_drops_old_presets(monkeypatch):
+    _app()
+    window = PSV(_audio_dataset(Events({"old": np.array([[0.1, 0.1, -1]])})))
+
+    imported = Events({"new": np.array([[0.2, 0.3, -1]])})
+    monkeypatch.setattr(gui_app.dataset_service, "load_annotation_file", lambda filename: imported)
+
+    window.import_annotations(filename="/tmp/import_annotations.csv", mode="replace")
+
+    assert window.event_times.names == ["new"]
+    assert list(window.event_presets) == ["new"]
+    assert window.current_event_name == "new"
+    assert {record.name for record in window.events_table._records_by_id.values()} == {"new"}
+
+    window.close()
+
+
 def test_records_from_events_preserves_intervals_and_channels():
     events = Events(
         {
