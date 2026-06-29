@@ -1415,12 +1415,14 @@ class PSV(MainWindow):
         if isinstance(waveform_limits, (list, tuple)) and len(waveform_limits) == 2:
             self.slice_view.set_waveform_y_limits(tuple(waveform_limits))
         self.events_table.link_checkbox.setChecked(bool(annotation_config.get("table_audio_link", True)))
+        self.events_table.window_filter_checkbox.setChecked(bool(annotation_config.get("table_audio_filter", False)))
         for widget in (self.slice_view, self.tracks_view, self.event_timeline, self.events_table):
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.channel_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
         self._syncing_event_selection = False
         self.channel_panel.channel_changed.connect(self.update_xy)
+        self.events_table.window_filter_checkbox.toggled.connect(lambda _checked: self._refresh_event_widgets(True))
         self.channel_panel.settings_requested.connect(self._edit_audio_settings)
         self.threshold_panel.threshold_changed.connect(self._on_threshold_value_changed)
         self.threshold_panel.envelope_std_changed.connect(self._on_threshold_envelope_std_changed)
@@ -1838,6 +1840,7 @@ class PSV(MainWindow):
                 "edit_only_current": bool(self.edit_only_current_events),
                 "show_labels": bool(self.show_event_text),
                 "table_audio_link": bool(self.events_table.sync_enabled),
+                "table_audio_filter": bool(self.events_table.window_filter_enabled),
             },
             "thresholding": {
                 "enabled": bool(self.threshold_mode),
@@ -2974,6 +2977,8 @@ class PSV(MainWindow):
         if sync_table_to_view and hasattr(self, "x") and len(self.x):
             start_seconds = float(self.x[0])
             stop_seconds = float(self.x[-1])
+        table_start_seconds = start_seconds if self.events_table.window_filter_enabled else None
+        table_stop_seconds = stop_seconds if self.events_table.window_filter_enabled else None
         channel_filter = self._audio_event_channel_filter()
         self.event_timeline.set_events(
             visible_events,
@@ -2989,8 +2994,8 @@ class PSV(MainWindow):
             visible_events,
             selected_ids=selected_ids,
             locked_event_names=locked_event_names,
-            start_seconds=start_seconds,
-            stop_seconds=stop_seconds,
+            start_seconds=table_start_seconds,
+            stop_seconds=table_stop_seconds,
             channel_filter=channel_filter,
         )
         self.event_timeline.set_selected_ids(self.events_table.selected_record_ids())

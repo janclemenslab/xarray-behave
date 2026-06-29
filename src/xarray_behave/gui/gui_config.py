@@ -110,7 +110,7 @@ VIEWER_FIELDS = {
         {"box_size", "crop", "maintain_custom_crop", "frame_fliplr", "frame_flipud", "show_dot", "show_poses", "move_poses"}
     ),
     "audio": frozenset({"waveform_all", "events_all", "playback_all", "scale_y_all", "select_loudest_channel"}),
-    "annotations": frozenset({"show", "movable", "edit_only_current", "show_labels", "table_audio_link"}),
+    "annotations": frozenset({"show", "movable", "edit_only_current", "show_labels", "table_audio_link", "table_audio_filter"}),
     "thresholding": frozenset(
         {
             "enabled",

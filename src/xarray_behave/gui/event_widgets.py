@@ -234,6 +234,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         self._channel_filter: int | None = None
         self._type_combo_selection_ids: list[str] | None = None
         self._sync_enabled = True
+        self._window_filter_enabled = False
         self._blocked = False
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -264,12 +265,20 @@ class EventsTableWidget(QtWidgets.QWidget):
         self.link_checkbox.setChecked(True)
         self.link_checkbox.toggled.connect(lambda checked: setattr(self, "_sync_enabled", bool(checked)))
         row.addWidget(self.link_checkbox)
+        self.window_filter_checkbox = QtWidgets.QCheckBox("filter table to audio view")
+        self.window_filter_checkbox.setChecked(False)
+        self.window_filter_checkbox.toggled.connect(lambda checked: setattr(self, "_window_filter_enabled", bool(checked)))
+        row.addWidget(self.window_filter_checkbox)
         row.addStretch(1)
         layout.addLayout(row)
 
     @property
     def sync_enabled(self) -> bool:
         return bool(self._sync_enabled)
+
+    @property
+    def window_filter_enabled(self) -> bool:
+        return bool(self._window_filter_enabled)
 
     def set_events(
         self,

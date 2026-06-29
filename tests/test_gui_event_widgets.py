@@ -56,7 +56,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
             "waveform": {"color": "#ff6a74", "y_limits": [-2.0, 3.0]},
             "spectrogram": {"compression": 3, "resolution": 128, "colormap": "magma"},
             "audio": {"waveform_all": False, "events_all": False, "playback_all": True, "scale_y_all": False},
-            "annotations": {"table_audio_link": False, "show_labels": False},
+            "annotations": {"table_audio_link": False, "table_audio_filter": True, "show_labels": False},
             "thresholding": {"enabled": True, "value": 0.4, "min_distance": 0.05},
         },
         "selection": {"event_type": "pulse", "audio_channel": "Channel 1"},
@@ -88,6 +88,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert window.spec_win == 128
     assert window.spec_colormap == "magma"
     assert window.events_table.sync_enabled is False
+    assert window.events_table.window_filter_enabled is True
     assert window.threshold_mode is True
     assert window.thres_value == 0.4
     assert window.show_timeline is False
@@ -107,6 +108,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert "transport" not in snapshot["window"]["panels"]
     assert "ethogram" not in snapshot["window"]["panels"]
     assert snapshot["viewer"]["audio"]["playback_all"] is True
+    assert snapshot["viewer"]["annotations"]["table_audio_filter"] is True
     assert [item["name"] for item in snapshot["event_types"]] == ["pulse", "song"]
 
     window.close()
@@ -300,6 +302,32 @@ def test_events_table_selects_overlapping_visible_range():
 
     selected = widget.selected_records()
     assert [record.name for record in selected] == ["visible"]
+
+
+def test_link_table_audio_view_scrolls_without_filtering_table():
+    _app()
+    events = Events(
+        {
+            "early": np.array([[0.1, 0.2, -1]]),
+            "visible": np.array([[1.0, 1.4, -1]]),
+            "late": np.array([[3.0, 3.1, -1]]),
+        }
+    )
+    window = PSV(_audio_dataset(events))
+    window.x = np.array([0.9, 1.1])
+    window.events_table.link_checkbox.setChecked(True)
+    window.events_table.window_filter_checkbox.setChecked(False)
+
+    window._refresh_event_widgets(sync_table_to_view=True)
+
+    assert window.events_table.table.rowCount() == 3
+    assert [record.name for record in window.events_table.selected_records()] == ["visible"]
+
+    window.events_table.window_filter_checkbox.setChecked(True)
+    assert window.events_table.table.rowCount() == 1
+    assert [record.name for record in window.events_table.selected_records()] == ["visible"]
+
+    window.close()
 
 
 def test_events_table_can_select_multiple_overlapping_rows():
