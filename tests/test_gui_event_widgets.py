@@ -78,10 +78,10 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     )
 
     assert window.event_times.names == ["pulse", "song"]
-    assert window.current_event_name == "pulse"
+    assert window.current_event_name == "song"
     assert window._event_preset("pulse").duration_seconds == 0.01
     assert window._event_preset("pulse").editable is False
-    assert window.current_channel_name == "Channel 1"
+    assert window.current_channel_name == "Channel 0"
     assert window.slice_view.waveform_color == "#ff6a74"
     assert window.slice_view.waveform_y_limits == (-2.0, 3.0)
     assert window.spec_compression_ratio == 3
@@ -102,7 +102,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert "Video, waveform, and spectrogram display parameters" not in view_labels
 
     snapshot = window._config_snapshot()
-    assert snapshot["selection"] == {"event_type": "pulse", "audio_channel": "Channel 1"}
+    assert "selection" not in snapshot
     assert snapshot["window"]["panels"]["timeline"] is False
     assert "transport" not in snapshot["window"]["panels"]
     assert "ethogram" not in snapshot["window"]["panels"]
@@ -110,7 +110,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert [item["name"] for item in snapshot["event_types"]] == ["pulse", "song"]
 
     window.close()
-    assert gui_config.read_config(tmp_path / ".das.yaml")["selection"]["event_type"] == "pulse"
+    assert "selection" not in gui_config.read_config(tmp_path / ".das.yaml")
 
 
 def _toolbar_action(window, tooltip: str):

@@ -127,11 +127,10 @@ VIEWER_FIELDS = {
     ),
 }
 
-SELECTION_FIELDS = frozenset({"event_type", "audio_channel", "tracks"})
 EVENT_TYPE_FIELDS = frozenset(
     {"name", "fixed_duration", "duration_seconds", "duration_editable", "color_hex", "visible", "editable"}
 )
-TOP_LEVEL_FIELDS = frozenset({"version", "load_dialogs", "window", "viewer", "selection", "event_types"})
+TOP_LEVEL_FIELDS = frozenset({"version", "load_dialogs", "window", "viewer", "event_types"})
 
 
 class ConfigError(ValueError):
@@ -280,15 +279,6 @@ def _validate_values(config: Mapping[str, Any]) -> None:
         else:
             _require_types(value, (int, float), f"viewer.thresholding.{field}", allow_none=field == "bandpass_high")
 
-    selection = config.get("selection", {})
-    for field in ("event_type", "audio_channel"):
-        if field in selection:
-            _require_types(selection[field], str, f"selection.{field}", allow_none=True)
-    if "tracks" in selection and (
-        not isinstance(selection["tracks"], list) or not all(isinstance(value, str) for value in selection["tracks"])
-    ):
-        raise ConfigError("selection.tracks must be a list of strings")
-
     for index, preset in enumerate(config.get("event_types", [])):
         for field in ("fixed_duration", "duration_editable", "visible", "editable"):
             if field in preset:
@@ -338,9 +328,6 @@ def sanitize_config(data: Mapping[str, Any]) -> dict[str, Any]:
         result["viewer"] = {}
         for section, values in viewer.items():
             result["viewer"][section] = _known_mapping(values, VIEWER_FIELDS[section], f"viewer.{section}")
-
-    if "selection" in data:
-        result["selection"] = _known_mapping(data["selection"], SELECTION_FIELDS, "selection")
 
     if "event_types" in data:
         if not isinstance(data["event_types"], list):

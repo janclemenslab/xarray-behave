@@ -166,6 +166,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _config_snapshot(self):
         config = gui_config.deep_merge({}, self.config_manager.config)
+        config.pop("selection", None)
         geometry = self.geometry()
         config["version"] = gui_config.CONFIG_VERSION
         config.setdefault("window", {})["geometry"] = {
@@ -922,12 +923,7 @@ class PSV(MainWindow):
         self.event_times = dataset_service.event_times_from_dataset(ds)
         self.event_presets = self._initial_event_presets()
         self._merge_configured_event_types(config.get("event_types", []))
-        configured_event = config.get("selection", {}).get("event_type")
-        self._current_event_name = (
-            configured_event
-            if configured_event in self.event_times.names
-            else (self.event_times.names[-1] if self.event_times.names else None)
-        )
+        self._current_event_name = self.event_times.names[-1] if self.event_times.names else None
         self._sync_event_colors_from_presets()
 
         self.box_size = int(video_config.get("box_size", 200) if box_size is None else box_size)
@@ -1383,10 +1379,9 @@ class PSV(MainWindow):
             for ii, col in zip(range(0, itemList.rowCount()), self.tracks_colors):
                 itemList.item(ii).setForeground(QtGui.QColor(*col))
 
-            configured_tracks = set(config.get("selection", {}).get("tracks", []))
             for index in range(self.cb3.model().rowCount()):
                 item = self.cb3.model().item(index)
-                item.setCheckState(QtCore.Qt.Checked if item.data() in configured_tracks else QtCore.Qt.Unchecked)
+                item.setCheckState(QtCore.Qt.Unchecked)
             self.cb3.updateText()
 
             def on_tracksel_changed(source):
@@ -1409,10 +1404,6 @@ class PSV(MainWindow):
         self.events_table = event_widgets.EventsTableWidget()
         self.channel_panel = event_widgets.ChannelSelectorPanel()
         self.channel_panel.set_channels(self._channel_labels())
-        configured_channel = config.get("selection", {}).get("audio_channel")
-        channel_index = self.channel_panel.channel_combo.findText(str(configured_channel))
-        if channel_index >= 0:
-            self.channel_panel.channel_combo.setCurrentIndex(channel_index)
         self.threshold_panel = event_widgets.ThresholdingPanel()
         self.threshold_panel.hide()
         self.preset_panel = event_widgets.EventPresetPanel()
@@ -1861,13 +1852,6 @@ class PSV(MainWindow):
                 "bandpass_high": float(self.thres_bandpass_high),
             },
         }
-        selection = {
-            "event_type": self.current_event_name,
-            "audio_channel": self.current_channel_name,
-        }
-        if hasattr(self, "cb3"):
-            selection["tracks"] = [str(value) for value in self.cb3.currentData()]
-        config["selection"] = selection
         config["event_types"] = [
             {
                 "name": preset.name,

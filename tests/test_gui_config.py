@@ -107,11 +107,18 @@ def test_invalid_known_value_is_rejected(tmp_path):
         gui_config.read_config(path)
 
 
-def test_write_config_is_atomic_and_leaves_no_temporary_file(tmp_path):
+def test_read_config_ignores_legacy_selection(tmp_path):
+    path = tmp_path / ".das.yaml"
+    _write(path, {"version": 1, "selection": {"event_type": "pulse", "audio_channel": "Channel 1"}})
+
+    assert "selection" not in gui_config.read_config(path)
+
+
+def test_write_config_omits_selection_and_leaves_no_temporary_file(tmp_path):
     path = tmp_path / ".das.yaml"
     gui_config.write_config(path, {"version": 1, "selection": {"event_type": "pulse"}})
 
-    assert gui_config.read_config(path)["selection"]["event_type"] == "pulse"
+    assert "selection" not in yaml.safe_load(path.read_text(encoding="utf-8"))
     assert list(tmp_path.glob(".*.tmp")) == []
 
 
@@ -121,7 +128,6 @@ def test_write_config_converts_numpy_scalars_to_yaml_safe_values(tmp_path):
         path,
         {
             "version": np.int64(1),
-            "selection": {"event_type": np.str_("sine")},
             "event_types": [
                 {
                     "name": np.str_("sine"),
@@ -133,6 +139,6 @@ def test_write_config_converts_numpy_scalars_to_yaml_safe_values(tmp_path):
     )
 
     loaded = gui_config.read_config(path)
-    assert loaded["selection"]["event_type"] == "sine"
-    assert type(loaded["selection"]["event_type"]) is str
+    assert loaded["event_types"][0]["name"] == "sine"
+    assert type(loaded["event_types"][0]["name"]) is str
     assert loaded["event_types"][0]["duration_seconds"] == 0.25
