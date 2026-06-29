@@ -441,6 +441,14 @@ class SpecView(pg.ImageView):
         margin = 8
         left = max(margin, self.width() - self.settings_button.width() - margin)
         self.settings_button.move(left, margin)
+        combo = getattr(self, "channel_combo", None)
+        if combo is not None and combo.parent() is self and not combo.isHidden():
+            gap = 6
+            max_width = max(80, left - margin - gap)
+            width = min(max(150, combo.sizeHint().width()), max_width)
+            combo.setFixedWidth(width)
+            combo.move(max(margin, left - width - gap), margin - 1)
+            combo.raise_()
         self.settings_button.raise_()
 
     def _open_settings_dialog(self):

@@ -1602,7 +1602,21 @@ class PSV(MainWindow):
         self.outer_splitter.setSizes(
             [self._last_panel_sizes.get("sidebar", 260), self._last_panel_sizes.get("workspace", 1200)]
         )
+        self._sync_channel_selector_overlay()
         self._sync_view_action_checks()
+
+    def _sync_channel_selector_overlay(self):
+        if not hasattr(self, "cb2") or not hasattr(self, "slice_view") or not hasattr(self, "spec_view"):
+            return
+        show_selector = (self.nb_channels or 0) > 1 and (self.show_trace or self.show_spec)
+        target = self.slice_view if self.show_trace or not self.show_spec else self.spec_view
+        if self.cb2.parent() is not target:
+            self.cb2.setParent(target)
+            if target is self.spec_view:
+                self.spec_view.channel_combo = self.cb2
+        self.cb2.setVisible(show_selector)
+        target._position_settings_button()
+        self._sync_channel_selector_enabled()
 
     def _toolbar_icon(self, name: str) -> QtGui.QIcon:
         pixmap = QtGui.QPixmap(18, 18)

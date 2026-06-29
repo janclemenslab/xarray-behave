@@ -1359,7 +1359,7 @@ class WaveformPane(pg.PlotWidget):
         margin = 8
         left = max(margin, self.width() - self.settings_button.width() - margin)
         self.settings_button.move(left, margin)
-        if hasattr(self, "channel_combo") and not self.channel_combo.isHidden():
+        if hasattr(self, "channel_combo") and self.channel_combo.parent() is self and not self.channel_combo.isHidden():
             gap = 6
             max_width = max(80, left - margin - gap)
             width = min(max(150, self.channel_combo.sizeHint().width()), max_width)

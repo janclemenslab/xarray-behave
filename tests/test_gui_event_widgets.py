@@ -145,12 +145,16 @@ def test_psv_annotation_toolbar_exposes_and_toggles_view_actions():
     assert window.show_trace is False
     assert waveform_action.isChecked() is False
     assert window.slice_view.isVisible() is False
+    assert window.cb2.parent() is window.spec_view
+    assert window.cb2.isVisible()
+    assert window.cb2.x() < window.spec_view.settings_button.x()
 
     spectrogram_action = _toolbar_action(window, "Show spectrogram")
     spectrogram_action.trigger()
     assert window.show_spec is False
     assert spectrogram_action.isChecked() is False
     assert window.spec_view.isVisible() is False
+    assert window.cb2.isHidden()
 
     timeline_action = _toolbar_action(window, "Show event timeline")
     timeline_action.trigger()
