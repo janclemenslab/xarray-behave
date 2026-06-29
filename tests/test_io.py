@@ -1,12 +1,17 @@
 import numpy as np
-import xarray as xr
 import pandas as pd
 import pytest
-from xarray_behave import io
+from xarray_behave import io, loaders
 
 
 def test_call():
     io
+
+
+def test_fix_keys_renames_legacy_keys_without_mutating_iteration():
+    fixed = loaders.fix_keys({"aggression_manu": [1], "vibration_manua": [2]})
+
+    assert fixed == {"aggression_manual": [1], "vibration_manual": [2]}
 
 
 def test_audiofile_lazy_loads_multichannel_wav_slices(tmp_path):

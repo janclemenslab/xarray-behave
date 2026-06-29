@@ -6,4 +6,7 @@ import os
 
 os.environ["QT_API"] = "pyside6"
 
-from .xarray_behave import assemble, assemble_metrics, load, save
+from .xarray_behave import assemble_metrics, load, save
+from .api import discover, assemble, resample
+
+__all__ = ["assemble", "assemble_metrics", "discover", "load", "resample", "save"]

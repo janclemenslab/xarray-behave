@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 import scipy.signal as ss
 
-from . import annot, event_utils, io, xarray_behave as xb
+from . import annot, api, event_utils, io, v1 as xb
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def assemble_from_file(filename: str, form_data: dict):
     return ds
 
 
-def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[float] = None):
+def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[float] = None, manifest: Optional[str] = None):
     if form_data["target_samplingrate"] == 0 or form_data["target_samplingrate"] is None:
         resample_video_data = False
     else:
@@ -51,25 +51,45 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
     annotation_path = None if not len(form_data["annotation_path"]) else form_data["annotation_path"]
     filepath_video = None if not len(form_data["video_filename"]) else form_data["video_filename"]
     filepath_daq = None if not len(form_data["daq_filename"]) else form_data["daq_filename"]
+    discovered = None
+    if manifest is not None:
+        discovered = api.discover(datename, root=root, dat_path=dat_path, res_path="res", manifest=manifest)
+        filepath_video = filepath_video or _discovered_path(discovered, "video", "camera")
+        filepath_daq = filepath_daq or _discovered_path(discovered, "audio", "main")
+        annotation_path = (
+            annotation_path
+            or _discovered_path(discovered, "annotations", "manual")
+            or _discovered_path(discovered, "annotations", "auto")
+        )
 
-    ds = xb.assemble(
-        datename,
-        root,
-        dat_path,
-        res_path="res",
-        filepath_annotations=annotation_path,
-        filepath_video=filepath_video,
-        filepath_daq=filepath_daq,
-        fix_fly_indices=form_data["fix_fly_indices"],
-        include_song=~int(form_data["ignore_song"]),
-        target_sampling_rate=form_data["target_samplingrate"],
-        resample_video_data=resample_video_data,
-        pixel_size_mm=pixel_size_mm,
-        lazy_load_song=lazy_load_song,
-        include_tracks=include_tracks,
-        include_poses=include_poses,
-        make_song_events=form_data.get("generate_event_traces", False),
-    )
+    assemble_kwargs = {
+        "res_path": "res",
+        "filepath_annotations": annotation_path,
+        "filepath_video": filepath_video,
+        "filepath_daq": filepath_daq,
+        "fix_fly_indices": form_data["fix_fly_indices"],
+        "include_song": ~int(form_data["ignore_song"]),
+        "target_sampling_rate": form_data["target_samplingrate"],
+        "resample_video_data": resample_video_data,
+        "pixel_size_mm": pixel_size_mm,
+        "lazy_load_song": lazy_load_song,
+        "include_tracks": include_tracks,
+        "include_poses": include_poses,
+        "make_song_events": form_data.get("generate_event_traces", False),
+    }
+    if discovered is not None:
+        assemble_kwargs.update(
+            {
+                "filepath_timestamps": _discovered_path(discovered, "timestamps", "camera"),
+                "filepath_timestamps_ball": _discovered_path(discovered, "timestamps", "ball"),
+                "filepath_tracks": _discovered_path(discovered, "tracks", "main"),
+                "filepath_poses": _discovered_path(discovered, "poses", "main"),
+                "filepath_definitions": _discovered_path(discovered, "definitions", "main"),
+            }
+        )
+        assemble_kwargs = {key: value for key, value in assemble_kwargs.items() if value is not None}
+
+    ds = xb.assemble(datename, root, dat_path, **assemble_kwargs)
 
     if filter_song_requested:
         ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
@@ -88,6 +108,21 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
         ds.attrs["event_times"] = annot.Events(categories=cats)
 
     return ds
+
+
+def _discovered_path(files: dict, group: str, name: str):
+    entry = files.get(group, {}).get(name)
+    if entry is None:
+        entries = files.get(group, {})
+        entry = next(iter(entries.values()), None)
+    if isinstance(entry, str):
+        return entry
+    if not entry:
+        return None
+    if "path" in entry:
+        return entry["path"]
+    paths = entry.get("paths", [])
+    return paths[0] if len(paths) == 1 else None
 
 
 def load_from_zarr(filename: str, form_data: dict):

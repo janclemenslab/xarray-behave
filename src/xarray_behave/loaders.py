@@ -101,7 +101,7 @@ def load_movietimes(filepath_timestamps, filepath_daq):
 
 
 def fix_keys(d):
-    d_new = dict()
+    d_new = {}
     # HACK zarr (or xarray) cuts off long string keys in event-types
     fix_dict = {"aggression_manu": "aggression_manual", "vibration_manua": "vibration_manual"}
     # make this a function!!
@@ -112,7 +112,7 @@ def fix_keys(d):
         except AttributeError:
             d_new[eventtype] = d[eventtype]
 
-    for eventtype in d_new:
+    for eventtype in list(d_new):
         if eventtype in fix_dict.keys():
             # logging.info(f'   Renaming {eventtype} to {fix_dict[eventtype]}.')
             d_new[fix_dict[eventtype]] = d_new.pop(eventtype)

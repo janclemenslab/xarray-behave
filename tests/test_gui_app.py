@@ -124,3 +124,26 @@ def test_from_dir_applies_local_config_before_cli_overrides(monkeypatch, tmp_pat
     assert captured["form_data"]["spec_freq_max"] == 900
     assert captured["pixel_size_mm"] is None
     assert result.kwargs["config_manager"] is manager
+
+
+def test_from_dir_passes_manifest_to_dataset_service(monkeypatch):
+    captured = {}
+
+    def fake_assemble_from_dir(dirname, form_data, pixel_size_mm=None, manifest=None):
+        captured["dirname"] = dirname
+        captured["manifest"] = manifest
+        return xr.Dataset()
+
+    monkeypatch.setattr(gui_app, "YamlDialog", _FakeDialog)
+    monkeypatch.setattr(gui_app.dataset_service, "assemble_from_dir", fake_assemble_from_dir)
+    monkeypatch.setattr(gui_app.modern_video, "PyAVVideoReader", lambda filename: (_ for _ in ()).throw(FileNotFoundError(filename)))
+    monkeypatch.setattr(gui_app, "PSV", lambda ds, **kwargs: SimpleNamespace(ds=ds, kwargs=kwargs))
+
+    gui_app.MainWindow.from_dir(
+        "/data/root/dat/session",
+        manifest="/tmp/files.yaml",
+        skip_dialog=True,
+    )
+
+    assert captured["dirname"] == "/data/root/dat/session"
+    assert captured["manifest"] == "/tmp/files.yaml"

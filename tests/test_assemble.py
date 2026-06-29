@@ -1,4 +1,4 @@
-import xarray_behave as xb
+import xarray_behave.v1 as xb
 import logging
 import numpy as np
 import pandas as pd

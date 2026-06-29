@@ -88,6 +88,68 @@ def test_assemble_from_dir_maps_form_data(monkeypatch):
     }
 
 
+def test_assemble_from_dir_uses_manifest_discovery(monkeypatch):
+    calls = {}
+    ds = xr.Dataset()
+
+    def fake_discover(datename, root, dat_path, res_path, manifest):
+        calls["discover"] = {
+            "datename": datename,
+            "root": root,
+            "dat_path": dat_path,
+            "res_path": res_path,
+            "manifest": manifest,
+        }
+        return {
+            "audio": {"main": {"path": "/data/custom/audio.wav"}},
+            "video": {"camera": {"path": "/data/custom/video.avi"}},
+            "timestamps": {"camera": {"path": "/data/custom/timestamps.csv"}},
+            "tracks": {"main": {"path": "/data/custom/tracks.csv"}},
+            "poses": {"main": {"path": "/data/custom/poses.h5"}},
+            "annotations": {"manual": {"paths": ["/data/custom/annotations.csv"]}},
+        }
+
+    def fake_assemble(*args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return ds
+
+    monkeypatch.setattr(dataset_service.api, "discover", fake_discover)
+    monkeypatch.setattr(dataset_service.xb, "assemble", fake_assemble)
+
+    form_data = {
+        "target_samplingrate": 500,
+        "filter_song": "no",
+        "ignore_tracks": False,
+        "ignore_song": False,
+        "annotation_path": "",
+        "video_filename": "",
+        "daq_filename": "",
+        "fix_fly_indices": True,
+        "init_annotations": False,
+        "events_string": "",
+        "f_low": None,
+        "f_high": None,
+    }
+
+    dataset_service.assemble_from_dir("/data/root/dat/session", form_data, manifest="/tmp/files.yaml")
+
+    assert calls["discover"] == {
+        "datename": "session",
+        "root": "/data/root",
+        "dat_path": "dat",
+        "res_path": "res",
+        "manifest": "/tmp/files.yaml",
+    }
+    assert calls["args"] == ("session", "/data/root", "dat")
+    assert calls["kwargs"]["filepath_daq"] == "/data/custom/audio.wav"
+    assert calls["kwargs"]["filepath_video"] == "/data/custom/video.avi"
+    assert calls["kwargs"]["filepath_timestamps"] == "/data/custom/timestamps.csv"
+    assert calls["kwargs"]["filepath_tracks"] == "/data/custom/tracks.csv"
+    assert calls["kwargs"]["filepath_poses"] == "/data/custom/poses.h5"
+    assert calls["kwargs"]["filepath_annotations"] == "/data/custom/annotations.csv"
+
+
 def test_load_from_zarr_skips_song_events_load_when_event_table_exists(monkeypatch):
     ds = xr.Dataset(
         {

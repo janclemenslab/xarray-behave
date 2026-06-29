@@ -687,6 +687,7 @@ class MainWindow(QtWidgets.QMainWindow):
         target_samplingrate=None,
         box_size=None,
         pixel_size_mm=None,
+        manifest: Optional[str] = None,
         skip_dialog: bool = False,
         is_das: bool = False,
     ):
@@ -730,7 +731,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 logger.info(f"Making new dataset from directory {dirname}.")
 
                 _, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
-                ds = dataset_service.assemble_from_dir(dirname, form_data, pixel_size_mm=pixel_size_mm)
+                assemble_kwargs = {"pixel_size_mm": pixel_size_mm}
+                if manifest is not None:
+                    assemble_kwargs["manifest"] = manifest
+                ds = dataset_service.assemble_from_dir(dirname, form_data, **assemble_kwargs)
 
                 # add video file
                 vr = None
@@ -4120,6 +4124,7 @@ def main(
     spec_freq_max: Optional[float] = None,
     box_size: int = 200,
     pixel_size_mm: Optional[float] = None,
+    manifest: Optional[str] = None,
     skip_dialog: bool = False,
     is_das: bool = False,
 ):
@@ -4147,6 +4152,7 @@ def main(
                                        With skip_dialog, also sets the upper bandpass cutoff. Defaults to samplerate/2.
         box_size (int): Crop size around tracked fly. Not used for wav audio files (no videos).
         pixel_size_mm (Optional[float]): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
+        manifest (Optional[str]): YAML manifest for discovering files when source is a data folder.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
         is_das (bool): reduced GUI for audio only data
     """
@@ -4196,6 +4202,7 @@ def main(
             spec_freq_min=spec_freq_min,
             spec_freq_max=spec_freq_max,
             pixel_size_mm=pixel_size_mm,
+            manifest=manifest,
             skip_dialog=skip_dialog,
             is_das=is_das,
         )

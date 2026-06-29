@@ -1100,9 +1100,10 @@ def save(savepath, dataset):
 
     with zarr.ZipStore(savepath, mode="w") as zarr_store:
         # re-chunking does not seem to help with IO speed upon lazy loading
-        chunks = dict(dataset.dims)
-        chunks["time"] = 100_000
-        chunks["sampletime"] = 100_000
+        chunks = dict(dataset.sizes)
+        for dim in chunks:
+            if dim in ("time", "sampletime") or dim.endswith("_time"):
+                chunks[dim] = 100_000
         dataset = dataset.chunk(chunks)
         dataset.to_zarr(store=zarr_store, compute=True)
 

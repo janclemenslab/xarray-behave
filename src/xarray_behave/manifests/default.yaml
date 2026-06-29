@@ -1,0 +1,94 @@
+audio:
+  main:
+    path:
+      - "{root}/{dat_path}/{datename}/{datename}_daq.h5"
+      - "{root}/{dat_path}/{datename}/{datename}.wav"
+      - "{root}/{dat_path}/{datename}/{datename}.npz"
+      - "{root}/{dat_path}/{datename}/{datename}.npy"
+      - "{root}/{dat_path}/{datename}/{datename}.h5"
+      - "{root}/{dat_path}/{datename}/{datename}.hdf5"
+      - "{root}/{dat_path}/{datename}/{datename}.mmap"
+    splits:
+      audio: ":"
+
+video:
+  camera:
+    path:
+      - "{root}/{dat_path}/{datename}/{datename}.mp4"
+      - "{root}/{dat_path}/{datename}/{datename}.avi"
+  ball:
+    path:
+      - "{root}/{dat_path}/{datename}/{datename}_ball.mp4"
+
+timestamps:
+  camera:
+    path:
+      - "{root}/{dat_path}/{datename}/{datename}_timestamps.h5"
+      - "{root}/{dat_path}/{datename}/{datename}_timeStamps.h5"
+      - "{root}/{dat_path}/{datename}/{datename}_timestamps.csv"
+  ball:
+    path:
+      - "{root}/{dat_path}/{datename}/{datename}_ball_timestamps.h5"
+  movie:
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_movieframes.csv"
+
+tracks:
+  main:
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_tracks_fixed.h5"
+      - "{root}/{res_path}/{datename}/{datename}_tracks.h5"
+      - "{root}/{res_path}/{datename}/{datename}_tracks.csv"
+
+poses:
+  main:
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_poses.h5"
+      - "{root}/{res_path}/{datename}/{datename}_poses_leap.h5"
+      - "{root}/{res_path}/{datename}/{datename}_poses_dpk.zarr"
+      - "{root}/{res_path}/{datename}/{datename}_poses_sleap.h5"
+      - "{root}/{res_path}/{datename}/{datename}_sleap.h5"
+      - "{root}/{res_path}/{datename}/{datename}_sleap.h5.slp"
+
+annotations:
+  auto:
+    mode: all
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_song.h5"
+      - "{root}/{res_path}/{datename}/{datename}_vibration.h5"
+      - "{root}/{res_path}/{datename}/{datename}_pulse.h5"
+      - "{root}/{res_path}/{datename}/{datename}_sine.h5"
+      - "{root}/{res_path}/{datename}/{datename}_dss.h5"
+      - "{root}/{res_path}/{datename}/{datename}_das.h5"
+      - "{root}/{res_path}/{datename}/{datename}_song.mat"
+  manual:
+    mode: all
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_annotations.csv"
+      - "{root}/{res_path}/{datename}/{datename}_songmanual.csv"
+      - "{root}/{res_path}/{datename}/{datename}_songmanual.mat"
+      - "{root}/{res_path}/{datename}/{datename}_songmanual.zarr"
+      - "{root}/{res_path}/{datename}/{datename}*.selections.txt"
+      - "{root}/{res_path}/{datename}/{datename}_raven.txt"
+
+definitions:
+  main:
+    mode: all
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_definitions.csv"
+
+balltracks:
+  main:
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_fictrac.csv"
+
+movieparams:
+  main:
+    path:
+      - "{root}/{dat_path}/{datename}/{datename}_dlp.h5"
+      - "{root}/{dat_path}/{datename}/{datename}_movieparams.npz"
+
+idswaps:
+  main:
+    path:
+      - "{root}/{res_path}/{datename}/{datename}_idswaps.txt"

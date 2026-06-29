@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 SURFACE_BASE = "#0f131a"
 SURFACE_ELEVATED = "#171d27"
 SURFACE_ALT = "#111722"
