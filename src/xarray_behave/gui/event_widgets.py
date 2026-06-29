@@ -582,92 +582,6 @@ def _settings_icon() -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
-class AudioSettingsDialog(QtWidgets.QDialog):
-    settings_changed = QtCore.Signal(object)
-
-    def __init__(self, settings: AudioChannelSettings | None = None, parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Audio Settings")
-        self._settings = settings or AudioChannelSettings()
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(10)
-
-        self.waveform_all_radio, self.waveform_current_radio = self._add_scope_group(
-            layout,
-            "Waveform",
-            "Show all channels",
-            "Show selected channel",
-            self._settings.waveform_all,
-        )
-        self.scale_y_all_radio, self.scale_y_current_radio = self._add_scope_group(
-            layout,
-            "Y limits",
-            "Scale from all visible channels",
-            "Scale from selected channel",
-            self._settings.scale_y_all,
-        )
-        self.events_all_radio, self.events_current_radio = self._add_scope_group(
-            layout,
-            "Annotations",
-            "Show events from all channels",
-            "Show events from selected channel",
-            self._settings.events_all,
-        )
-        self.playback_all_radio, self.playback_current_radio = self._add_scope_group(
-            layout,
-            "Playback",
-            "Play all channels",
-            "Play selected channel",
-            self._settings.playback_all,
-        )
-        for radio in (
-            self.waveform_all_radio,
-            self.scale_y_all_radio,
-            self.events_all_radio,
-            self.playback_all_radio,
-        ):
-            radio.toggled.connect(self._emit_settings_changed)
-
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def _add_scope_group(
-        self,
-        layout: QtWidgets.QVBoxLayout,
-        title: str,
-        all_label: str,
-        current_label: str,
-        all_checked: bool,
-    ) -> tuple[QtWidgets.QRadioButton, QtWidgets.QRadioButton]:
-        group = QtWidgets.QGroupBox(title, self)
-        group_layout = QtWidgets.QVBoxLayout(group)
-        group_layout.setContentsMargins(10, 8, 10, 8)
-        group_layout.setSpacing(4)
-        all_radio = QtWidgets.QRadioButton(all_label, group)
-        current_radio = QtWidgets.QRadioButton(current_label, group)
-        all_radio.setChecked(bool(all_checked))
-        current_radio.setChecked(not bool(all_checked))
-        group_layout.addWidget(all_radio)
-        group_layout.addWidget(current_radio)
-        layout.addWidget(group)
-        return all_radio, current_radio
-
-    def settings(self) -> AudioChannelSettings:
-        return AudioChannelSettings(
-            waveform_all=self.waveform_all_radio.isChecked(),
-            events_all=self.events_all_radio.isChecked(),
-            playback_all=self.playback_all_radio.isChecked(),
-            scale_y_all=self.scale_y_all_radio.isChecked(),
-        )
-
-    def _emit_settings_changed(self, _checked: bool) -> None:
-        self.settings_changed.emit(self.settings())
-
-
 class EventTypePresetDialog(QtWidgets.QDialog):
     def __init__(
         self,
@@ -792,49 +706,6 @@ class EventTypePresetDialog(QtWidgets.QDialog):
             editable=self._preset.editable if self._preset is not None else True,
         )
         self.accept()
-
-
-class ChannelSelectorPanel(QtWidgets.QWidget):
-    channel_changed = QtCore.Signal()
-    settings_requested = QtCore.Signal()
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("channelPanel")
-        self.setMinimumWidth(220)
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(5)
-
-        header = QtWidgets.QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(4)
-        self.title_label = QtWidgets.QLabel("Audio")
-        self.title_label.setProperty("role", "inspectorTitle")
-        header.addWidget(self.title_label)
-        header.addStretch(1)
-        self.settings_button = _compact_tool_button(_settings_icon(), "Audio settings", self)
-        self.settings_button.setObjectName("audioSettingsButton")
-        self.settings_button.setProperty("role", "presetGlobal")
-        self.settings_button.clicked.connect(self.settings_requested.emit)
-        header.addWidget(self.settings_button)
-        layout.addLayout(header)
-
-        self.channel_combo = QtWidgets.QComboBox(self)
-        self.channel_combo.setObjectName("channelSelector")
-        self.channel_combo.currentIndexChanged.connect(lambda _index: self.channel_changed.emit())
-        layout.addWidget(self.channel_combo)
-
-    def set_channels(self, labels: Iterable[str]) -> None:
-        current = self.channel_combo.currentText()
-        self.channel_combo.blockSignals(True)
-        self.channel_combo.clear()
-        self.channel_combo.addItems(list(labels))
-        index = self.channel_combo.findText(current)
-        self.channel_combo.setCurrentIndex(max(0, index))
-        self.channel_combo.setEnabled(self.channel_combo.count() > 1)
-        self.channel_combo.blockSignals(False)
 
 
 class ThresholdingPanel(QtWidgets.QWidget):
@@ -1252,7 +1123,7 @@ class WaveformSettingsDialog(QtWidgets.QDialog):
     def __init__(self, waveform: "WaveformPane", parent=None) -> None:
         super().__init__(parent)
         self.waveform = waveform
-        self.setWindowTitle("Waveform display settings")
+        self.setWindowTitle("Waveform settings")
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
@@ -1275,7 +1146,7 @@ class WaveformSettingsDialog(QtWidgets.QDialog):
         color_row.addWidget(self.color_combo, 1)
         layout.addLayout(color_row)
 
-        self.auto_limits_checkbox = QtWidgets.QCheckBox("Auto y limits", self)
+        self.auto_limits_checkbox = QtWidgets.QCheckBox("Auto limits", self)
         self.auto_limits_checkbox.setChecked(self.waveform.waveform_y_limits is None)
         self.auto_limits_checkbox.stateChanged.connect(self._on_limits_changed)
         layout.addWidget(self.auto_limits_checkbox)
@@ -1288,17 +1159,79 @@ class WaveformSettingsDialog(QtWidgets.QDialog):
         self.lower_spin.valueChanged.connect(lambda _value: self._on_limits_changed())
         self.upper_spin.valueChanged.connect(lambda _value: self._on_limits_changed())
 
-        limits_layout = QtWidgets.QGridLayout()
+        self.fixed_limits_group = QtWidgets.QGroupBox("Fixed limits", self)
+        limits_layout = QtWidgets.QGridLayout(self.fixed_limits_group)
+        limits_layout.setContentsMargins(10, 8, 10, 8)
         limits_layout.addWidget(QtWidgets.QLabel("Lower"), 0, 0)
         limits_layout.addWidget(self.lower_spin, 0, 1)
         limits_layout.addWidget(QtWidgets.QLabel("Upper"), 1, 0)
         limits_layout.addWidget(self.upper_spin, 1, 1)
-        layout.addLayout(limits_layout)
+        layout.addWidget(self.fixed_limits_group)
         self._sync_limit_controls()
+
+        settings = self.waveform.audio_settings
+        self.scale_y_all_radio, self.scale_y_current_radio = self._add_scope_group(
+            layout,
+            "Auto limits source",
+            "Use all visible channels",
+            "Use selected channel",
+            settings.scale_y_all,
+        )
+        self.auto_limits_source_group = self.scale_y_all_radio.parentWidget()
+        self._sync_limit_controls()
+        self.waveform_all_radio, self.waveform_current_radio = self._add_scope_group(
+            layout,
+            "Waveform channels",
+            "Show all channels",
+            "Show selected channel",
+            settings.waveform_all,
+        )
+        self.events_all_radio, self.events_current_radio = self._add_scope_group(
+            layout,
+            "Annotations",
+            "Show events from all channels",
+            "Show events from selected channel",
+            settings.events_all,
+        )
+        self.playback_all_radio, self.playback_current_radio = self._add_scope_group(
+            layout,
+            "Playback",
+            "Play all channels",
+            "Play selected channel",
+            settings.playback_all,
+        )
+        for radio in (
+            self.waveform_all_radio,
+            self.scale_y_all_radio,
+            self.events_all_radio,
+            self.playback_all_radio,
+        ):
+            radio.toggled.connect(self._emit_audio_settings_changed)
 
         button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
+
+    def _add_scope_group(
+        self,
+        layout: QtWidgets.QVBoxLayout,
+        title: str,
+        all_label: str,
+        current_label: str,
+        all_checked: bool,
+    ) -> tuple[QtWidgets.QRadioButton, QtWidgets.QRadioButton]:
+        group = QtWidgets.QGroupBox(title, self)
+        group_layout = QtWidgets.QVBoxLayout(group)
+        group_layout.setContentsMargins(10, 8, 10, 8)
+        group_layout.setSpacing(4)
+        all_radio = QtWidgets.QRadioButton(all_label, group)
+        current_radio = QtWidgets.QRadioButton(current_label, group)
+        all_radio.setChecked(bool(all_checked))
+        current_radio.setChecked(not bool(all_checked))
+        group_layout.addWidget(all_radio)
+        group_layout.addWidget(current_radio)
+        layout.addWidget(group)
+        return all_radio, current_radio
 
     def _limit_spin(self, value: float) -> QtWidgets.QDoubleSpinBox:
         spin = QtWidgets.QDoubleSpinBox(self)
@@ -1306,6 +1239,14 @@ class WaveformSettingsDialog(QtWidgets.QDialog):
         spin.setDecimals(6)
         spin.setValue(float(value))
         return spin
+
+    def audio_settings(self) -> AudioChannelSettings:
+        return AudioChannelSettings(
+            waveform_all=self.waveform_all_radio.isChecked(),
+            events_all=self.events_all_radio.isChecked(),
+            playback_all=self.playback_all_radio.isChecked(),
+            scale_y_all=self.scale_y_all_radio.isChecked(),
+        )
 
     def _on_color_changed(self) -> None:
         self.waveform.set_waveform_color(str(self.color_combo.currentData()))
@@ -1318,13 +1259,21 @@ class WaveformSettingsDialog(QtWidgets.QDialog):
         self.waveform.set_waveform_y_limits((self.lower_spin.value(), self.upper_spin.value()))
 
     def _sync_limit_controls(self) -> None:
-        enabled = not self.auto_limits_checkbox.isChecked()
-        self.lower_spin.setEnabled(enabled)
-        self.upper_spin.setEnabled(enabled)
+        auto_limits = self.auto_limits_checkbox.isChecked()
+        self.fixed_limits_group.setEnabled(not auto_limits)
+        if hasattr(self, "auto_limits_source_group"):
+            self.auto_limits_source_group.setEnabled(auto_limits)
+
+    def _emit_audio_settings_changed(self, _checked: bool) -> None:
+        settings = self.audio_settings()
+        self.waveform.set_audio_settings(settings)
+        self.waveform.audio_settings_changed.emit(settings)
 
 
 class WaveformPane(pg.PlotWidget):
     threshold_changed = QtCore.Signal(float)
+    channel_changed = QtCore.Signal()
+    audio_settings_changed = QtCore.Signal(object)
 
     def __init__(self, parent=None, callback=None, region_changed_callback=None, position_changed_callback=None) -> None:
         super().__init__(parent=parent)
@@ -1346,10 +1295,16 @@ class WaveformPane(pg.PlotWidget):
         self.position_changed_callback = position_changed_callback
         self._waveform_color = "#36cfc9"
         self._waveform_y_limits: tuple[float, float] | None = None
+        self._audio_settings = AudioChannelSettings()
         self._last_waveform_y: np.ndarray | None = None
         self._last_waveform_y_other: np.ndarray | None = None
         self._settings_dialog: WaveformSettingsDialog | None = None
-        self.settings_button = _compact_tool_button(_settings_icon(), "Waveform display settings", self)
+        self.channel_combo = QtWidgets.QComboBox(self)
+        self.channel_combo.setObjectName("channelSelector")
+        self.channel_combo.setFixedHeight(24)
+        self.channel_combo.currentIndexChanged.connect(lambda _index: self.channel_changed.emit())
+        self.channel_combo.hide()
+        self.settings_button = _compact_tool_button(_settings_icon(), "Waveform settings", self)
         self.settings_button.setObjectName("waveformSettingsButton")
         self.settings_button.setProperty("role", "presetGlobal")
         self.settings_button.setFixedSize(22, 22)
@@ -1390,6 +1345,10 @@ class WaveformPane(pg.PlotWidget):
     def waveform_y_limits(self) -> tuple[float, float] | None:
         return self._waveform_y_limits
 
+    @property
+    def audio_settings(self) -> AudioChannelSettings:
+        return self._audio_settings
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._position_settings_button()
@@ -1400,7 +1359,32 @@ class WaveformPane(pg.PlotWidget):
         margin = 8
         left = max(margin, self.width() - self.settings_button.width() - margin)
         self.settings_button.move(left, margin)
+        if hasattr(self, "channel_combo") and not self.channel_combo.isHidden():
+            gap = 6
+            max_width = max(80, left - margin - gap)
+            width = min(max(150, self.channel_combo.sizeHint().width()), max_width)
+            self.channel_combo.setFixedWidth(width)
+            self.channel_combo.move(max(margin, left - width - gap), margin - 1)
+            self.channel_combo.raise_()
         self.settings_button.raise_()
+
+    def set_channels(self, labels: Iterable[str], *, show_selector: bool | None = None) -> None:
+        current = self.channel_combo.currentText()
+        self.channel_combo.blockSignals(True)
+        self.channel_combo.clear()
+        self.channel_combo.addItems(list(labels))
+        index = self.channel_combo.findText(current)
+        self.channel_combo.setCurrentIndex(max(0, index))
+        visible = self.channel_combo.count() > 1 if show_selector is None else bool(show_selector)
+        self.channel_combo.setVisible(visible)
+        self.channel_combo.setEnabled(visible and self.channel_combo.count() > 1)
+        self.channel_combo.blockSignals(False)
+        self._position_settings_button()
+
+    def set_audio_settings(self, settings: AudioChannelSettings) -> None:
+        self._audio_settings = settings
+        if self._last_waveform_y is not None and self._waveform_y_limits is None:
+            self._set_visible_y_range(self._last_waveform_y, self._auto_limit_y_other())
 
     def _open_settings_dialog(self) -> None:
         if _dialog_is_open(self._settings_dialog):
@@ -1432,7 +1416,10 @@ class WaveformPane(pg.PlotWidget):
                 upper = lower + 1.0
             self._waveform_y_limits = (lower, upper)
         if self._last_waveform_y is not None:
-            self._set_visible_y_range(self._last_waveform_y, self._last_waveform_y_other)
+            self._set_visible_y_range(self._last_waveform_y, self._auto_limit_y_other())
+
+    def _auto_limit_y_other(self) -> np.ndarray | None:
+        return self._last_waveform_y_other if self._audio_settings.scale_y_all else None
 
     def set_waveform(
         self,

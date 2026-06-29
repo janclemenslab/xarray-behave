@@ -1008,8 +1008,6 @@ class PSV(MainWindow):
             scale_y_all=bool(audio_config.get("scale_y_all", True)),
         )
         self.show_all_channels = self.audio_channel_settings.waveform_all
-        self._audio_settings_dialog = None
-        self._audio_settings_initial = None
         self.select_loudest_channel = bool(audio_config.get("select_loudest_channel", False))
         self.threshold_mode = bool(threshold_config.get("enabled", False))
         self.sinet0 = None
@@ -1402,12 +1400,12 @@ class PSV(MainWindow):
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
         self.event_timeline = event_widgets.EventTimelineWidget(show_waveform=False)
         self.events_table = event_widgets.EventsTableWidget()
-        self.channel_panel = event_widgets.ChannelSelectorPanel()
-        self.channel_panel.set_channels(self._channel_labels())
+        self.slice_view.set_audio_settings(self.audio_channel_settings)
+        self.slice_view.set_channels(self._channel_labels(), show_selector=(self.nb_channels or 0) > 1)
         self.threshold_panel = event_widgets.ThresholdingPanel()
         self.threshold_panel.hide()
         self.preset_panel = event_widgets.EventPresetPanel()
-        self.cb2 = self.channel_panel.channel_combo
+        self.cb2 = self.slice_view.channel_combo
         waveform_config = viewer_config.get("waveform", {})
         if "color" in waveform_config:
             self.slice_view.set_waveform_color(str(waveform_config["color"]))
@@ -1418,12 +1416,11 @@ class PSV(MainWindow):
         self.events_table.window_filter_checkbox.setChecked(bool(annotation_config.get("table_audio_filter", False)))
         for widget in (self.slice_view, self.tracks_view, self.event_timeline, self.events_table):
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.channel_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
         self._syncing_event_selection = False
-        self.channel_panel.channel_changed.connect(self.update_xy)
+        self.slice_view.channel_changed.connect(self.update_xy)
+        self.slice_view.audio_settings_changed.connect(self._set_audio_settings)
         self.events_table.window_filter_checkbox.toggled.connect(lambda _checked: self._refresh_event_widgets(True))
-        self.channel_panel.settings_requested.connect(self._edit_audio_settings)
         self.threshold_panel.threshold_changed.connect(self._on_threshold_value_changed)
         self.threshold_panel.envelope_std_changed.connect(self._on_threshold_envelope_std_changed)
         self.threshold_panel.min_distance_changed.connect(self._on_threshold_min_distance_changed)
@@ -1499,7 +1496,6 @@ class PSV(MainWindow):
         left_sidebar_layout = QtWidgets.QVBoxLayout(self.left_sidebar)
         left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
         left_sidebar_layout.setSpacing(8)
-        left_sidebar_layout.addWidget(self.channel_panel)
         left_sidebar_layout.addWidget(self.threshold_panel)
         left_sidebar_layout.addWidget(self.preset_panel, 1)
 
@@ -2900,29 +2896,10 @@ class PSV(MainWindow):
             self._pause_playback()
         self.audio_channel_settings = settings
         self.show_all_channels = bool(settings.waveform_all)
+        if hasattr(self, "slice_view"):
+            self.slice_view.set_audio_settings(settings)
         if getattr(self, "STOP", True):
             self.update_xy()
-
-    def _edit_audio_settings(self) -> None:
-        if event_widgets._dialog_is_open(getattr(self, "_audio_settings_dialog", None)):
-            event_widgets._activate_dialog(self._audio_settings_dialog)
-            return
-        initial_settings = self._audio_settings()
-        dialog = event_widgets.AudioSettingsDialog(initial_settings, self)
-        self._audio_settings_dialog = dialog
-        self._audio_settings_initial = initial_settings
-        dialog.settings_changed.connect(self._set_audio_settings)
-        dialog.finished.connect(lambda result, active_dialog=dialog: self._finish_audio_settings_dialog(active_dialog, result))
-        event_widgets._activate_dialog(dialog)
-
-    def _finish_audio_settings_dialog(self, dialog, result: int) -> None:
-        if getattr(self, "_audio_settings_dialog", None) is not dialog:
-            return
-        if result != QtWidgets.QDialog.Accepted and self._audio_settings_initial is not None:
-            self._set_audio_settings(self._audio_settings_initial)
-        self._audio_settings_dialog = None
-        self._audio_settings_initial = None
-        event_widgets._delete_dialog_later(dialog)
 
     def _audio_event_channel_filter(self):
         if self._audio_settings().events_all:

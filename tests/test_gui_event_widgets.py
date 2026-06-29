@@ -8,8 +8,6 @@ from xarray_behave.gui import app as gui_app, gui_config, view_dialog, views
 from xarray_behave.gui.app import PSV
 from xarray_behave.gui.event_widgets import (
     AudioChannelSettings,
-    AudioSettingsDialog,
-    ChannelSelectorPanel,
     EventBarsView,
     EventPresetPanel,
     EventRecord,
@@ -421,22 +419,6 @@ def test_preset_panel_emits_selection_and_formats_fixed_duration():
     assert panel.title_label.text() == "Annotations"
 
 
-def test_channel_selector_panel_hosts_channel_selector_and_settings_button():
-    _app()
-    panel = ChannelSelectorPanel()
-    requested = []
-    panel.settings_requested.connect(lambda: requested.append(True))
-
-    panel.set_channels(["Merged channels", "Channel 0"])
-    panel.settings_button.click()
-
-    assert panel.title_label.text() == "Audio"
-    assert panel.channel_combo.count() == 2
-    assert panel.channel_combo.currentText() == "Merged channels"
-    assert panel.channel_combo.isEnabled()
-    assert requested == [True]
-
-
 def test_thresholding_panel_syncs_values_and_emits_changes():
     _app()
     panel = ThresholdingPanel()
@@ -555,19 +537,48 @@ def test_threshold_bandpass_filters_signal_before_envelope():
     assert abs(np.corrcoef(filtered[core], low[core])[0, 1]) < 0.2
 
 
-def test_waveform_settings_dialog_updates_color_and_limits_live():
+def test_waveform_pane_overlays_channel_selector_for_multichannel_audio_only():
     _app()
     widget = WaveformPane()
+
+    widget.set_channels(["Merged channels", "Channel 0"], show_selector=False)
+
+    assert widget.channel_combo.isHidden()
+
+    widget.set_channels(["Merged channels", "Channel 0", "Channel 1"], show_selector=True)
+
+    assert not widget.channel_combo.isHidden()
+    assert widget.channel_combo.count() == 3
+    assert widget.channel_combo.currentText() == "Merged channels"
+    assert widget.channel_combo.isEnabled()
+    assert widget.channel_combo.x() < widget.settings_button.x()
+    widget.close()
+
+
+def test_waveform_settings_dialog_merges_display_and_audio_settings_live():
+    _app()
+    widget = WaveformPane()
+    widget.set_audio_settings(AudioChannelSettings())
+    audio_changes = []
+    widget.audio_settings_changed.connect(audio_changes.append)
     yranges = []
     widget.setYRange = lambda ymin, ymax, padding=0: yranges.append((ymin, ymax, padding))
-    widget.set_waveform(np.array([0.0, 1.0]), np.array([-0.25, 0.5]))
+    widget.set_waveform(
+        np.array([0.0, 1.0]),
+        np.array([-0.25, 0.5]),
+        y_other=np.array([[10.0], [20.0]]),
+    )
     dialog = WaveformSettingsDialog(widget)
 
     assert widget.settings_button.objectName() == "waveformSettingsButton"
     assert widget.settings_button.size() == QtCore.QSize(22, 22)
+    assert dialog.auto_limits_source_group.isEnabled()
+    assert not dialog.fixed_limits_group.isEnabled()
     color_index = dialog.color_combo.findData("#ff6a74")
     dialog.color_combo.setCurrentIndex(color_index)
     dialog.auto_limits_checkbox.setChecked(False)
+    assert not dialog.auto_limits_source_group.isEnabled()
+    assert dialog.fixed_limits_group.isEnabled()
     dialog.lower_spin.setValue(-2.0)
     dialog.upper_spin.setValue(3.0)
 
@@ -578,6 +589,33 @@ def test_waveform_settings_dialog_updates_color_and_limits_live():
     dialog.auto_limits_checkbox.setChecked(True)
 
     assert widget.waveform_y_limits is None
+
+    assert dialog.audio_settings() == AudioChannelSettings(waveform_all=True, events_all=True, playback_all=False)
+
+    dialog.waveform_current_radio.setChecked(True)
+    dialog.scale_y_current_radio.setChecked(True)
+    dialog.events_current_radio.setChecked(True)
+    dialog.playback_all_radio.setChecked(True)
+
+    assert dialog.audio_settings() == AudioChannelSettings(
+        waveform_all=False,
+        events_all=False,
+        playback_all=True,
+        scale_y_all=False,
+    )
+    assert widget.audio_settings == AudioChannelSettings(
+        waveform_all=False,
+        events_all=False,
+        playback_all=True,
+        scale_y_all=False,
+    )
+    assert audio_changes[-1] == AudioChannelSettings(
+        waveform_all=False,
+        events_all=False,
+        playback_all=True,
+        scale_y_all=False,
+    )
+    assert yranges[-1][1] < 1.0
     dialog.close()
     widget.close()
 
@@ -597,33 +635,6 @@ def test_waveform_settings_dialog_is_singleton():
 
     assert widget._settings_dialog is None
     widget.close()
-
-
-def test_audio_settings_dialog_defaults_and_accepts_changes():
-    _app()
-    dialog = AudioSettingsDialog(AudioChannelSettings())
-    changes = []
-    dialog.settings_changed.connect(changes.append)
-
-    assert dialog.settings() == AudioChannelSettings(waveform_all=True, events_all=True, playback_all=False)
-
-    dialog.waveform_current_radio.setChecked(True)
-    dialog.scale_y_current_radio.setChecked(True)
-    dialog.events_current_radio.setChecked(True)
-    dialog.playback_all_radio.setChecked(True)
-
-    assert dialog.settings() == AudioChannelSettings(
-        waveform_all=False,
-        events_all=False,
-        playback_all=True,
-        scale_y_all=False,
-    )
-    assert changes[-1] == AudioChannelSettings(
-        waveform_all=False,
-        events_all=False,
-        playback_all=True,
-        scale_y_all=False,
-    )
 
 
 def test_preset_panel_emits_row_and_global_layer_toggles():
@@ -864,69 +875,6 @@ def test_selected_channel_event_filter_is_exact():
     filtered = window._filter_event_rows_for_audio_channel(rows)
 
     np.testing.assert_array_equal(filtered[:, 2], np.array([-1]))
-
-
-def test_audio_settings_dialog_live_update_reverts_on_cancel(monkeypatch):
-    class Signal:
-        def __init__(self):
-            self._callback = None
-
-        def connect(self, callback):
-            self._callback = callback
-
-        def emit(self, *args):
-            self._callback(*args)
-
-    live_settings = AudioChannelSettings(waveform_all=False, events_all=False, playback_all=True)
-    seen_live = []
-    instances = []
-
-    class Dialog:
-        def __init__(self, settings, parent):
-            self.settings_changed = Signal()
-            self.finished = Signal()
-            self._parent = parent
-            self._visible = True
-            self.activations = []
-            self.deleted = False
-            instances.append(self)
-            assert settings == AudioChannelSettings()
-
-        def isVisible(self):
-            return self._visible
-
-        def show(self):
-            self._visible = True
-            self.activations.append("show")
-
-        def raise_(self):
-            self.activations.append("raise")
-
-        def activateWindow(self):
-            self.activations.append("activate")
-
-        def deleteLater(self):
-            self.deleted = True
-
-    monkeypatch.setattr(gui_app.event_widgets, "AudioSettingsDialog", Dialog)
-    window = PSV.__new__(PSV)
-    window.audio_channel_settings = AudioChannelSettings()
-    window.show_all_channels = True
-    window._is_playing = False
-    window.STOP = False
-
-    window._edit_audio_settings()
-    instances[0].settings_changed.emit(live_settings)
-    seen_live.append(window.audio_channel_settings)
-    window._edit_audio_settings()
-    instances[0].finished.emit(QtWidgets.QDialog.Rejected)
-
-    assert seen_live == [live_settings]
-    assert len(instances) == 1
-    assert instances[0].activations == ["show", "raise", "activate", "show", "raise", "activate"]
-    assert instances[0].deleted
-    assert window.audio_channel_settings == AudioChannelSettings()
-    assert window.show_all_channels is True
 
 
 def test_locked_preset_blocks_timeline_creation():
