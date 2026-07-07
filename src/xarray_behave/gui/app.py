@@ -390,7 +390,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.nb_eventtypes = len(self.event_times)
         self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
         self.update_eventtype_selector()
-        self.update_xy()
+        self._update_xy_with_event_table_refresh()
 
     def _has_current_das_audio(self) -> bool:
         return hasattr(self, "ds") and "song_raw" in self.ds
@@ -915,8 +915,13 @@ class PSV(MainWindow):
         # build model:
         self.ds = ds
         self.data_source = data_source
-
-        # TODO allow vr to be a string with the video file name
+        self._audio_source_names = self._discover_audio_source_names()
+        self._active_audio_source_name = self._audio_source_names[0] if self._audio_source_names else None
+        self._audio_selector_items = []
+        self._video_sources = self._discover_video_sources()
+        self._active_video_name = next(iter(self._video_sources), None)
+        if vr is None and self._active_video_name is not None:
+            vr = self._video_reader_for_source(self._active_video_name)
         self.vr = vr
 
         # detect all event times
@@ -934,14 +939,19 @@ class PSV(MainWindow):
         self.spec_levels = spectrogram_config.get("levels", [None, None])
 
         self.tmin = 0
-        if "song" in self.ds:
-            self.tmax = self.ds.song.shape[0]
-        elif "song_raw" in self.ds:
-            self.tmax = self.ds.song_raw.shape[0]
+        self.fs_song = self._source_sampling_rate(self._active_audio_source_name) or float(
+            self.ds.attrs.get("target_sampling_rate_Hz", 1_000)
+        )
+        self.nb_channels = self._source_channel_count(self._active_audio_source_name)
+        audio_length = self._source_length(self._active_audio_source_name)
+        if audio_length is not None:
+            self.tmax = audio_length
         elif "body_positions" in self.ds:
             self.tmax = len(self.ds.body_positions)
-        else:
+        elif "time" in self.ds:
             self.tmax = len(self.ds.time)
+        else:
+            self.tmax = 0
 
         self.crop = bool(video_config.get("crop", True))
         self.maintain_custom_crop = bool(video_config.get("maintain_custom_crop", False))
@@ -1029,16 +1039,8 @@ class PSV(MainWindow):
         if "song_events" in self.ds:
             self.fs_other = self.ds.song_events.attrs["sampling_rate_Hz"]
         else:
-            self.fs_other = ds.attrs["target_sampling_rate_Hz"]
-
-        self.nb_channels = None
-        if "song" in self.ds:
-            self.fs_song = self.ds.song.attrs["sampling_rate_Hz"]
-        if "song_raw" in self.ds:
-            self.fs_song = self.ds.song_raw.attrs["sampling_rate_Hz"]
-            self.nb_channels = self.ds.song_raw.shape[1]
-        else:
-            self.fs_song = self.fs_other  # not sure this would work?
+            self.fs_other = float(ds.attrs.get("target_sampling_rate_Hz", self.fs_song))
+        self._apply_active_audio_source()
         if self.thres_bandpass_high is None:
             self.thres_bandpass_high = self.fs_song / 2
 
@@ -1389,8 +1391,11 @@ class PSV(MainWindow):
             self.cb3.currentTextChanged.connect(lambda: on_tracksel_changed(self))
 
         self.movie_view = None
+        self.movie_panel = None
+        self.video_combo = None
         if self.vr is not None:
             self.movie_view = views.MovieView(model=self, callback=self.on_video_clicked)
+            self.movie_panel = self._build_movie_panel()
 
         self.slice_view = event_widgets.WaveformPane(
             callback=self.on_trace_clicked,
@@ -1400,27 +1405,29 @@ class PSV(MainWindow):
         self.tracks_view = views.TrackView(model=self, callback=self.on_trace_clicked)
         self.event_timeline = event_widgets.EventTimelineWidget(show_waveform=False)
         self.events_table = event_widgets.EventsTableWidget()
+        self.cb2 = self.slice_view.channel_combo
         self.slice_view.set_audio_settings(self.audio_channel_settings)
-        self.slice_view.set_channels(self._channel_labels(), show_selector=(self.nb_channels or 0) > 1)
+        self._set_channel_selector_items()
         self.threshold_panel = event_widgets.ThresholdingPanel()
         self.threshold_panel.hide()
         self.preset_panel = event_widgets.EventPresetPanel()
-        self.cb2 = self.slice_view.channel_combo
         waveform_config = viewer_config.get("waveform", {})
         if "color" in waveform_config:
             self.slice_view.set_waveform_color(str(waveform_config["color"]))
         waveform_limits = waveform_config.get("y_limits")
         if isinstance(waveform_limits, (list, tuple)) and len(waveform_limits) == 2:
             self.slice_view.set_waveform_y_limits(tuple(waveform_limits))
-        self.events_table.link_checkbox.setChecked(bool(annotation_config.get("table_audio_link", True)))
-        self.events_table.window_filter_checkbox.setChecked(bool(annotation_config.get("table_audio_filter", False)))
+        follow_table = annotation_config.get("table_audio_filter", annotation_config.get("table_audio_link", False))
+        self.events_table.window_filter_checkbox.setChecked(bool(follow_table))
         for widget in (self.slice_view, self.tracks_view, self.event_timeline, self.events_table):
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
         self._syncing_event_selection = False
-        self.slice_view.channel_changed.connect(self.update_xy)
+        self.slice_view.channel_changed.connect(self._on_audio_selection_changed)
         self.slice_view.audio_settings_changed.connect(self._set_audio_settings)
-        self.events_table.window_filter_checkbox.toggled.connect(lambda _checked: self._refresh_event_widgets(True))
+        self.events_table.window_filter_checkbox.toggled.connect(
+            lambda checked: self._refresh_event_widgets(True, force_table=bool(checked))
+        )
         self.threshold_panel.threshold_changed.connect(self._on_threshold_value_changed)
         self.threshold_panel.envelope_std_changed.connect(self._on_threshold_envelope_std_changed)
         self.threshold_panel.min_distance_changed.connect(self._on_threshold_min_distance_changed)
@@ -1477,8 +1484,8 @@ class PSV(MainWindow):
             self._last_panel_sizes[name] = size
             splitter_sizes.append(size)
 
-        if self.vr is not None:
-            add_splitter_panel("movie", self.movie_view, 320)
+        if self.movie_panel is not None:
+            add_splitter_panel("movie", self.movie_panel, 320)
         if "pose_positions_allo" in self.ds:
             add_splitter_panel("tracks", self.tracks_view, 150)
         add_splitter_panel("waveform", self.slice_view, 100)
@@ -1522,9 +1529,9 @@ class PSV(MainWindow):
         def edit_frame_finished(source=None):
             try:
                 frame_number = float(source.text())
-                # get sampletime from framenumber
-                idx = np.argmax(self.ds.nearest_frame.data >= frame_number)
-                self.t0 = self.ds.nearest_frame[idx].time.values * self.fs_song
+                frame_seconds = self._seconds_for_video_frame(frame_number)
+                if frame_seconds is not None:
+                    self.t0 = frame_seconds * self.fs_song
             except Exception as e:
                 print(e)
 
@@ -1608,7 +1615,7 @@ class PSV(MainWindow):
     def _sync_channel_selector_overlay(self):
         if not hasattr(self, "cb2") or not hasattr(self, "slice_view") or not hasattr(self, "spec_view"):
             return
-        show_selector = (self.nb_channels or 0) > 1 and (self.show_trace or self.show_spec)
+        show_selector = self.cb2.count() > 1 and (self.show_trace or self.show_spec)
         target = self.slice_view if self.show_trace or not self.show_spec else self.spec_view
         if self.cb2.parent() is not target:
             self.cb2.setParent(target)
@@ -1748,7 +1755,7 @@ class PSV(MainWindow):
             self._current_event_name = self.event_times.names[-1] if self.event_times.names else None
         self._sync_event_colors_from_presets()
         self.update_eventtype_selector(selected_name=self._current_event_name)
-        self.update_xy()
+        self._update_xy_with_event_table_refresh()
 
     def _choose_annotation_import_mode(self, filename: str) -> str:
         message = QtWidgets.QMessageBox(self)
@@ -1849,7 +1856,7 @@ class PSV(MainWindow):
                 "movable": bool(self.movable_events),
                 "edit_only_current": bool(self.edit_only_current_events),
                 "show_labels": bool(self.show_event_text),
-                "table_audio_link": bool(self.events_table.sync_enabled),
+                "table_audio_link": bool(self.events_table.window_filter_enabled),
                 "table_audio_filter": bool(self.events_table.window_filter_enabled),
             },
             "thresholding": {
@@ -1974,6 +1981,225 @@ class PSV(MainWindow):
             self.update_frame()
         except:
             pass
+
+    def _is_audio_dataarray(self, name: str, da) -> bool:
+        if name in {"song", "non_song_raw", "song_events", "event_traces"}:
+            return False
+        if name.endswith("_video_path") or name.endswith("_frame_time"):
+            return False
+        dims = getattr(da, "dims", ())
+        return (
+            getattr(da, "ndim", 0) == 2
+            and "sampling_rate_Hz" in getattr(da, "attrs", {})
+            and len(dims) == 2
+            and str(dims[1]).endswith("channels")
+        )
+
+    def _discover_audio_source_names(self) -> list[str]:
+        names = []
+        if "song_raw" in self.ds:
+            names.append("song_raw")
+        for name, da in self.ds.data_vars.items():
+            if name not in names and self._is_audio_dataarray(name, da):
+                names.append(name)
+        if not names and "song" in self.ds:
+            names.append("song")
+        return names
+
+    def _audio_dataarray_for_source(self, source_name: str | None = None):
+        source_name = source_name or getattr(self, "_active_audio_source_name", None)
+        if source_name is None:
+            if "song_raw" in self.ds:
+                source_name = "song_raw"
+            elif "song" in self.ds:
+                source_name = "song"
+        if source_name == "song" and "song" in self.ds:
+            return self.ds.song
+        if hasattr(self.ds, "data_vars") and source_name in self.ds.data_vars:
+            return self.ds[source_name]
+        if source_name is not None and hasattr(self.ds, source_name):
+            return getattr(self.ds, source_name)
+        return None
+
+    def _source_sampling_rate(self, source_name: str | None) -> float | None:
+        da = self._audio_dataarray_for_source(source_name)
+        if da is None:
+            return None
+        sampling_rate = da.attrs.get("sampling_rate_Hz")
+        return None if sampling_rate is None else float(sampling_rate)
+
+    def _source_length(self, source_name: str | None) -> int | None:
+        da = self._audio_dataarray_for_source(source_name)
+        return None if da is None else int(da.shape[0])
+
+    def _source_channel_count(self, source_name: str | None) -> int | None:
+        da = self._audio_dataarray_for_source(source_name)
+        if da is None or getattr(da, "ndim", 0) < 2:
+            return None
+        return int(da.shape[1])
+
+    def _audio_time_values(self) -> np.ndarray:
+        da = self._audio_dataarray_for_source()
+        if da is None:
+            return np.array([], dtype=float)
+        time_dim = da.dims[0]
+        if time_dim in da.coords:
+            return np.asarray(da[time_dim].data, dtype=float)
+        if time_dim in self.ds.coords:
+            return np.asarray(self.ds[time_dim].data, dtype=float)
+        fs = self._source_sampling_rate(getattr(self, "_active_audio_source_name", None)) or self.fs_song
+        return np.arange(da.shape[0], dtype=float) / fs
+
+    def _sample_seconds(self, sample: float) -> float:
+        times = self._audio_time_values()
+        if len(times):
+            index = int(np.clip(round(sample), 0, len(times) - 1))
+            return float(times[index])
+        return float(sample) / self.fs_song
+
+    def _apply_active_audio_source(self, *, preserve_seconds: bool = False) -> None:
+        old_seconds = self._sample_seconds(self.t0) if preserve_seconds and hasattr(self, "_t0") else 0.0
+        da = self._audio_dataarray_for_source()
+        if da is None:
+            return
+        self.fs_song = float(da.attrs["sampling_rate_Hz"])
+        self.nb_channels = self._source_channel_count(getattr(self, "_active_audio_source_name", None))
+        self.tmax = int(da.shape[0])
+        if preserve_seconds:
+            self._t0 = float(np.clip(old_seconds * self.fs_song, self.tmin, self.tmax_playhead))
+        elif hasattr(self, "_t0"):
+            self._t0 = float(np.clip(self._t0, self.tmin, self.tmax_playhead))
+
+    def _combo_item(self, index: int | None = None):
+        combo = getattr(self, "cb2", None)
+        if combo is None or not hasattr(combo, "count") or not hasattr(combo, "itemData") or combo.count() == 0:
+            return None
+        if index is None:
+            index = combo.currentIndex()
+        item = combo.itemData(index)
+        return item if isinstance(item, tuple) and len(item) == 3 else None
+
+    def _set_channel_selector_items(self) -> None:
+        labels = self._channel_labels()
+        self.slice_view.set_channels(labels, show_selector=len(labels) > 1)
+        for index, item in enumerate(self._audio_selector_items):
+            self.cb2.setItemData(index, item)
+        selected = self._combo_item()
+        if selected is not None:
+            self._active_audio_source_name = selected[0]
+
+    def _combo_index_for_audio_item(self, source_name: str, data_index: int | None) -> int:
+        for index, item in enumerate(getattr(self, "_audio_selector_items", [])):
+            if item[0] == source_name and item[1] == data_index:
+                return index
+        return -1
+
+    def _on_audio_selection_changed(self) -> None:
+        selected = self._combo_item()
+        if selected is None:
+            self.update_xy()
+            return
+        old_source = getattr(self, "_active_audio_source_name", None)
+        self._active_audio_source_name = selected[0]
+        self._stop_window_audio_playhead()
+        self._clear_playback_window()
+        if getattr(self, "_is_playing", False):
+            self._pause_playback()
+        self._apply_active_audio_source(preserve_seconds=True)
+        if selected[0] != old_source:
+            self._setup_audio_clock(self._audio_source_path())
+        if self.vr is not None:
+            self.frame_interval = self.fs_song / self.vr.frame_rate
+        self._sync_threshold_panel()
+        self._sync_transport_controls()
+        self.update_xy()
+        self.update_frame()
+
+    def _discover_video_sources(self) -> dict[str, str]:
+        sources = {}
+        for name, da in self.ds.data_vars.items():
+            if not name.endswith("_video_path") or getattr(da, "ndim", 0) != 0:
+                continue
+            try:
+                value = da.item()
+            except AttributeError:
+                value = da.values.item()
+            if isinstance(value, bytes):
+                value = value.decode()
+            source_name = name[: -len("_video_path")]
+            sources[source_name] = str(value)
+        video_filename = self.ds.attrs.get("video_filename")
+        if video_filename and "camera" not in sources:
+            sources["camera"] = str(video_filename)
+        return sources
+
+    def _video_reader_for_source(self, source_name: str):
+        path = self._video_sources.get(source_name)
+        if not path:
+            return None
+        try:
+            return modern_video.PyAVVideoReader(path)
+        except FileNotFoundError:
+            logger.info(f'Video "{path}" not found. Continuing without.')
+        except Exception:
+            logger.info("Something went wrong when loading the video. Continuing without.")
+        return None
+
+    def _build_movie_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        panel.setObjectName("moviePanel")
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.video_combo = QtWidgets.QComboBox(panel)
+        self.video_combo.setObjectName("videoSourceSelector")
+        self.video_combo.setFixedHeight(24)
+        for name, path in self._video_sources.items():
+            self.video_combo.addItem(name, name)
+            self.video_combo.setItemData(self.video_combo.count() - 1, path, QtCore.Qt.ToolTipRole)
+        self.video_combo.setVisible(self.video_combo.count() > 1)
+        self.video_combo.setEnabled(self.video_combo.count() > 1)
+        if self._active_video_name is not None:
+            index = self.video_combo.findData(self._active_video_name)
+            self.video_combo.setCurrentIndex(max(0, index))
+        self.video_combo.currentIndexChanged.connect(self._on_video_source_changed)
+        layout.addWidget(self.video_combo)
+        layout.addWidget(self.movie_view, 1)
+        return panel
+
+    def _on_video_source_changed(self) -> None:
+        if self.video_combo is None:
+            return
+        source_name = self.video_combo.currentData()
+        if not source_name or source_name == self._active_video_name:
+            return
+        reader = self._video_reader_for_source(source_name)
+        if reader is None:
+            return
+        self._active_video_name = source_name
+        self.vr = reader
+        self.frame_interval = self.fs_song / self.vr.frame_rate
+        self.update_frame()
+
+    def _active_video_frame_times(self) -> np.ndarray | None:
+        name = getattr(self, "_active_video_name", None)
+        if not name:
+            return None
+        frame_time_name = f"{name}_frame_time"
+        if frame_time_name not in self.ds:
+            return None
+        return np.asarray(self.ds[frame_time_name].data, dtype=float)
+
+    def _seconds_for_video_frame(self, frame_number: float) -> float | None:
+        frame_times = self._active_video_frame_times()
+        frame_index = int(round(frame_number))
+        if frame_times is not None and 0 <= frame_index < len(frame_times):
+            return float(frame_times[frame_index])
+        if "nearest_frame" in self.ds.coords:
+            idx = np.argmax(self.ds.nearest_frame.data >= frame_number)
+            return float(self.ds.nearest_frame[idx].time.values)
+        return None
 
     def _build_transport(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
@@ -2184,6 +2410,12 @@ class PSV(MainWindow):
 
     def _audio_source_path(self):
         audio_suffixes = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".ogg", ".m4a"}
+        da = self._audio_dataarray_for_source()
+        value = da.attrs.get("source_path") if da is not None else None
+        if value:
+            path = Path(str(value)).expanduser()
+            if path.suffix.lower() in audio_suffixes and path.exists():
+                return path.resolve()
         for key in ("filename", "audio_filename", "filepath_daq", "source_audio"):
             value = self.ds.attrs.get(key) if hasattr(self.ds, "attrs") else None
             if not value:
@@ -2194,6 +2426,14 @@ class PSV(MainWindow):
         return None
 
     def _setup_audio_clock(self, media_path: Path | None) -> None:
+        player = getattr(self, "_audio_player", None)
+        if player is not None:
+            try:
+                player.stop()
+            except Exception:
+                pass
+        self._audio_output = None
+        self._audio_player = None
         if media_path is None or QAudioOutput is None or QMediaPlayer is None or QUrl is None:
             if hasattr(self, "_clock_label"):
                 self._clock_label.setToolTip("Timer-backed playback; install PySide6 for QMediaPlayer audio.")
@@ -2227,18 +2467,17 @@ class PSV(MainWindow):
         return np.array(data)
 
     def _audio_window_data(self, window_start: int, window_stop: int, *, all_channels: bool):
-        if "song_raw" in self.ds:
-            if all_channels:
-                return self._materialize_audio_data(self.ds.song_raw.data[window_start:window_stop, :])
-            channel = self.current_channel_index
-            if channel is None:
-                if "song" in self.ds:
-                    return self._materialize_audio_data(self.ds.song.data[window_start:window_stop])
-                return None
-            return self._materialize_audio_data(self.ds.song_raw.data[window_start:window_stop, channel])
-        if "song" in self.ds:
-            return self._materialize_audio_data(self.ds.song.data[window_start:window_stop])
-        return None
+        da = self._audio_dataarray_for_source()
+        if da is None:
+            return None
+        if getattr(da, "ndim", 0) == 1:
+            return self._materialize_audio_data(da.data[window_start:window_stop])
+        if all_channels:
+            return self._materialize_audio_data(da.data[window_start:window_stop, :])
+        channel = self._current_channel_data_index()
+        if channel is None:
+            return None
+        return self._materialize_audio_data(da.data[window_start:window_stop, channel])
 
     def _transport_uses_qmedia_audio(self) -> bool:
         return self._audio_player is not None
@@ -2566,9 +2805,13 @@ class PSV(MainWindow):
 
     @property
     def framenumber(self):
+        frame_times = self._active_video_frame_times()
+        if frame_times is not None and len(frame_times):
+            seconds = self._sample_seconds(self.t0)
+            return int(utils.find_nearest_idx(frame_times, seconds))
         if "nearest_frame" in self.ds.coords:
             try:  # in case nearest_frame is nan
-                t = self.ds.sampletime.data[int(self.t0)]
+                t = self._sample_seconds(self.t0)
                 return int(self.ds.nearest_frame.sel(time=t, method="nearest"))
             except:
                 pass
@@ -2737,7 +2980,7 @@ class PSV(MainWindow):
     def _after_preset_layer_change(self):
         self._refresh_preset_panel(selected_name=self.current_event_name)
         if getattr(self, "STOP", True):
-            self.update_xy()
+            self._update_xy_with_event_table_refresh()
 
     def _clamp_event_bounds(self, start_seconds: float, stop_seconds: float):
         start = max(0.0, float(start_seconds))
@@ -2887,7 +3130,7 @@ class PSV(MainWindow):
         self._sync_event_colors_from_presets()
         self.update_eventtype_selector(selected_name=selected_name)
         self._refresh_preset_panel(selected_name=selected_name)
-        self.update_xy()
+        self._update_xy_with_event_table_refresh()
 
     @property
     def current_channel_name(self):
@@ -2895,10 +3138,25 @@ class PSV(MainWindow):
 
     @property
     def current_channel_index(self):
+        item = self._combo_item()
+        if item is not None:
+            return item[2]
         if self.current_channel_name != "Merged channels":
             return int(self.current_channel_name.split(" ")[-1])  # "Channel XX"
-        else:
-            return None
+        return None
+
+    def _current_channel_data_index(self):
+        item = self._combo_item()
+        if item is not None:
+            return item[1]
+        return self.current_channel_index
+
+    @property
+    def current_audio_source_name(self):
+        item = self._combo_item()
+        if item is not None:
+            return item[0]
+        return getattr(self, "_active_audio_source_name", None)
 
     def _audio_settings(self):
         if hasattr(self, "audio_channel_settings"):
@@ -2936,16 +3194,39 @@ class PSV(MainWindow):
 
     def _channel_labels(self) -> list[str]:
         labels = []
-        if "song" in self.ds:
-            labels.append("Merged channels")
-        if "song_raw" in self.ds:
-            labels.extend(f"Channel {chan}" for chan in range(self.ds.song_raw.shape[1]))
+        self._audio_selector_items = []
+        multi_source = len(self._audio_source_names) > 1
+        for source_name in self._audio_source_names:
+            if source_name == "song":
+                labels.append(f"{source_name}: Merged channels" if multi_source else "Merged channels")
+                self._audio_selector_items.append((source_name, None, None))
+                continue
+            if source_name == "song_raw" and "song" in self.ds:
+                labels.append(f"{source_name}: Merged channels" if multi_source else "Merged channels")
+                self._audio_selector_items.append(("song", None, None))
+            da = self._audio_dataarray_for_source(source_name)
+            if da is None or getattr(da, "ndim", 0) < 2:
+                continue
+            channel_dim = da.dims[1]
+            if channel_dim in da.coords:
+                channel_values = np.asarray(da[channel_dim].data)
+            elif channel_dim in self.ds.coords:
+                channel_values = np.asarray(self.ds[channel_dim].data)
+            else:
+                channel_values = np.arange(da.shape[1])
+            for data_index, channel_value in enumerate(channel_values):
+                try:
+                    channel_value = int(channel_value)
+                except (TypeError, ValueError):
+                    channel_value = str(channel_value)
+                label = f"Channel {channel_value}"
+                labels.append(f"{source_name}: {label}" if multi_source else label)
+                self._audio_selector_items.append((source_name, data_index, channel_value))
         return labels
 
     @property
     def index_other(self):
-        current_sampletime = self.ds.sampletime.data[int(self.t0)]
-        current_time = self.ds.time.sel(time=current_sampletime, method="nearest")
+        current_time = self.ds.time.sel(time=self._sample_seconds(self.t0), method="nearest")
         index_other = np.where(self.ds.time == current_time)[0]
         return int(index_other)
 
@@ -2956,7 +3237,7 @@ class PSV(MainWindow):
                 colors[name] = tuple(int(v) for v in self.eventtype_colors[index])
         return colors
 
-    def _refresh_event_widgets(self, sync_table_to_view: bool = False):
+    def _refresh_event_widgets(self, sync_table_to_view: bool = False, force_table: bool = False):
         if not hasattr(self, "event_timeline") or not hasattr(self, "events_table"):
             return
         selected_ids = self.events_table.selected_record_ids()
@@ -2968,8 +3249,11 @@ class PSV(MainWindow):
         if sync_table_to_view and hasattr(self, "x") and len(self.x):
             start_seconds = float(self.x[0])
             stop_seconds = float(self.x[-1])
-        table_start_seconds = start_seconds if self.events_table.window_filter_enabled else None
-        table_stop_seconds = stop_seconds if self.events_table.window_filter_enabled else None
+        table_follows_view = sync_table_to_view and self.events_table.window_filter_enabled
+        table_is_empty = self.events_table.table.model().rowCount() == 0
+        update_table = force_table or table_follows_view or not sync_table_to_view or table_is_empty
+        table_start_seconds = start_seconds if table_follows_view else None
+        table_stop_seconds = stop_seconds if table_follows_view else None
         channel_filter = self._audio_event_channel_filter()
         self.event_timeline.set_events(
             visible_events,
@@ -2981,17 +3265,18 @@ class PSV(MainWindow):
             stop_seconds=stop_seconds,
             channel_filter=channel_filter,
         )
-        self.events_table.set_events(
-            visible_events,
-            selected_ids=selected_ids,
-            locked_event_names=locked_event_names,
-            start_seconds=table_start_seconds,
-            stop_seconds=table_stop_seconds,
-            channel_filter=channel_filter,
-        )
+        if update_table:
+            self.events_table.set_events(
+                visible_events,
+                selected_ids=selected_ids,
+                locked_event_names=locked_event_names,
+                start_seconds=table_start_seconds,
+                stop_seconds=table_stop_seconds,
+                channel_filter=channel_filter,
+            )
         self.event_timeline.set_selected_ids(self.events_table.selected_record_ids())
         self.event_timeline.set_playhead(float(self.t0) / self.fs_song)
-        if sync_table_to_view and self.events_table.sync_enabled and not self._syncing_event_selection:
+        if table_follows_view and not self._syncing_event_selection:
             try:
                 self._syncing_event_selection = True
                 self.events_table.select_overlapping_range(float(self.x[0]), float(self.x[-1]))
@@ -3004,6 +3289,10 @@ class PSV(MainWindow):
         self._sync_event_colors_from_presets()
         self.update_eventtype_selector()
         self._refresh_preset_panel()
+        self._update_xy_with_event_table_refresh()
+
+    def _update_xy_with_event_table_refresh(self):
+        self._force_next_event_table_refresh = True
         self.update_xy()
 
     def _on_events_table_selection(self, records):
@@ -3323,7 +3612,7 @@ class PSV(MainWindow):
             if nb_deleted_events:
                 logger.info(f"   Deleted {nb_deleted_events} annotation(s) of type {self.current_event_name}.")
                 if self.STOP:
-                    self.update_xy()
+                    self._update_xy_with_event_table_refresh()
         else:
             logger.info("   No event type selected. Not deleting anything.")
 
@@ -3337,7 +3626,7 @@ class PSV(MainWindow):
                 logger.info(f"   Deleted {nb_deleted_events} annotation(s) of type {event_name}.")
 
         if self.STOP:
-            self.update_xy()
+            self._update_xy_with_event_table_refresh()
 
     def threshold(self, qt_keycode):
         if self.STOP and self.current_event_name is not None and self._event_type_can_edit(self.current_event_name):
@@ -3367,7 +3656,7 @@ class PSV(MainWindow):
             if new_len != old_len:
                 logger.info(f"   Removed {old_len - new_len} duplicates in {self.current_event_name}.")
 
-            self.update_xy()
+            self._update_xy_with_event_table_refresh()
 
     def _threshold_interval_proposals(self) -> list[tuple[float, float]]:
         above = np.asarray(self.envelope) >= self.thres_value
@@ -3557,31 +3846,35 @@ class PSV(MainWindow):
             self.update_xy()
 
     def update_xy(self):
-        # FIXME: self.time0 and self.time1 are indices into self.ds.sampletime, not time points
-        # rename to sampletime_index0/1?
-        self.x = self.ds.sampletime.data[self.time0 : self.time1]
+        da = self._audio_dataarray_for_source()
+        if da is None:
+            return
+        self.x = self._audio_time_values()[self.time0 : self.time1]
         self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
         self.y_other = None
 
-        if "song" in self.ds and self.current_channel_name == "Merged channels":
-            self.y = self.ds.song.data[self.time0 : self.time1]
-        elif "song_raw" in self.ds:
+        if getattr(da, "ndim", 0) == 1:
+            self.y = da.data[self.time0 : self.time1]
+        else:
             # load song for current channel
             try:
-                y_all = self.ds.song_raw.data[self.time0 : self.time1, :].compute()
+                y_all = da.data[self.time0 : self.time1, :].compute()
             except AttributeError:
-                y_all = self.ds.song_raw.data[self.time0 : self.time1, :]
+                y_all = da.data[self.time0 : self.time1, :]
 
-            self.y = y_all[:, self.current_channel_index]
+            channel_index = self._current_channel_data_index()
+            if channel_index is None:
+                return
+            self.y = y_all[:, channel_index]
             if self._audio_settings().waveform_all:
-                channel_list = np.delete(np.arange(self.nb_channels), self.current_channel_index)
+                channel_list = np.delete(np.arange(self.nb_channels), channel_index)
                 self.y_other = y_all[:, channel_list]
 
             if self.select_loudest_channel and not self._channel_switching_locked():
                 self.loudest_channel = np.argmax(np.max(y_all, axis=0))
-                self.cb2.setCurrentIndex(self.loudest_channel)
-        else:
-            return
+                combo_index = self._combo_index_for_audio_item(self.current_audio_source_name, int(self.loudest_channel))
+                if combo_index >= 0:
+                    self.cb2.setCurrentIndex(combo_index)
 
         if self.threshold_mode:
             self.envelope = self.get_envelope()
@@ -3654,7 +3947,9 @@ class PSV(MainWindow):
         if self.show_songevents and (self.show_tracks or self.show_spec or self.show_trace):
             self.plot_song_events(self.x)
 
-        self._refresh_event_widgets(sync_table_to_view=True)
+        force_event_table = bool(getattr(self, "_force_next_event_table_refresh", False))
+        self._force_next_event_table_refresh = False
+        self._refresh_event_widgets(sync_table_to_view=True, force_table=force_event_table)
 
     def update_frame(self):
         if self.movie_view is not None:
@@ -3803,7 +4098,7 @@ class PSV(MainWindow):
             f"  Moved {event_name_to_move} from t=[{region.bounds[0]:1.4f}:{region.bounds[1]:1.4f}] to [{new_region[0]:1.4f}:{new_region[1]:1.4f}] seconds."
         )
 
-        self.update_xy()
+        self._update_xy_with_event_table_refresh()
 
     def on_position_change_finished(self, position):
         """Called when dragging an event-like song_event - will change time."""
@@ -3834,7 +4129,7 @@ class PSV(MainWindow):
             self.event_times.move_time(event_name_to_move, position.position, new_position)
         logger.info(f"  Moved {event_name_to_move} from t={position.position:1.4f} to {new_position:1.4f} seconds.")
 
-        self.update_xy()
+        self._update_xy_with_event_table_refresh()
 
     def on_position_dragged(self, fly, pos, offset):
         """Called when dragging a fly body position - will change that pos."""
@@ -3920,7 +4215,7 @@ class PSV(MainWindow):
             )
             if changed_time is not None:
                 logger.info(f"  Changed event at {changed_time[0]:1.4f}:{changed_time[1]:1.4f} from {old_name} to {new_name}.")
-                self.update_xy()
+                self._update_xy_with_event_table_refresh()
         elif mouseButton == QtCore.Qt.MouseButton.LeftButton:  # add event
             if self.current_event_index is not None and self._event_type_can_edit(self.current_event_name):
                 preset = self._event_preset(self.current_event_name)
@@ -3949,7 +4244,7 @@ class PSV(MainWindow):
                     f"  Added {self.current_event_name} on channel {self.current_channel_index} "
                     f"at t={start_seconds:1.4f}:{stop_seconds:1.4f} seconds."
                 )
-                self.update_xy()
+                self._update_xy_with_event_table_refresh()
             else:
                 self._clear_pending_event_creation()
         elif mouseButton == QtCore.Qt.MouseButton.RightButton:  # delete nearest event
@@ -3978,11 +4273,11 @@ class PSV(MainWindow):
             )
             if len(deleted_time):
                 logger.info(f"  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.")
-            self.update_xy()
+            self._update_xy_with_event_table_refresh()
 
     def play_audio(self, qt_keycode):
         """Play the visible audio window using Qt audio."""
-        if "song" in self.ds or "song_raw" in self.ds:
+        if self._audio_dataarray_for_source() is not None:
             window_start = self.time0
             window_stop = self.time1
             self._start_window_audio_playhead(
@@ -4017,8 +4312,9 @@ class PSV(MainWindow):
         self.approve_proposals(appprove_only_active_event=False)
 
     def approve_proposals(self, appprove_only_active_event: bool = False):
-        t0 = self.ds.sampletime.data[self.time0]
-        t1 = self.ds.sampletime.data[min(self.time1, self.tmax_playhead)]
+        audio_times = self._audio_time_values()
+        t0 = audio_times[self.time0]
+        t1 = audio_times[min(self.time1, self.tmax_playhead)]
 
         proposal_suffix = "_proposals"
         logger.info("Approving:")
@@ -4047,7 +4343,7 @@ class PSV(MainWindow):
         self.update_eventtype_selector()
 
         logger.info("Done.")
-        self.update_xy()
+        self._update_xy_with_event_table_refresh()
 
     def update_eventtype_selector(self, selected_name: str = None):
         old_event_name = getattr(self, "_current_event_name", None)

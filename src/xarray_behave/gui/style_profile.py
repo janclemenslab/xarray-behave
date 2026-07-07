@@ -221,7 +221,7 @@ QCheckBox::indicator:disabled {{
     background-color: {SURFACE_ALT};
     border-color: {BORDER_SUBTLE};
 }}
-QTableWidget {{
+QTableWidget, QTableView#xarrayEventsTable {{
     background-color: {SURFACE_ALT};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_SUBTLE};
@@ -229,7 +229,7 @@ QTableWidget {{
     selection-background-color: {ACCENT_SOFT};
     selection-color: {TEXT_PRIMARY};
 }}
-QTableWidget#xarrayEventsTable {{
+QTableWidget#xarrayEventsTable, QTableView#xarrayEventsTable {{
     alternate-background-color: {SURFACE_INTERACTIVE};
 }}
 QTableView::item {{

@@ -28,6 +28,15 @@ def _app():
     return app
 
 
+def _table_row_count(widget):
+    return widget.table.model().rowCount()
+
+
+def _table_text(widget, row, column):
+    model = widget.table.model()
+    return model.data(model.index(row, column), QtCore.Qt.DisplayRole)
+
+
 def _audio_dataset(event_times=None):
     sampletime = np.arange(1_000) / 1_000
     ds = xr.Dataset(
@@ -38,6 +47,28 @@ def _audio_dataset(event_times=None):
     ds.song_raw.attrs["sampling_rate_Hz"] = 1_000
     if event_times is not None:
         ds.attrs["event_times"] = event_times
+    return ds
+
+
+def _v2_audio_dataset():
+    ds = xr.Dataset(
+        {
+            "audio": (
+                ("audio_time", "audio_channels"),
+                np.column_stack([np.arange(6, dtype=float), np.arange(10, 16, dtype=float)]),
+            ),
+            "other": (("other_time", "other_channels"), np.arange(100, 104, dtype=float)[:, np.newaxis]),
+        },
+        coords={
+            "audio_time": np.arange(6) / 1_000,
+            "audio_channels": [0, 1],
+            "other_time": np.arange(4) / 500,
+            "other_channels": [2],
+        },
+        attrs={"target_sampling_rate_Hz": 1_000},
+    )
+    ds.audio.attrs["sampling_rate_Hz"] = 1_000
+    ds.other.attrs["sampling_rate_Hz"] = 500
     return ds
 
 
@@ -85,7 +116,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert window.spec_compression_ratio == 3
     assert window.spec_win == 128
     assert window.spec_colormap == "magma"
-    assert window.events_table.sync_enabled is False
+    assert window.events_table.sync_enabled is True
     assert window.events_table.window_filter_enabled is True
     assert window.threshold_mode is True
     assert window.thres_value == 0.4
@@ -106,6 +137,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert "transport" not in snapshot["window"]["panels"]
     assert "ethogram" not in snapshot["window"]["panels"]
     assert snapshot["viewer"]["audio"]["playback_all"] is True
+    assert snapshot["viewer"]["annotations"]["table_audio_link"] is True
     assert snapshot["viewer"]["annotations"]["table_audio_filter"] is True
     assert [item["name"] for item in snapshot["event_types"]] == ["pulse", "song"]
 
@@ -203,6 +235,66 @@ def test_psv_annotation_toolbar_includes_movie_action_when_video_is_loaded():
     assert window.show_movie is False
     assert movie_action.isChecked() is False
     assert window.movie_view.isVisible() is False
+
+    window.close()
+
+
+def test_psv_audio_selector_switches_v2_audio_sources():
+    _app()
+    window = PSV(_v2_audio_dataset())
+
+    labels = [window.cb2.itemText(index) for index in range(window.cb2.count())]
+    assert labels == ["audio: Channel 0", "audio: Channel 1", "other: Channel 2"]
+    assert window.cb2.isVisible()
+    assert window.current_audio_source_name == "audio"
+    assert window.current_channel_index == 0
+    np.testing.assert_array_equal(window.y, np.arange(6, dtype=float))
+
+    window.cb2.setCurrentIndex(2)
+
+    assert window.current_audio_source_name == "other"
+    assert window.current_channel_index == 2
+    assert window._current_channel_data_index() == 0
+    assert window.fs_song == 500
+    np.testing.assert_array_equal(window.x, np.arange(4) / 500)
+    np.testing.assert_array_equal(window.y, np.arange(100, 104, dtype=float))
+
+    window.close()
+
+
+def test_psv_video_selector_switches_v2_video_sources(monkeypatch):
+    _app()
+
+    class FakeVideoReader:
+        frame_rate = 1_000
+        frame_width = 5
+        frame_height = 4
+
+        def __init__(self, filename):
+            self.filename = filename
+
+        def __getitem__(self, index):
+            return np.zeros((self.frame_height, self.frame_width, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(gui_app.modern_video, "PyAVVideoReader", FakeVideoReader)
+    ds = _v2_audio_dataset()
+    ds["camera_video_path"] = xr.DataArray("/tmp/camera.mp4")
+    ds["side_video_path"] = xr.DataArray("/tmp/side.mp4")
+    ds["camera_frame_time"] = xr.DataArray(np.arange(6) / 1_000, dims=["camera_frame"])
+    ds["side_frame_time"] = xr.DataArray(np.arange(6) / 500, dims=["side_frame"])
+
+    window = PSV(ds)
+
+    labels = [window.video_combo.itemText(index) for index in range(window.video_combo.count())]
+    assert labels == ["camera", "side"]
+    assert window.video_combo.isVisible()
+    assert window._active_video_name == "camera"
+    assert window.vr.filename == "/tmp/camera.mp4"
+
+    window.video_combo.setCurrentIndex(1)
+
+    assert window._active_video_name == "side"
+    assert window.vr.filename == "/tmp/side.mp4"
 
     window.close()
 
@@ -306,7 +398,7 @@ def test_events_table_selects_overlapping_visible_range():
     assert [record.name for record in selected] == ["visible"]
 
 
-def test_link_table_audio_view_scrolls_without_filtering_table():
+def test_table_follow_audio_view_filters_or_leaves_table_unchanged(monkeypatch):
     _app()
     events = Events(
         {
@@ -317,16 +409,27 @@ def test_link_table_audio_view_scrolls_without_filtering_table():
     )
     window = PSV(_audio_dataset(events))
     window.x = np.array([0.9, 1.1])
-    window.events_table.link_checkbox.setChecked(True)
     window.events_table.window_filter_checkbox.setChecked(False)
+    window._refresh_event_widgets(sync_table_to_view=False)
+    assert _table_row_count(window.events_table) == 3
+    table_refreshes = []
+    original_set_events = window.events_table.set_events
+
+    def counted_set_events(*args, **kwargs):
+        table_refreshes.append(True)
+        return original_set_events(*args, **kwargs)
+
+    monkeypatch.setattr(window.events_table, "set_events", counted_set_events)
 
     window._refresh_event_widgets(sync_table_to_view=True)
 
-    assert window.events_table.table.rowCount() == 3
-    assert [record.name for record in window.events_table.selected_records()] == ["visible"]
+    assert table_refreshes == []
+    assert _table_row_count(window.events_table) == 3
+    assert [record.name for record in window.events_table.selected_records()] == []
 
     window.events_table.window_filter_checkbox.setChecked(True)
-    assert window.events_table.table.rowCount() == 1
+    assert table_refreshes == [True]
+    assert _table_row_count(window.events_table) == 1
     assert [record.name for record in window.events_table.selected_records()] == ["visible"]
 
     window.close()
@@ -360,7 +463,7 @@ def test_events_table_defaults_to_start_time_sort():
     widget = EventsTableWidget()
     widget.set_events(events)
 
-    assert widget.table.item(0, widget._COL_START).text() == "0.100000"
+    assert _table_text(widget, 0, widget._COL_START) == "0.100000"
 
 
 def test_events_table_channel_filter_uses_exact_channel():
@@ -370,9 +473,75 @@ def test_events_table_channel_filter_uses_exact_channel():
 
     widget.set_events(events, channel_filter=0)
 
-    assert widget.table.rowCount() == 1
-    assert widget.table.item(0, widget._COL_CHANNEL).text() == "0"
+    assert _table_row_count(widget) == 1
+    assert _table_text(widget, 0, widget._COL_CHANNEL) == "0"
     assert widget._record_id_for_row(0) == "pulse\x1f1"
+
+
+def test_events_table_type_column_uses_delegate_editor():
+    _app()
+    widget = EventsTableWidget()
+    events = Events(
+        {
+            "pulse": np.array([[0.1, 0.1, -1], [0.2, 0.2, -1], [0.3, 0.3, -1]]),
+            "song": np.zeros((0, 3)),
+        }
+    )
+    changed = []
+    widget.type_changed.connect(lambda records, name: changed.append(([record.id for record in records], name)))
+
+    widget.set_events(events)
+
+    assert _table_row_count(widget) == 3
+    delegate = widget.table.itemDelegateForColumn(widget._COL_TYPE)
+    index = widget.table.model().index(0, widget._COL_TYPE)
+    assert widget.table.indexWidget(index) is None
+    editor = delegate.createEditor(widget.table, QtWidgets.QStyleOptionViewItem(), index)
+    assert isinstance(editor, QtWidgets.QComboBox)
+
+    delegate.setEditorData(editor, index)
+    editor.setCurrentText("song")
+    delegate.setModelData(editor, widget.table.model(), index)
+
+    assert changed == [(["pulse\x1f0"], "song")]
+    editor.deleteLater()
+
+
+def test_events_table_time_edit_emits_change_and_rejects_invalid_value():
+    _app()
+    widget = EventsTableWidget()
+    widget.set_events(Events({"pulse": np.array([[0.1, 0.2, -1]])}))
+    changed = []
+    widget.time_changed.connect(
+        lambda record, start, stop, edge: changed.append((record.id, start, stop, edge))
+    )
+    model = widget.table.model()
+    start_index = model.index(0, widget._COL_START)
+
+    assert model.setData(start_index, "0.15", QtCore.Qt.EditRole)
+    assert not model.setData(start_index, "bad", QtCore.Qt.EditRole)
+
+    assert changed == [("pulse\x1f0", 0.15, 0.2, "start")]
+
+
+def test_events_table_model_sorts_type_and_channel_columns():
+    _app()
+    widget = EventsTableWidget()
+    widget.set_events(
+        Events(
+            {
+                "b": np.array([[0.1, 0.2, 2]]),
+                "a": np.array([[0.2, 0.3, 0]]),
+                "c": np.array([[0.3, 0.4, 1]]),
+            }
+        )
+    )
+
+    widget.table.sortByColumn(widget._COL_TYPE, QtCore.Qt.AscendingOrder)
+    assert _table_text(widget, 0, widget._COL_TYPE) == "a"
+
+    widget.table.sortByColumn(widget._COL_CHANNEL, QtCore.Qt.DescendingOrder)
+    assert _table_text(widget, 0, widget._COL_CHANNEL) == "2"
 
 
 def test_event_bars_drag_mode_resizes_interval_edges():
@@ -693,11 +862,18 @@ def test_events_table_locks_rows_by_event_name():
     widget = EventsTableWidget()
     widget.set_events(Events({"pulse": np.array([[0.1, 0.1, -1]])}), locked_event_names=["pulse"])
 
-    assert not widget.table.cellWidget(0, widget._COL_TYPE).isEnabled()
-    assert not (widget.table.item(0, widget._COL_START).flags() & QtCore.Qt.ItemIsEditable)
+    model = widget.table.model()
+    index = widget.table.model().index(0, widget._COL_TYPE)
+    delegate = widget.table.itemDelegateForColumn(widget._COL_TYPE)
+    start_index = widget.table.model().index(0, widget._COL_START)
+
+    assert widget.table.indexWidget(index) is None
+    assert not (model.flags(index) & QtCore.Qt.ItemIsEditable)
+    assert delegate.createEditor(widget.table, QtWidgets.QStyleOptionViewItem(), index) is None
+    assert not (model.flags(start_index) & QtCore.Qt.ItemIsEditable)
 
 
-def test_events_table_type_combo_changes_selection_from_start_of_edit():
+def test_events_table_type_editor_changes_selection_from_start_of_edit():
     _app()
     widget = EventsTableWidget()
     widget.set_events(
@@ -712,14 +888,18 @@ def test_events_table_type_combo_changes_selection_from_start_of_edit():
     widget.type_changed.connect(lambda records, name: changed.append(([record.id for record in records], name)))
     selected_ids = ["pulse\x1f0", "pulse\x1f1"]
     widget.select_ids(selected_ids)
-    combo = widget.table.cellWidget(0, widget._COL_TYPE)
+    index = widget.table.model().index(0, widget._COL_TYPE)
+    delegate = widget.table.itemDelegateForColumn(widget._COL_TYPE)
+    editor = delegate.createEditor(widget.table, QtWidgets.QStyleOptionViewItem(), index)
+    assert isinstance(editor, QtWidgets.QComboBox)
 
-    widget._remember_type_combo_selection("pulse\x1f0")
+    delegate.setEditorData(editor, index)
     widget.select_ids(["pulse\x1f0"])
-    combo.setCurrentText("song")
-    combo.activated.emit(combo.currentIndex())
+    editor.setCurrentText("song")
+    delegate.setModelData(editor, widget.table.model(), index)
 
     assert changed == [(selected_ids, "song")]
+    editor.deleteLater()
 
 
 def test_waveform_pane_updates_playhead():

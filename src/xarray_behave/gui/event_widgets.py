@@ -200,16 +200,153 @@ def records_from_events(
     return records
 
 
-class _NumericItem(QtWidgets.QTableWidgetItem):
-    def __init__(self, text: str, sort_value: object, record_id: str) -> None:
-        super().__init__(text)
-        self._sort_value = sort_value
-        self.setData(QtCore.Qt.UserRole, record_id)
+class _EventsTableModel(QtCore.QAbstractTableModel):
+    HEADERS = ("Event", "Start (s)", "Stop (s)", "Duration (s)", "Channel")
 
-    def __lt__(self, other: QtWidgets.QTableWidgetItem) -> bool:
-        if isinstance(other, _NumericItem):
-            return self._sort_value < other._sort_value
-        return super().__lt__(other)
+    def __init__(self, owner: "EventsTableWidget") -> None:
+        super().__init__(owner)
+        self._owner = owner
+        self._records: list[EventRecord] = []
+        self._locked_event_names: set[str] = set()
+        self._row_by_record_id: dict[str, int] = {}
+
+    def rowCount(self, parent=QtCore.QModelIndex()) -> int:  # noqa: N802 - Qt override
+        return 0 if parent.isValid() else len(self._records)
+
+    def columnCount(self, parent=QtCore.QModelIndex()) -> int:  # noqa: N802 - Qt override
+        return 0 if parent.isValid() else len(self.HEADERS)
+
+    def data(self, index, role=QtCore.Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        record = self.record(index.row())
+        if record is None:
+            return None
+        column = index.column()
+        if role in (QtCore.Qt.DisplayRole, QtCore.Qt.EditRole):
+            return self._display_value(record, column)
+        if role == QtCore.Qt.UserRole:
+            return record.id
+        if role == QtCore.Qt.TextAlignmentRole and column in (
+            EventsTableWidget._COL_START,
+            EventsTableWidget._COL_STOP,
+            EventsTableWidget._COL_DURATION,
+            EventsTableWidget._COL_CHANNEL,
+        ):
+            return QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter
+        return None
+
+    def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):  # noqa: N802 - Qt override
+        if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Horizontal and 0 <= section < len(self.HEADERS):
+            return self.HEADERS[section]
+        return None
+
+    def flags(self, index):
+        if not index.isValid():
+            return QtCore.Qt.NoItemFlags
+        flags = QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable
+        record = self.record(index.row())
+        if (
+            record is not None
+            and record.name not in self._locked_event_names
+            and index.column() in (EventsTableWidget._COL_TYPE, EventsTableWidget._COL_START, EventsTableWidget._COL_STOP)
+        ):
+            flags |= QtCore.Qt.ItemIsEditable
+        return flags
+
+    def setData(self, index, value, role=QtCore.Qt.EditRole) -> bool:  # noqa: N802 - Qt override
+        if role != QtCore.Qt.EditRole or not index.isValid():
+            return False
+        record = self.record(index.row())
+        if record is None or record.name in self._locked_event_names:
+            return False
+        if index.column() == EventsTableWidget._COL_TYPE:
+            return self._owner._handle_type_edit(record, str(value))
+        if index.column() in (EventsTableWidget._COL_START, EventsTableWidget._COL_STOP):
+            return self._owner._handle_time_edit(record, index.column(), str(value))
+        return False
+
+    def sort(self, column, order=QtCore.Qt.AscendingOrder) -> None:
+        reverse = order == QtCore.Qt.DescendingOrder
+        key = self._sort_key(column)
+        self.layoutAboutToBeChanged.emit()
+        self._records.sort(key=key, reverse=reverse)
+        self._rebuild_row_index()
+        self.layoutChanged.emit()
+
+    def set_records(self, records: list[EventRecord], locked_event_names: Iterable[str]) -> None:
+        self.beginResetModel()
+        self._records = list(records)
+        self._locked_event_names = set(locked_event_names)
+        self._rebuild_row_index()
+        self.endResetModel()
+
+    def record(self, row: int) -> EventRecord | None:
+        if 0 <= row < len(self._records):
+            return self._records[row]
+        return None
+
+    def record_id_for_row(self, row: int) -> str | None:
+        record = self.record(row)
+        return record.id if record is not None else None
+
+    def row_for_record_id(self, record_id: str) -> int | None:
+        return self._row_by_record_id.get(record_id)
+
+    def _rebuild_row_index(self) -> None:
+        self._row_by_record_id = {record.id: row for row, record in enumerate(self._records)}
+
+    def _display_value(self, record: EventRecord, column: int) -> str:
+        if column == EventsTableWidget._COL_TYPE:
+            return record.name
+        if column == EventsTableWidget._COL_START:
+            return f"{record.start_seconds:.6f}"
+        if column == EventsTableWidget._COL_STOP:
+            return f"{record.stop_seconds:.6f}"
+        if column == EventsTableWidget._COL_DURATION:
+            return f"{record.duration_seconds:.6f}"
+        if column == EventsTableWidget._COL_CHANNEL:
+            return str(record.channel)
+        return ""
+
+    def _sort_key(self, column: int):
+        if column == EventsTableWidget._COL_TYPE:
+            return lambda record: (record.name.lower(), record.start_seconds, record.stop_seconds, record.index)
+        if column == EventsTableWidget._COL_STOP:
+            return lambda record: (record.stop_seconds, record.start_seconds, record.name, record.index)
+        if column == EventsTableWidget._COL_DURATION:
+            return lambda record: (record.duration_seconds, record.start_seconds, record.name, record.index)
+        if column == EventsTableWidget._COL_CHANNEL:
+            return lambda record: (record.channel, record.start_seconds, record.name, record.index)
+        return lambda record: (record.start_seconds, record.stop_seconds, record.name, record.index)
+
+
+class _EventTypeDelegate(QtWidgets.QStyledItemDelegate):
+    def __init__(self, owner: "EventsTableWidget") -> None:
+        super().__init__(owner.table)
+        self._owner = owner
+
+    def createEditor(self, parent, option, index):  # noqa: N802 - Qt override
+        record_id = self._owner._record_id_for_row(index.row())
+        record = self._owner._records_by_id.get(record_id or "")
+        if record is None or record.name in self._owner._locked_event_names:
+            return None
+        self._owner._remember_type_combo_selection(record_id)
+        editor = QtWidgets.QComboBox(parent)
+        editor.setFrame(False)
+        editor.addItems(self._owner._event_names)
+        editor.activated.connect(lambda _idx, source=editor: self.commitData.emit(source))
+        editor.activated.connect(
+            lambda _idx, source=editor: self.closeEditor.emit(source, QtWidgets.QAbstractItemDelegate.NoHint)
+        )
+        return editor
+
+    def setEditorData(self, editor, index) -> None:  # noqa: N802 - Qt override
+        value = index.data(QtCore.Qt.EditRole) or index.data(QtCore.Qt.DisplayRole) or ""
+        editor.setCurrentIndex(max(0, editor.findText(str(value))))
+
+    def setModelData(self, editor, model, index) -> None:  # noqa: N802 - Qt override
+        model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
 
 
 class EventsTableWidget(QtWidgets.QWidget):
@@ -233,7 +370,6 @@ class EventsTableWidget(QtWidgets.QWidget):
         self._locked_event_names: set[str] = set()
         self._channel_filter: int | None = None
         self._type_combo_selection_ids: list[str] | None = None
-        self._sync_enabled = True
         self._window_filter_enabled = False
         self._blocked = False
 
@@ -241,31 +377,29 @@ class EventsTableWidget(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        self.table = QtWidgets.QTableWidget(0, 5)
+        self._model = _EventsTableModel(self)
+        self.table = QtWidgets.QTableView()
         self.table.setObjectName("xarrayEventsTable")
+        self.table.setModel(self._model)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.table.setAlternatingRowColors(True)
         self.table.setWordWrap(False)
         self.table.setShowGrid(False)
-        self.table.setHorizontalHeaderLabels(["Event", "Start (s)", "Stop (s)", "Duration (s)", "Channel"])
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(22)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.setSortingEnabled(True)
         self.table.sortByColumn(self._COL_START, QtCore.Qt.AscendingOrder)
-        self.table.itemSelectionChanged.connect(self._emit_selection)
-        self.table.itemChanged.connect(self._on_item_changed)
+        self._type_delegate = _EventTypeDelegate(self)
+        self.table.setItemDelegateForColumn(self._COL_TYPE, self._type_delegate)
+        self.table.selectionModel().selectionChanged.connect(lambda _selected, _deselected: self._emit_selection())
         layout.addWidget(self.table)
 
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        self.link_checkbox = QtWidgets.QCheckBox("link table/audio views")
-        self.link_checkbox.setChecked(True)
-        self.link_checkbox.toggled.connect(lambda checked: setattr(self, "_sync_enabled", bool(checked)))
-        row.addWidget(self.link_checkbox)
-        self.window_filter_checkbox = QtWidgets.QCheckBox("filter table to audio view")
+        self.window_filter_checkbox = QtWidgets.QCheckBox("update table with audio view")
         self.window_filter_checkbox.setChecked(False)
         self.window_filter_checkbox.toggled.connect(lambda checked: setattr(self, "_window_filter_enabled", bool(checked)))
         row.addWidget(self.window_filter_checkbox)
@@ -274,7 +408,7 @@ class EventsTableWidget(QtWidgets.QWidget):
 
     @property
     def sync_enabled(self) -> bool:
-        return bool(self._sync_enabled)
+        return bool(self._window_filter_enabled)
 
     @property
     def window_filter_enabled(self) -> bool:
@@ -304,15 +438,14 @@ class EventsTableWidget(QtWidgets.QWidget):
         )
         self._records_by_id = {record.id: record for record in records}
         sort_state = self._sort_state()
-        self.table.setSortingEnabled(False)
-        self.table.blockSignals(True)
-        self.table.setRowCount(len(records))
-        for row, record in enumerate(records):
-            self._populate_row(row, record)
-        self.table.blockSignals(False)
-        self._restore_sort_state(sort_state)
-        self._select_ids(selected & set(self._records_by_id), emit=False)
-        self._blocked = False
+        self.table.setUpdatesEnabled(False)
+        try:
+            self._model.set_records(records, self._locked_event_names)
+            self._restore_sort_state(sort_state)
+            self._select_ids(selected & set(self._records_by_id), emit=False)
+        finally:
+            self.table.setUpdatesEnabled(True)
+            self._blocked = False
 
     def selected_records(self) -> list[EventRecord]:
         ids = self.selected_record_ids()
@@ -320,8 +453,9 @@ class EventsTableWidget(QtWidgets.QWidget):
 
     def selected_record_ids(self) -> list[str]:
         ids: list[str] = []
-        for index in self.table.selectionModel().selectedRows():
-            record_id = self._record_id_for_row(index.row())
+        rows = sorted(index.row() for index in self.table.selectionModel().selectedRows())
+        for row in rows:
+            record_id = self._record_id_for_row(row)
             if record_id is not None:
                 ids.append(record_id)
         return ids
@@ -350,139 +484,73 @@ class EventsTableWidget(QtWidgets.QWidget):
                 return
         super().keyPressEvent(event)
 
-    def _populate_row(self, row: int, record: EventRecord) -> None:
-        locked = record.name in self._locked_event_names
-        type_item = self._item(record.name, record.name.lower(), record.id)
-        self.table.setItem(row, self._COL_TYPE, type_item)
-        combo = QtWidgets.QComboBox(self.table)
-        combo.setFrame(False)
-        combo.addItems(self._event_names)
-        idx = combo.findText(record.name)
-        combo.setCurrentIndex(max(0, idx))
-        combo.setEnabled(not locked)
-        combo.setProperty("xarray_behave_record_id", record.id)
-        combo.installEventFilter(self)
-        combo.activated.connect(lambda _idx, rid=record.id, source=combo: self._on_type_combo(rid, source.currentText()))
-        self.table.setCellWidget(row, self._COL_TYPE, combo)
-
-        self.table.setItem(
-            row,
-            self._COL_START,
-            self._item(f"{record.start_seconds:.6f}", record.start_seconds, record.id, editable=not locked),
-        )
-        self.table.setItem(
-            row,
-            self._COL_STOP,
-            self._item(f"{record.stop_seconds:.6f}", record.stop_seconds, record.id, editable=not locked),
-        )
-        self.table.setItem(
-            row, self._COL_DURATION, self._item(f"{record.duration_seconds:.6f}", record.duration_seconds, record.id)
-        )
-        self.table.setItem(row, self._COL_CHANNEL, self._item(str(record.channel), record.channel, record.id))
-
-    def _item(self, text: str, sort_value: object, record_id: str, editable: bool = False) -> QtWidgets.QTableWidgetItem:
-        item = _NumericItem(text, sort_value, record_id)
-        flags = item.flags()
-        if editable:
-            item.setFlags(flags | QtCore.Qt.ItemIsEditable)
-        else:
-            item.setFlags(flags & ~QtCore.Qt.ItemIsEditable)
-        if isinstance(sort_value, (int, float)):
-            item.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        return item
-
-    def _on_type_combo(self, record_id: str, new_name: str) -> None:
-        pending_selected_ids = self._type_combo_selection_ids
-        self._type_combo_selection_ids = None
-        if self._blocked or not new_name:
-            return
-        source = self._records_by_id.get(record_id)
-        selected_ids = self.selected_record_ids()
-        if (
-            pending_selected_ids is not None
-            and record_id in pending_selected_ids
-            and len(pending_selected_ids) >= len(selected_ids)
-        ):
-            selected_ids = pending_selected_ids
-        selected = [self._records_by_id[selected_id] for selected_id in selected_ids if selected_id in self._records_by_id]
-        if source is not None and source.name in self._locked_event_names:
-            return
-        if source is not None and record_id not in selected_ids:
-            selected = [source]
-        selected = [record for record in selected if record.name not in self._locked_event_names]
-        if selected:
-            self.type_changed.emit(selected, new_name)
-
     def _remember_type_combo_selection(self, record_id: str) -> None:
         selected_ids = self.selected_record_ids()
         self._type_combo_selection_ids = selected_ids if record_id in selected_ids else [record_id]
 
-    def eventFilter(self, source, event) -> bool:
-        if isinstance(source, QtWidgets.QComboBox):
-            record_id = source.property("xarray_behave_record_id")
-            if isinstance(record_id, str) and event.type() in (
-                QtCore.QEvent.KeyPress,
-                QtCore.QEvent.MouseButtonPress,
-            ):
-                self._remember_type_combo_selection(record_id)
-        return super().eventFilter(source, event)
+    def _handle_type_edit(self, record: EventRecord, new_name: str) -> bool:
+        if self._blocked or record.name in self._locked_event_names:
+            return False
+        new_name = new_name.strip()
+        pending_selected_ids = self._type_combo_selection_ids
+        self._type_combo_selection_ids = None
+        if new_name not in self._event_names or new_name == record.name:
+            return False
+        selected_ids = self.selected_record_ids()
+        if (
+            pending_selected_ids is not None
+            and record.id in pending_selected_ids
+            and len(pending_selected_ids) >= len(selected_ids)
+        ):
+            selected_ids = pending_selected_ids
+        selected = [self._records_by_id[selected_id] for selected_id in selected_ids if selected_id in self._records_by_id]
+        if record.id not in selected_ids:
+            selected = [record]
+        selected = [selected_record for selected_record in selected if selected_record.name not in self._locked_event_names]
+        if not selected:
+            return False
+        self.type_changed.emit(selected, new_name)
+        return True
 
-    def _on_item_changed(self, item: QtWidgets.QTableWidgetItem) -> None:
-        if self._blocked or item.column() not in (self._COL_START, self._COL_STOP):
-            return
-        record_id = item.data(QtCore.Qt.UserRole)
-        record = self._records_by_id.get(record_id)
-        if record is None or record.name in self._locked_event_names:
-            return
+    def _handle_time_edit(self, record: EventRecord, column: int, text: str) -> bool:
+        if self._blocked or record.name in self._locked_event_names:
+            return False
         try:
-            value = float(item.text())
+            value = float(text)
         except ValueError:
-            self.set_events(
-                self._events,
-                locked_event_names=self._locked_event_names,
-                channel_filter=self._channel_filter,
-            )
-            return
-        start = value if item.column() == self._COL_START else record.start_seconds
-        stop = value if item.column() == self._COL_STOP else record.stop_seconds
+            return False
+        start = value if column == self._COL_START else record.start_seconds
+        stop = value if column == self._COL_STOP else record.stop_seconds
         start, stop = sorted([start, stop])
-        changed_edge = "start" if item.column() == self._COL_START else "stop"
+        changed_edge = "start" if column == self._COL_START else "stop"
         self.time_changed.emit(record, start, stop, changed_edge)
+        return True
 
     def _emit_selection(self) -> None:
         if not self._blocked:
             self.selection_changed.emit(self.selected_records())
 
     def _record_id_for_row(self, row: int) -> str | None:
-        if row < 0 or row >= self.table.rowCount():
-            return None
-        for column in range(self.table.columnCount()):
-            item = self.table.item(row, column)
-            if item is None:
-                continue
-            record_id = item.data(QtCore.Qt.UserRole)
-            if isinstance(record_id, str):
-                return record_id
-        return None
+        return self._model.record_id_for_row(row)
 
     def _select_ids(self, selected: set[str], emit: bool, scroll: bool = False) -> None:
-        self.table.blockSignals(True)
-        self.table.clearSelection()
         model = self.table.selectionModel()
-        first_item = None
-        for row in range(self.table.rowCount()):
-            record_id = self._record_id_for_row(row)
-            if record_id in selected:
-                if model is not None:
-                    index = self.table.model().index(row, 0)
-                    model.select(index, QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
-                else:
-                    self.table.selectRow(row)
-                if first_item is None:
-                    first_item = self.table.item(row, 0)
-        self.table.blockSignals(False)
-        if scroll and first_item is not None:
-            self.table.scrollToItem(first_item, QtWidgets.QAbstractItemView.PositionAtTop)
+        if model is None:
+            return
+        first_index = QtCore.QModelIndex()
+        model.blockSignals(True)
+        try:
+            self.table.clearSelection()
+            rows = [row for record_id in selected if (row := self._model.row_for_record_id(record_id)) is not None]
+            for row in rows:
+                index = self.table.model().index(row, 0)
+                model.select(index, QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
+                if not first_index.isValid():
+                    first_index = index
+        finally:
+            model.blockSignals(False)
+        if scroll and first_index.isValid():
+            self.table.scrollTo(first_index, QtWidgets.QAbstractItemView.PositionAtTop)
         if emit:
             self._emit_selection()
 
@@ -494,7 +562,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         enabled, section, order = sort_state
         self.table.setSortingEnabled(enabled)
         if enabled and section >= 0:
-            self.table.sortItems(section, order)
+            self.table.sortByColumn(section, order)
 
 
 def _color_swatch_icon(color_hex: str) -> QtGui.QIcon:
