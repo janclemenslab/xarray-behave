@@ -71,7 +71,12 @@ def assemble(
     annotation_column: str = "Annotation",
     pixel_size_mm: Optional[float] = None,
 ) -> xr.Dataset:
-    """Assemble a native-timeline Dataset from discovered files."""
+    """Assemble a native-timeline Dataset from discovered files.
+
+    Audio and video entries may specify ``timestamp_path`` and
+    ``offset_seconds``. Audio entries also accept ``sampling_rate_Hz`` and
+    ``audio_dataset``; video entries accept ``frame_rate_Hz``.
+    """
 
     data_vars: dict[str, xr.DataArray] = {}
     attrs = dict(files.get("_context", {}))
@@ -82,7 +87,14 @@ def assemble(
     attrs.update(audio_info["attrs"])
 
     stamps = _load_sample_stamps(files, attrs, audio_info)
-    data_vars.update(_load_video_vars(files, stamps.get("camera"), attrs.get("ref_time", 0.0)))
+    data_vars.update(
+        _load_video_vars(
+            files,
+            stamps.get("camera"),
+            attrs.get("ref_time", 0.0),
+            audio_info["reference_is_absolute"],
+        )
+    )
     data_vars.update(_load_native_arrays(files, stamps, attrs["pixel_size_mm"]))
     data_vars.update(_load_event_vars(files, annotation_column))
 
@@ -202,27 +214,56 @@ def _entry_paths(entry):
 def _load_audio_vars(files, audio_sampling_rate, audio_dataset, lazy_load_audio):
     data_vars = {}
     attrs = {}
+    reference_is_absolute = False
+    reference_set = False
+    ref_time = 0.0
     for source_name, entry in files.get("audio", {}).items():
         path = _entry_path(entry)
         if not path:
             continue
+        entry = entry if isinstance(entry, Mapping) else {}
         loader = _loader_for_path("audio", path) or io.audio.AudioFile(path)
         song_channels = _all_source_channels(loader, path)
+        source_dataset = entry.get("audio_dataset", audio_dataset)
         data, _, sampling_rate = loader.load(
             path,
             song_channels=song_channels,
             return_nonsong_channels=False,
             lazy=lazy_load_audio,
-            audio_dataset=audio_dataset,
+            audio_dataset=source_dataset,
         )
-        if sampling_rate is None:
+        sampling_rate_override = entry.get("sampling_rate_Hz")
+        if sampling_rate_override is not None:
+            sampling_rate = float(sampling_rate_override)
+        elif sampling_rate is None:
             sampling_rate = audio_sampling_rate
+        timestamp_path = _timestamp_path(files, source_name, entry)
+        timestamp_data = _load_audio_timestamps(path, timestamp_path)
+        if sampling_rate is None and timestamp_data is not None:
+            indices, timestamps = timestamp_data
+            if len(indices) > 1:
+                sampling_rate = float(np.median(np.diff(indices)) / np.median(np.diff(timestamps)))
         if sampling_rate is None:
             raise ValueError(f"No sampling rate for audio file {path}.")
+        if sampling_rate <= 0:
+            raise ValueError(f"Sampling rate for audio file {path} must be positive.")
         data = data[:, np.newaxis] if getattr(data, "ndim", 2) == 1 else data
+        raw_times, has_absolute_time = _audio_sample_times(data.shape[0], sampling_rate, timestamp_data)
+        if not reference_set:
+            reference_is_absolute = has_absolute_time
+            ref_time = float(raw_times[0]) if has_absolute_time and len(raw_times) else 0.0
+            reference_set = True
+        if has_absolute_time:
+            origin = ref_time if reference_is_absolute else float(raw_times[0])
+            source_times = raw_times - origin
+        else:
+            source_times = raw_times
+        offset_seconds = float(entry.get("offset_seconds", 0.0))
+        source_times = source_times + offset_seconds
         attrs.setdefault("sampling_rate_Hz", sampling_rate)
+        attrs.setdefault("last_sample_number", data.shape[0] - 1)
 
-        splits = entry.get("splits", {"audio": ":"}) if isinstance(entry, Mapping) else {"audio": ":"}
+        splits = entry.get("splits", {"audio": ":"})
         used_channels = set()
         for var_name, channel_spec in splits.items():
             channels = _parse_channels(channel_spec, data.shape[1])
@@ -238,7 +279,7 @@ def _load_audio_vars(files, audio_sampling_rate, audio_dataset, lazy_load_audio)
                 data=data[:, channels],
                 dims=[time_name, channel_name],
                 coords={
-                    time_name: np.arange(data.shape[0]) / sampling_rate,
+                    time_name: source_times,
                     channel_name: channels,
                 },
                 attrs={
@@ -248,9 +289,58 @@ def _load_audio_vars(files, audio_sampling_rate, audio_dataset, lazy_load_audio)
                     "amplitude_units": "volts",
                     "source_audio": source_name,
                     "source_path": path,
+                    "offset_seconds": offset_seconds,
+                    "sampling_rate_overridden": sampling_rate_override is not None,
                 },
             )
-    return {"vars": data_vars, "attrs": attrs}
+            if timestamp_path:
+                data_vars[var_name].attrs["timestamp_path"] = str(timestamp_path)
+            if source_dataset:
+                data_vars[var_name].attrs["audio_dataset"] = str(source_dataset)
+    attrs["ref_time"] = ref_time
+    return {
+        "vars": data_vars,
+        "attrs": attrs,
+        "reference_is_absolute": reference_is_absolute,
+    }
+
+
+def _timestamp_path(files, source_name, entry):
+    if isinstance(entry, Mapping) and entry.get("timestamp_path"):
+        return entry["timestamp_path"]
+    return _entry_path(files.get("timestamps", {}).get(source_name, {}))
+
+
+def _load_audio_timestamps(path, timestamp_path):
+    if timestamp_path:
+        if str(timestamp_path).lower().endswith(".csv"):
+            indices, timestamps = io.timestamps.CsvStamps().load(timestamp_path)
+        else:
+            indices, timestamps = io.timestamps.DaqStamps().load(timestamp_path)
+        return np.asarray(indices), np.asarray(timestamps)
+    if str(path).lower().endswith("_daq.h5"):
+        import h5py
+
+        with h5py.File(path, "r") as file:
+            if "systemtime" in file and "samplenumber" in file:
+                indices, timestamps = io.timestamps.DaqStamps().load(path)
+                return np.asarray(indices), np.asarray(timestamps)
+    return None
+
+
+def _audio_sample_times(nb_samples, sampling_rate, timestamp_data):
+    if timestamp_data is None:
+        return np.arange(nb_samples) / sampling_rate, False
+    sample_numbers, timestamps = timestamp_data
+    if len(timestamps) == 0:
+        return np.arange(nb_samples) / sampling_rate, False
+    if len(timestamps) == 1:
+        return timestamps[0] + np.arange(nb_samples) / sampling_rate, True
+    stamp = SampStamp(
+        sample_times=np.asarray(timestamps, dtype=float).copy(),
+        sample_numbers=np.asarray(sample_numbers, dtype=float),
+    )
+    return np.asarray(stamp.sample_time(np.arange(nb_samples)), dtype=float), True
 
 
 def _all_source_channels(loader, path):
@@ -288,24 +378,21 @@ def _load_sample_stamps(files, attrs, audio_info):
         audio_path = _entry_path(next(iter(files["audio"].values())))
     timestamp_entries = files.get("timestamps", {})
     camera_timestamp = _entry_path(timestamp_entries.get("camera", timestamp_entries.get("main", {})))
-    if audio_path and camera_timestamp and audio_path.endswith(".h5"):
-        ss, last_sample, sampling_rate = _load_audio_video_stamp(camera_timestamp, audio_path)
-        attrs["sampling_rate_Hz"] = sampling_rate
-        attrs["last_sample_number"] = int(last_sample)
-        attrs["ref_time"] = float(ss.sample_time(0))
-        stamps["camera"] = ss
-    elif audio_info["vars"]:
+    if audio_info["vars"]:
         var = next(iter(audio_info["vars"].values()))
         sampling_rate = var.attrs["sampling_rate_Hz"]
-        sample_times = np.arange(var.shape[0]) / sampling_rate
-        attrs["ref_time"] = 0.0
+        sample_times = np.asarray(var[var.dims[0]].data, dtype=float)
+        if audio_info["reference_is_absolute"]:
+            sample_times = sample_times + attrs["ref_time"]
         attrs["last_sample_number"] = var.shape[0] - 1
         attrs.setdefault("sampling_rate_Hz", sampling_rate)
         if camera_timestamp:
             frame_times = _load_frame_times(camera_timestamp)
-            stamps["camera"] = SampStamp(sample_times=sample_times, frame_times=frame_times - frame_times[0])
+            if not audio_info["reference_is_absolute"]:
+                frame_times = frame_times - frame_times[0]
+            stamps["camera"] = SampStamp(sample_times=sample_times, frame_times=frame_times)
     else:
-        attrs["ref_time"] = 0.0
+        attrs.setdefault("ref_time", 0.0)
 
     ball_timestamp = _entry_path(timestamp_entries.get("ball", {}))
     if audio_path and audio_path.endswith(".h5") and ball_timestamp:
@@ -318,19 +405,25 @@ def _load_sample_stamps(files, attrs, audio_info):
     return stamps
 
 
-def _load_video_vars(files, ss, ref_time):
+def _load_video_vars(files, ss, ref_time, reference_is_absolute):
     data_vars = {}
     timestamp_entries = files.get("timestamps", {})
     for name, entry in files.get("video", {}).items():
         path = _entry_path(entry)
         if not path:
             continue
+        entry = entry if isinstance(entry, Mapping) else {}
         data_vars[f"{name}_video_path"] = xr.DataArray(str(path))
-        timestamp = _entry_path(timestamp_entries.get(name, {}))
+        timestamp = entry.get("timestamp_path") or _entry_path(timestamp_entries.get(name, {}))
+        offset_seconds = float(entry.get("offset_seconds", 0.0))
+        frame_rate_override = entry.get("frame_rate_Hz")
+        if frame_rate_override is not None and float(frame_rate_override) <= 0:
+            raise ValueError(f"Frame rate for video file {path} must be positive.")
         frame_times = None
         if timestamp:
             frame_times = _load_frame_times(timestamp)
-            frame_times = frame_times - (ref_time if ref_time else frame_times[0])
+            origin = ref_time if reference_is_absolute else frame_times[0]
+            frame_times = frame_times - origin
         elif name == "camera" and ss is not None:
             frame_times = ss.frames2times.y - ref_time
         if frame_times is None:
@@ -338,32 +431,28 @@ def _load_video_vars(files, ss, ref_time):
                 from .gui.modern_video import PyAVVideoReader
 
                 reader = PyAVVideoReader(path)
-                frame_times = np.arange(reader.number_of_frames) / reader.frame_rate
+                frame_rate = float(frame_rate_override or reader.frame_rate)
+                frame_times = np.arange(reader.number_of_frames) / frame_rate
             except Exception:
                 frame_times = None
         if frame_times is not None:
+            frame_times = np.asarray(frame_times, dtype=float) + offset_seconds
             frame_dim = f"{name}_frame"
             data_vars[f"{name}_frame_time"] = xr.DataArray(
-                np.asarray(frame_times),
+                frame_times,
                 dims=[frame_dim],
                 coords={frame_dim: np.arange(len(frame_times))},
-                attrs={"time_units": "seconds", "source_path": path},
+                attrs={
+                    "time_units": "seconds",
+                    "source_path": path,
+                    "offset_seconds": offset_seconds,
+                },
             )
+            if timestamp:
+                data_vars[f"{name}_frame_time"].attrs["timestamp_path"] = str(timestamp)
+            if frame_rate_override is not None:
+                data_vars[f"{name}_frame_time"].attrs["frame_rate_Hz"] = float(frame_rate_override)
     return data_vars
-
-
-def _load_audio_video_stamp(filepath_timestamps, filepath_daq):
-    frame_times = _load_frame_times(filepath_timestamps)
-    daq_samplenumber, daq_stamps = io.timestamps.DaqStamps().load(filepath_daq)
-    last_sample = daq_samplenumber[-1]
-    sampling_rate = np.around(np.mean(np.diff(daq_samplenumber)) / np.median(np.diff(daq_stamps)), -3)
-    ss = SampStamp(
-        sample_times=daq_stamps,
-        frame_times=frame_times,
-        sample_numbers=daq_samplenumber,
-        auto_monotonize=False,
-    )
-    return ss, last_sample, sampling_rate
 
 
 def _load_frame_times(path):

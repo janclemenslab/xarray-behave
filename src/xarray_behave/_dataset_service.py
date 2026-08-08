@@ -12,6 +12,48 @@ from . import annot, api, event_utils, io, v1 as xb
 logger = logging.getLogger(__name__)
 
 
+def assemble_from_media(media_data: dict):
+    files = {"audio": {}, "video": {}}
+    for source in media_data.get("audio", []):
+        name = source["name"]
+        entry = {key: value for key, value in source.items() if key != "name"}
+        entry["splits"] = {name: ":"}
+        files["audio"][name] = entry
+    for source in media_data.get("video", []):
+        name = source["name"]
+        files["video"][name] = {key: value for key, value in source.items() if key != "name"}
+    if not files["audio"]:
+        raise ValueError("At least one audio source is required.")
+    return api.assemble(files, lazy_load_audio=True)
+
+
+def assemble_project_recording(recording):
+    audio = dict(recording.audio)
+    audio["splits"] = {"song_raw": ":"}
+    videos = {}
+    for index, source in enumerate(recording.videos):
+        source = dict(source)
+        name = source.pop("name", "camera" if index == 0 else f"camera_{index + 1}")
+        videos[name] = source
+    ds = api.assemble({"audio": {"main": audio}, "video": videos}, lazy_load_audio=True)
+    ds.attrs.update(
+        {
+            "filename": str(recording.audio_path),
+            "filebase": str(recording.audio_path.with_suffix("")),
+            "datename": "",
+            "res_path": "",
+            "dat_path": "",
+        }
+    )
+    return replace_event_times(ds, recording.annotations)
+
+
+def replace_event_times(ds, event_times):
+    if "index" in ds.dims:
+        ds = ds.drop_dims("index")
+    return ds.combine_first(annot.Events(event_times).to_dataset())
+
+
 def assemble_from_file(filename: str, form_data: dict):
     filter_song_requested = form_data["filter_song"] == "yes"
     ds = xb.assemble(
@@ -252,8 +294,6 @@ def prepare_for_save(ds, event_times, original_spatial_units=None, generate_even
 
     event_times = annot.Events(event_times)
     ds_event_times = event_times.to_dataset()
-    if "index" in ds.dims and "event_time" in ds.dims:
-        ds = ds.drop_dims(["index", "event_time"])
-        ds = ds.combine_first(ds_event_times)
-
-    return ds
+    if "index" in ds.dims:
+        ds = ds.drop_dims("index")
+    return ds.combine_first(ds_event_times)

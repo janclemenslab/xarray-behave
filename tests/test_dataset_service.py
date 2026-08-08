@@ -2,6 +2,62 @@ import numpy as np
 import xarray as xr
 
 from xarray_behave import _dataset_service as dataset_service, annot
+from xarray_behave.gui import project
+
+
+def test_assemble_from_media_builds_unique_audio_splits(monkeypatch):
+    calls = {}
+
+    def fake_assemble(files, **kwargs):
+        calls["files"] = files
+        calls["kwargs"] = kwargs
+        return xr.Dataset()
+
+    monkeypatch.setattr(dataset_service.api, "assemble", fake_assemble)
+    result = dataset_service.assemble_from_media(
+        {
+            "audio": [
+                {"name": "left", "path": "/tmp/left.wav", "offset_seconds": 0.0},
+                {"name": "right", "path": "/tmp/right.wav", "offset_seconds": 0.2},
+            ],
+            "video": [{"name": "camera", "path": "/tmp/camera.mp4", "offset_seconds": 0.0}],
+        }
+    )
+
+    assert result.identical(xr.Dataset())
+    assert calls["kwargs"] == {"lazy_load_audio": True}
+    assert calls["files"] == {
+        "audio": {
+            "left": {"path": "/tmp/left.wav", "offset_seconds": 0.0, "splits": {"left": ":"}},
+            "right": {"path": "/tmp/right.wav", "offset_seconds": 0.2, "splits": {"right": ":"}},
+        },
+        "video": {"camera": {"path": "/tmp/camera.mp4", "offset_seconds": 0.0}},
+    }
+
+
+def test_assemble_project_recording_uses_song_raw_and_embedded_annotations(monkeypatch, tmp_path):
+    calls = {}
+
+    def fake_assemble(files, **kwargs):
+        calls["files"] = files
+        calls["kwargs"] = kwargs
+        return xr.Dataset()
+
+    monkeypatch.setattr(dataset_service.api, "assemble", fake_assemble)
+    recording = project.Recording(
+        "clip",
+        {"path": str(tmp_path / "clip.wav")},
+        videos=[{"name": "camera", "path": str(tmp_path / "clip.mp4")}],
+        annotations=annot.Events({"pulse": [[0.1, 0.1, -1]]}),
+    )
+
+    result = dataset_service.assemble_project_recording(recording)
+
+    assert calls["files"]["audio"]["main"]["splits"] == {"song_raw": ":"}
+    assert calls["files"]["video"] == {"camera": {"path": str(tmp_path / "clip.mp4")}}
+    assert calls["kwargs"] == {"lazy_load_audio": True}
+    assert result.event_names.item() == "pulse"
+    assert result.attrs["filename"] == str(tmp_path / "clip.wav")
 
 
 def test_assemble_from_file_maps_form_data(monkeypatch):
@@ -323,3 +379,13 @@ def test_prepare_for_save_can_update_traces_when_requested(monkeypatch):
     assert calls == [("traces", event_times), ("units", "mm")]
     assert result.event_names.values.tolist() == ["pulse"]
     np.testing.assert_allclose(result.event_times.values[:, :2], [[0.0, 0.0]])
+
+
+def test_prepare_for_save_adds_event_table_to_new_dataset():
+    result = dataset_service.prepare_for_save(
+        xr.Dataset({"audio": xr.DataArray(np.zeros((2, 1)), dims=["audio_time", "audio_channels"])}),
+        annot.Events({"pulse": np.array([[0.1, 0.2, 0]])}),
+    )
+
+    assert result.event_names.values.tolist() == ["pulse"]
+    np.testing.assert_allclose(result.event_times.values, [[0.1, 0.2, 0.0]])

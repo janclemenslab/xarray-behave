@@ -4,8 +4,8 @@ import xarray as xr
 import xarray_behave  # noqa: F401 - sets QT_API before qtpy imports
 from qtpy import QtCore, QtWidgets
 from xarray_behave.annot import Events
-from xarray_behave.gui import app as gui_app, gui_config, view_dialog, views
-from xarray_behave.gui.app import PSV
+from xarray_behave.gui import app as gui_app, gui_config, project, view_dialog, views
+from xarray_behave.gui.app import DataSource, PSV
 from xarray_behave.gui.event_widgets import (
     AudioChannelSettings,
     EventBarsView,
@@ -70,6 +70,98 @@ def _v2_audio_dataset():
     ds.audio.attrs["sampling_rate_Hz"] = 1_000
     ds.other.attrs["sampling_rate_Hz"] = 500
     return ds
+
+
+def test_psv_project_panel_is_flat_and_selects_current_recording(tmp_path):
+    _app()
+    current = tmp_path / "a.wav"
+    current.write_bytes(b"")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    other = nested / "b.WAV"
+    other.write_bytes(b"")
+    document = project.project_from_audio_files([current, other], {"version": 1})
+    window = PSV(
+        _audio_dataset(),
+        data_source=DataSource("project", str(current)),
+        config_manager=gui_config.GuiConfigManager(home=tmp_path / "home"),
+        project_document=document,
+        recording_name="a",
+    )
+
+    assert window.project_panel.recordings.count() == 2
+    assert [window.project_panel.recordings.item(index).data(QtCore.Qt.UserRole) for index in range(2)] == ["a", "b"]
+    assert window.project_panel.recordings.currentItem().data(QtCore.Qt.UserRole) == "a"
+    window._switching_project = True
+    window.close()
+
+
+def test_project_switch_keeps_annotations_and_settings_in_memory(tmp_path, monkeypatch):
+    _app()
+    current = tmp_path / "a.wav"
+    target = tmp_path / "b.wav"
+    current.write_bytes(b"")
+    target.write_bytes(b"")
+    manager = gui_config.GuiConfigManager(home=tmp_path / "home")
+    document = project.project_from_audio_files([current, target], {"version": 1})
+    window = PSV(
+        _audio_dataset(Events({"song": []})),
+        data_source=DataSource("project", str(current)),
+        config_manager=manager,
+        project_document=document,
+        recording_name="a",
+    )
+    window.spec_compression_ratio = 7
+    window.event_times.add_time("song", 0.1, 0.2)
+    project_panel = window.project_panel
+    preset_panel = window.preset_panel
+    table_updates = []
+    monkeypatch.setattr(
+        gui_app.dataset_service,
+        "assemble_project_recording",
+        lambda recording: _audio_dataset(Events({"song": np.array([[0.3, 0.4, -1]])})),
+    )
+    monkeypatch.setattr(project_panel, "set_project", lambda *_args: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(preset_panel, "set_presets", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(window.events_table, "set_events", lambda *args, **kwargs: table_updates.append(args[0]))
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError()))
+
+    window._open_project_recording("b")
+
+    assert document.recording("a").annotations["song"].tolist() == [[0.1, 0.2, -1.0]]
+    assert document.settings["viewer"]["spectrogram"]["compression"] == 7
+    assert [item["name"] for item in document.settings["event_types"]] == ["song"]
+    assert window.current_recording_name == "b"
+    assert window.data_source.name == str(target)
+    assert window.project_panel is project_panel
+    assert window.preset_panel is preset_panel
+    assert window.event_times["song"].tolist() == [[0.3, 0.4, -1.0]]
+    assert table_updates
+
+
+def test_failed_project_switch_keeps_current_window(tmp_path, monkeypatch):
+    _app()
+    current = tmp_path / "a.wav"
+    target = tmp_path / "b.wav"
+    current.write_bytes(b"")
+    target.write_bytes(b"")
+    document = project.project_from_audio_files([current, target], {"version": 1})
+    window = PSV(
+        _audio_dataset(),
+        data_source=DataSource("project", str(current)),
+        config_manager=gui_config.GuiConfigManager(home=tmp_path / "home"),
+        project_document=document,
+        recording_name="a",
+    )
+    monkeypatch.setattr(gui_app.dataset_service, "assemble_project_recording", lambda recording: (_ for _ in ()).throw(ValueError()))
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *args, **kwargs: None)
+
+    window._open_project_recording("b")
+
+    assert window.data_source.name == str(current)
+    assert window.isVisible()
+    window._switching_project = True
+    window.close()
 
 
 def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
@@ -139,7 +231,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert snapshot["viewer"]["audio"]["playback_all"] is True
     assert snapshot["viewer"]["annotations"]["table_audio_link"] is True
     assert snapshot["viewer"]["annotations"]["table_audio_filter"] is True
-    assert [item["name"] for item in snapshot["event_types"]] == ["pulse", "song"]
+    assert "event_types" not in snapshot
 
     window.close()
     assert "selection" not in gui_config.read_config(tmp_path / ".das.yaml")
@@ -258,6 +350,27 @@ def test_psv_audio_selector_switches_v2_audio_sources():
     assert window.fs_song == 500
     np.testing.assert_array_equal(window.x, np.arange(4) / 500)
     np.testing.assert_array_equal(window.y, np.arange(100, 104, dtype=float))
+
+    window.close()
+
+
+def test_psv_audio_selector_preserves_global_time_with_offsets(tmp_path):
+    _app()
+    ds = _v2_audio_dataset()
+    ds = ds.assign_coords(
+        {
+            "audio_time": 10.0 + np.arange(6) / 1_000,
+            "other_time": 9.998 + np.arange(4) / 500,
+        }
+    )
+    window = PSV(ds, config_manager=gui_config.GuiConfigManager(home=tmp_path))
+    window.t0 = 2
+    window.cb2.setCurrentIndex(2)
+
+    assert window.current_audio_source_name == "other"
+    assert np.isclose(window.t0, 2)
+    assert np.isclose(window._sample_seconds(window.t0), 10.002)
+    assert window.edit_time.text() == "10.002"
 
     window.close()
 

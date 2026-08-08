@@ -117,44 +117,6 @@ def test_handle_das_predictions_adds_proposals_and_refreshes_state():
     assert refreshed == {"selector": True, "xy": True}
 
 
-def test_open_daws_window_uses_whisper_gui_and_current_audio(monkeypatch):
-    calls = {}
-
-    class _Destroyed:
-        def connect(self, callback):
-            calls["destroyed_callback"] = callback
-
-    class FakeDASWhisperWindow:
-        destroyed = _Destroyed()
-
-        def __init__(self, **kwargs):
-            calls["kwargs"] = kwargs
-
-        def setAttribute(self, value):
-            calls["attribute"] = value
-
-        def show(self):
-            calls["shown"] = True
-
-    fake_module = ModuleType("das_whisper.gui_app")
-    fake_module.DASWhisperWindow = FakeDASWhisperWindow
-    monkeypatch.setitem(sys.modules, "das_whisper.gui_app", fake_module)
-
-    window = MainWindow.__new__(MainWindow)
-    window._has_current_das_audio = lambda: True
-    window._das_current_audio = lambda start, stop: (np.zeros(10), 1_000, start)
-    window._handle_das_predictions = lambda annotations, time_offset_seconds: None
-
-    daws_window = window._open_daws_window("predict", use_current_audio=True)
-
-    assert isinstance(daws_window, FakeDASWhisperWindow)
-    assert calls["kwargs"]["initial_tab"] == "predict"
-    assert calls["kwargs"]["current_audio_provider"] is window._das_current_audio
-    assert calls["kwargs"]["on_predictions"] is window._handle_das_predictions
-    assert calls["shown"] is True
-    assert window._daws_windows == [daws_window]
-
-
 def test_open_das_train_window_uses_current_audio_and_duration(monkeypatch):
     calls = {}
 

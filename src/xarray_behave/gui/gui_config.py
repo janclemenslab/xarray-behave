@@ -359,6 +359,7 @@ def read_config(path: str | os.PathLike[str]) -> dict[str, Any]:
 def write_config(path: str | os.PathLike[str], data: Mapping[str, Any]) -> Path:
     config_path = Path(path).expanduser()
     clean = sanitize_config(data)
+    clean.pop("event_types", None)
     config_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = None
     try:
@@ -413,6 +414,22 @@ class GuiConfigManager:
                     raise
                 logger.warning("Ignoring invalid automatic GUI config %s: %s", path, exc)
 
+        self.source = source
+        self.config = sanitize_config(merged)
+        return deepcopy(self.config)
+
+    def load_for_project(self, source: str, project_config: Mapping[str, Any]) -> dict[str, Any]:
+        merged: dict[str, Any] = {"version": CONFIG_VERSION}
+        if self.global_path.exists():
+            try:
+                merged = deep_merge(merged, read_config(self.global_path))
+            except ConfigError as exc:
+                logger.warning("Ignoring invalid automatic GUI config %s: %s", self.global_path, exc)
+        merged = deep_merge(merged, sanitize_config(project_config))
+        if self.explicit_path is not None:
+            if not self.explicit_path.exists():
+                raise ConfigError(f"Explicit GUI config does not exist: {self.explicit_path}")
+            merged = deep_merge(merged, read_config(self.explicit_path))
         self.source = source
         self.config = sanitize_config(merged)
         return deepcopy(self.config)

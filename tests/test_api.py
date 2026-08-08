@@ -3,6 +3,11 @@ import h5py
 import pytest
 import soundfile as sf
 import xarray_behave as xb
+from xarray_behave.gui import modern_video
+
+
+def _write_timestamps(path, rows):
+    np.savetxt(path, rows, delimiter=",", header="index,timestamp", comments="")
 
 
 def test_discover_default_manifest_finds_current_scheme():
@@ -99,6 +104,90 @@ def test_discover_custom_manifest_multiple_videos(tmp_path):
     files = xb.discover(root=str(tmp_path), manifest=manifest)
 
     assert set(files["video"]) == {"camera", "side"}
+
+
+def test_assemble_media_sources_align_to_first_audio_clock(tmp_path):
+    master_path = tmp_path / "master.wav"
+    aux_path = tmp_path / "aux.wav"
+    sf.write(master_path, np.zeros((10, 1), dtype=np.float32), samplerate=10, subtype="FLOAT")
+    sf.write(aux_path, np.zeros((10, 1), dtype=np.float32), samplerate=10, subtype="FLOAT")
+    master_timestamps = tmp_path / "master_timestamps.csv"
+    aux_timestamps = tmp_path / "aux_timestamps.csv"
+    camera_timestamps = tmp_path / "camera_timestamps.csv"
+    _write_timestamps(master_timestamps, [[0, 100.0], [9, 100.9]])
+    _write_timestamps(aux_timestamps, [[0, 100.25], [9, 101.15]])
+    _write_timestamps(camera_timestamps, [[0, 100.5], [1, 100.7]])
+
+    ds = xb.assemble(
+        {
+            "audio": {
+                "master": {
+                    "path": str(master_path),
+                    "timestamp_path": str(master_timestamps),
+                    "splits": {"master": ":"},
+                },
+                "aux": {
+                    "path": str(aux_path),
+                    "timestamp_path": str(aux_timestamps),
+                    "offset_seconds": 0.1,
+                    "splits": {"aux": ":"},
+                },
+            },
+            "video": {
+                "camera": {
+                    "path": str(tmp_path / "camera.mp4"),
+                    "timestamp_path": str(camera_timestamps),
+                    "offset_seconds": -0.1,
+                }
+            },
+        }
+    )
+
+    assert ds.attrs["ref_time"] == 100.0
+    np.testing.assert_allclose(ds.master_time, np.arange(10) / 10)
+    np.testing.assert_allclose(ds.aux_time, 0.35 + np.arange(10) / 10)
+    np.testing.assert_allclose(ds.camera_frame_time, [0.4, 0.6])
+
+
+def test_assemble_media_uses_rate_overrides_and_embedded_daq_timestamps(monkeypatch, tmp_path):
+    daq_path = tmp_path / "recording_daq.h5"
+    with h5py.File(daq_path, "w") as file:
+        file.create_dataset("samples", data=np.zeros((10, 1), dtype=np.float32))
+        file.create_dataset("systemtime", data=np.array([[20.0], [20.5], [21.0]]))
+        file.create_dataset("samplenumber", data=np.array([[0], [5], [5]]))
+        file.attrs["rate"] = 10
+
+    array_path = tmp_path / "other.npy"
+    np.save(array_path, np.zeros((10, 1), dtype=np.float32))
+
+    class FakeVideoReader:
+        number_of_frames = 3
+        frame_rate = 20
+
+        def __init__(self, path):
+            self.path = path
+
+    monkeypatch.setattr(modern_video, "PyAVVideoReader", FakeVideoReader)
+    ds = xb.assemble(
+        {
+            "audio": {
+                "daq": {"path": str(daq_path), "splits": {"daq": ":"}},
+                "other": {
+                    "path": str(array_path),
+                    "sampling_rate_Hz": 20,
+                    "offset_seconds": 2.0,
+                    "splits": {"other": ":"},
+                },
+            },
+            "video": {"side": {"path": str(tmp_path / "side.mp4"), "frame_rate_Hz": 5}},
+        }
+    )
+
+    assert ds.attrs["ref_time"] == 20.0
+    np.testing.assert_allclose(ds.daq_time, np.arange(10) / 10)
+    np.testing.assert_allclose(ds.other_time, 2.0 + np.arange(10) / 20)
+    assert ds.other.attrs["sampling_rate_overridden"] is True
+    np.testing.assert_allclose(ds.side_frame_time, [0.0, 0.2, 0.4])
 
 
 def test_resample_aligns_native_tracks():

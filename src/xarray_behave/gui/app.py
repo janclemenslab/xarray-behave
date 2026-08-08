@@ -25,10 +25,11 @@ from qtpy import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 
 import xarray_behave
-from .. import _dataset_service as dataset_service, xarray_behave as xb, loaders as ld, annot
+from .. import _dataset_service as dataset_service, api as v2_api, xarray_behave as xb, loaders as ld, annot
 from .formbuilder import YamlDialog
+from .media_dialog import MediaFilesDialog
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
-from . import utils, views, event_widgets, gui_config, modern_video
+from . import utils, views, event_widgets, gui_config, modern_video, project as project_model
 from .style_profile import TEXT_PRIMARY, WINDOW_STYLESHEET
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,69 @@ class DataSource:
         self.name = name
 
 
+class ProjectPanel(QtWidgets.QGroupBox):
+    recording_activated = QtCore.Signal(str)
+    add_requested = QtCore.Signal()
+    edit_requested = QtCore.Signal(str)
+    remove_requested = QtCore.Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__("Project", parent)
+        layout = QtWidgets.QVBoxLayout(self)
+        self.recordings = QtWidgets.QListWidget(self)
+        self.recordings.setUniformItemSizes(True)
+        self.recordings.itemClicked.connect(self._activate)
+        layout.addWidget(self.recordings, 1)
+
+        buttons = QtWidgets.QHBoxLayout()
+        self.add_button = QtWidgets.QPushButton("Add", self)
+        self.edit_button = QtWidgets.QPushButton("Edit/Relink", self)
+        self.remove_button = QtWidgets.QPushButton("Remove", self)
+        self.add_button.clicked.connect(self.add_requested)
+        self.edit_button.clicked.connect(lambda: self._emit_selected(self.edit_requested))
+        self.remove_button.clicked.connect(lambda: self._emit_selected(self.remove_requested))
+        buttons.addWidget(self.add_button)
+        buttons.addWidget(self.edit_button)
+        buttons.addWidget(self.remove_button)
+        layout.addLayout(buttons)
+
+    def set_project(self, document, current_name: str | None = None) -> None:
+        self.setTitle(_project_title(document))
+        self.recordings.blockSignals(True)
+        self.recordings.clear()
+        for recording in document.recordings:
+            suffix = " [missing]" if not recording.available else ""
+            if recording.annotations_changed:
+                suffix += " *"
+            item = QtWidgets.QListWidgetItem(recording.name + suffix)
+            item.setData(QtCore.Qt.UserRole, recording.name)
+            item.setToolTip(str(recording.audio_path))
+            if not recording.available:
+                item.setForeground(QtGui.QColor("#888888"))
+            self.recordings.addItem(item)
+            if recording.name == current_name:
+                self.recordings.setCurrentItem(item)
+        self.recordings.blockSignals(False)
+
+    def set_current_recording(self, name: str) -> None:
+        for index in range(self.recordings.count()):
+            if self.recordings.item(index).data(QtCore.Qt.UserRole) == name:
+                self.recordings.setCurrentRow(index)
+                return
+
+    def _selected_name(self) -> str | None:
+        item = self.recordings.currentItem()
+        return None if item is None else item.data(QtCore.Qt.UserRole)
+
+    def _activate(self, item) -> None:
+        self.recording_activated.emit(item.data(QtCore.Qt.UserRole))
+
+    def _emit_selected(self, signal) -> None:
+        name = self._selected_name()
+        if name is not None:
+            signal.emit(name)
+
+
 def _num_flies(ds):
     return int(ds.sizes["flies"]) if "flies" in ds.sizes else 1
 
@@ -97,12 +161,62 @@ def _apply_cli_bandpass_filter(form, spec_freq_min, spec_freq_max, skip_dialog: 
     form.set_form_data(form_data)
 
 
+def _project_title(document: project_model.Project) -> str:
+    return document.path.name[: -len(project_model.PROJECT_SUFFIX)] if document.path is not None else "Untitled Project"
+
+
+def _add_project_annotation_types(document: project_model.Project) -> None:
+    configured = document.settings.setdefault("event_types", [])
+    known = {item["name"] for item in configured}
+    added = False
+    for recording in document.recordings:
+        for name in recording.annotations.names:
+            if name in known:
+                continue
+            configured.append({"name": name})
+            known.add(name)
+            added = True
+    document.settings = gui_config.sanitize_config(document.settings)
+    if added and document.is_saved:
+        document.document_changed = True
+
+
+def _apply_project_cli_settings(manager, events_string="", spec_freq_min=None, spec_freq_max=None) -> None:
+    config = gui_config.deep_merge({}, manager.config)
+    spectrogram = config.setdefault("viewer", {}).setdefault("spectrogram", {})
+    if spec_freq_min is not None:
+        spectrogram["fmin"] = spec_freq_min
+    if spec_freq_max is not None:
+        spectrogram["fmax"] = spec_freq_max
+    configured = config.setdefault("event_types", [])
+    known = {item["name"] for item in configured}
+    for value in events_string.split(";"):
+        name = value.strip().split(",", 1)[0]
+        if name and name not in known:
+            configured.append({"name": name})
+            known.add(name)
+    manager.config = gui_config.sanitize_config(config)
+
+
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent=None, title="Deep Audio Segmenter"):
+    def __init__(
+        self,
+        parent=None,
+        title="Deep Audio Segmenter",
+        media_manifest: Optional[str] = None,
+        is_das: bool = False,
+        project_document: project_model.Project | None = None,
+    ):
         super().__init__(parent)
 
         self.parent = parent
+        self.is_das = bool(is_das)
+        self.project = project_document
+        self.current_recording_name = None
+        self.project_panel = None
+        self._switching_project = False
         self.config_manager = _get_config_manager()
+        media_callback = partial(self.from_media, manifest=media_manifest) if media_manifest else self.from_media
 
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
@@ -119,8 +233,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bar = self.menuBar()
 
         self.file_menu = self.bar.addMenu("File")
-        self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
-        self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
+        if self.is_das:
+            self._add_keyed_menuitem(self.file_menu, "Open audio file", self.new_project_from_file)
+            self._add_keyed_menuitem(self.file_menu, "Import folder as project", self.new_project_from_folder)
+            self._add_keyed_menuitem(self.file_menu, "Open project", self.open_project)
+            if self.project is not None:
+                self._add_keyed_menuitem(self.file_menu, "Add recordings", self._add_project_recordings)
+                self.file_menu.addSeparator()
+                self._add_keyed_menuitem(self.file_menu, "Save Project", self.save_project)
+                self._add_keyed_menuitem(self.file_menu, "Save Project As...", self.save_project_as)
+        else:
+            self._add_keyed_menuitem(self.file_menu, "New from media files", media_callback)
+            self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
+            self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
         self.file_menu.addSeparator()
@@ -131,15 +256,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self._add_keyed_menuitem(self.das_menu, "Train", self.das_train, None)
         self._add_keyed_menuitem(self.das_menu, "Predict", self.das_predict, None)
 
-        self.daws_menu = self.bar.addMenu("DAWS")
-        self._add_keyed_menuitem(self.daws_menu, "Train", self.daws_train, None)
-        self._add_keyed_menuitem(self.daws_menu, "Predict", self.daws_predict, None)
-
         # add initial buttons
         self.hb = QtWidgets.QVBoxLayout()
-        self.hb.addWidget(self.add_button("Load audio from file", self.from_file))
-        self.hb.addWidget(self.add_button("Create dataset from ethodrome folder", self.from_dir))
-        self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
+        if self.project is not None:
+            self.project_panel = self._make_project_panel()
+            self.hb.addWidget(self.project_panel, 1)
+        elif self.is_das:
+            self.hb.addWidget(self.add_button("Open audio file", self.new_project_from_file))
+            self.hb.addWidget(self.add_button("Import folder as project", self.new_project_from_folder))
+            self.hb.addWidget(self.add_button("Open project", self.open_project))
+        else:
+            self.hb.addWidget(self.add_button("Create dataset from media files", media_callback))
+            self.hb.addWidget(self.add_button("Load audio from file", self.from_file))
+            self.hb.addWidget(self.add_button("Create dataset from ethodrome folder", self.from_dir))
+            self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
 
         self.cb = pg.GraphicsLayoutWidget()
         self.cb.setLayout(self.hb)
@@ -147,10 +277,32 @@ class MainWindow(QtWidgets.QMainWindow):
         self._restore_window_geometry()
 
     def closeEvent(self, event):
-        try:
-            self.config_manager.save_global(self._config_snapshot())
-        except Exception:
-            logger.exception("Could not save global GUI configuration to %s", self.config_manager.global_path)
+        if self.project is not None and not self._switching_project:
+            self._capture_project_state()
+            if self.project.is_dirty:
+                choice = QtWidgets.QMessageBox.warning(
+                    self,
+                    "Unsaved project changes",
+                    "Save changes before closing?",
+                    QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel,
+                    QtWidgets.QMessageBox.Save,
+                )
+                if choice == QtWidgets.QMessageBox.Cancel:
+                    event.ignore()
+                    return
+                if choice == QtWidgets.QMessageBox.Save and not self.save_project():
+                    event.ignore()
+                    return
+            self._finish_close(event, save_global=False)
+            return
+        self._finish_close(event, save_global=True)
+
+    def _finish_close(self, event, *, save_global: bool) -> None:
+        if save_global:
+            try:
+                self.config_manager.save_global(self._config_snapshot())
+            except Exception:
+                logger.exception("Could not save global GUI configuration to %s", self.config_manager.global_path)
         stuff_to_delete = list(self.__dict__.keys())
         for stuff in stuff_to_delete:
             try:
@@ -167,6 +319,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _config_snapshot(self):
         config = gui_config.deep_merge({}, self.config_manager.config)
         config.pop("selection", None)
+        config.pop("event_types", None)
         geometry = self.geometry()
         config["version"] = gui_config.CONFIG_VERSION
         config.setdefault("window", {})["geometry"] = {
@@ -221,6 +374,277 @@ class MainWindow(QtWidgets.QMainWindow):
         button.setText(text)
         button.clicked.connect(callback)
         return button
+
+    @classmethod
+    def new_project_from_file(
+        cls,
+        qt_keycode=None,
+        filename: str | None = None,
+        events_string: str = "",
+        spec_freq_min=None,
+        spec_freq_max=None,
+    ):
+        del qt_keycode
+        if not filename:
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+                None,
+                "Open audio file",
+                "",
+                "Audio files (*.wav *.aif *.aiff *.mp3 *.flac *.ogg *.m4a *.h5 *.hdf5 *.hdfs *.npy *.npz *.mmap);;All files (*)",
+            )
+        if not filename:
+            return None
+        manager = _get_config_manager()
+        manager.load_for_source(filename)
+        _apply_project_cli_settings(manager, events_string, spec_freq_min, spec_freq_max)
+        document = project_model.project_from_audio_files([filename], manager.config)
+        _add_project_annotation_types(document)
+        return MainWindow.from_project(document, config_manager=manager)
+
+    @classmethod
+    def new_project_from_folder(
+        cls,
+        qt_keycode=None,
+        dirname: str | None = None,
+        events_string: str = "",
+        spec_freq_min=None,
+        spec_freq_max=None,
+    ):
+        del qt_keycode
+        if not dirname:
+            dirname = QtWidgets.QFileDialog.getExistingDirectory(None, "Import folder as project")
+        if not dirname:
+            return None
+        paths = project_model.audio_files_in_folder(dirname)
+        if not paths:
+            QtWidgets.QMessageBox.warning(None, "Import folder", "No supported audio files were found.")
+            return None
+        manager = _get_config_manager()
+        manager.load_for_source(dirname)
+        _apply_project_cli_settings(manager, events_string, spec_freq_min, spec_freq_max)
+        document = project_model.project_from_audio_files(paths, manager.config, document_changed=True)
+        _add_project_annotation_types(document)
+        return MainWindow.from_project(document, config_manager=manager)
+
+    @classmethod
+    def open_project(cls, qt_keycode=None, filename: str | None = None):
+        del qt_keycode
+        if not filename:
+            filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+                None, "Open project", "", "xarray-behave projects (*.xbp.yaml);;All files (*)"
+            )
+        if not filename:
+            return None
+        try:
+            document = project_model.read_project(filename)
+            manager = _get_config_manager()
+            document.settings = manager.load_for_project(filename, document.settings)
+            _add_project_annotation_types(document)
+            return MainWindow.from_project(document, config_manager=manager)
+        except Exception as exc:
+            logger.exception("Could not open project %s", filename)
+            QtWidgets.QMessageBox.warning(None, "Could not open project", str(exc))
+            return None
+
+    @classmethod
+    def from_project(
+        cls,
+        document: project_model.Project,
+        recording_name: str | None = None,
+        config_manager: gui_config.GuiConfigManager | None = None,
+    ):
+        manager = config_manager or _get_config_manager()
+        manager.config = gui_config.sanitize_config(document.settings)
+        recording = None
+        if recording_name is not None:
+            candidate = document.recording(recording_name)
+            if candidate.available:
+                recording = candidate
+        if recording is None:
+            recording = next((item for item in document.recordings if item.available), None)
+        if recording is None:
+            window = MainWindow(
+                title=_project_title(document),
+                is_das=True,
+                project_document=document,
+            )
+            window.config_manager = manager
+            QtWidgets.QMessageBox.warning(
+                window, "Missing media", "No project recording is currently available. Relink one to continue."
+            )
+            window.show()
+            return window
+        try:
+            ds = dataset_service.assemble_project_recording(recording)
+        except Exception as exc:
+            logger.exception("Could not open project recording %s", recording.name)
+            QtWidgets.QMessageBox.warning(None, "Could not open recording", f"{recording.audio_path}\n\n{exc}")
+            return None
+        return PSV(
+            ds,
+            title=f"{_project_title(document)} - {recording.name}",
+            data_source=DataSource("project", str(recording.audio_path)),
+            config_manager=manager,
+            project_document=document,
+            recording_name=recording.name,
+        )
+
+    def _make_project_panel(self) -> ProjectPanel:
+        panel = ProjectPanel(self)
+        panel.recording_activated.connect(self._open_project_recording)
+        panel.add_requested.connect(self._add_project_recordings)
+        panel.edit_requested.connect(self._edit_project_recording)
+        panel.remove_requested.connect(self._remove_project_recording)
+        panel.set_project(self.project, self.current_recording_name)
+        return panel
+
+    def _refresh_project_panel(self) -> None:
+        if self.project_panel is not None:
+            self.project_panel.set_project(self.project, self.current_recording_name)
+
+    def _capture_project_state(self, *, refresh_project_panel: bool = True) -> None:
+        if self.project is None:
+            return
+        if self.current_recording_name is not None and hasattr(self, "event_times"):
+            self.project.recording(self.current_recording_name).set_annotations(self.event_times)
+        config = self._config_snapshot()
+        config["event_types"] = (
+            self._event_type_settings()
+            if hasattr(self, "_event_type_settings")
+            else self.project.settings.get("event_types", [])
+        )
+        if self.project.is_saved or len(self.project.recordings) > 1 or self.project.document_changed:
+            self.project.set_settings(config)
+        else:
+            self.project.settings = config
+        if refresh_project_panel:
+            self._refresh_project_panel()
+
+    def _add_project_recordings(self, qt_keycode=None) -> None:
+        del qt_keycode
+        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self,
+            "Add recordings",
+            "",
+            "Audio files (*.wav *.aif *.aiff *.mp3 *.flac *.ogg *.m4a *.h5 *.hdf5 *.hdfs *.npy *.npz *.mmap);;All files (*)",
+        )
+        if not paths:
+            return
+        self._capture_project_state()
+        added = self.project.add_recordings(paths)
+        _add_project_annotation_types(self.project)
+        self._refresh_project_panel()
+        if self.current_recording_name is None and added:
+            self._open_project_recording(added[0].name)
+
+    def _edit_project_recording(self, name: str) -> None:
+        recording = self.project.recording(name)
+        files = {
+            "audio": {recording.name: dict(recording.audio)},
+            "video": {video.get("name", f"camera_{index + 1}"): dict(video) for index, video in enumerate(recording.videos)},
+        }
+        dialog = MediaFilesDialog(self, files=files)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        try:
+            media = dialog.media_data()
+            if len(media["audio"]) != 1:
+                raise ValueError("A project recording requires exactly one primary audio file.")
+        except ValueError as exc:
+            QtWidgets.QMessageBox.warning(self, "Edit recording", str(exc))
+            return
+        audio = dict(media["audio"][0])
+        audio.pop("name", None)
+        recording.audio = audio
+        recording.videos = media["video"]
+        self.project.document_changed = True
+        self._refresh_project_panel()
+
+    def _remove_project_recording(self, name: str) -> None:
+        confirmed = QtWidgets.QMessageBox.question(
+            self,
+            "Remove recording",
+            f"Remove '{name}' from the project? Media files will not be deleted.",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if confirmed != QtWidgets.QMessageBox.Yes:
+            return
+        self._capture_project_state()
+        was_current = name == self.current_recording_name
+        self.project.remove_recording(name)
+        self._refresh_project_panel()
+        if was_current:
+            replacement = MainWindow.from_project(self.project, config_manager=self.config_manager)
+            if replacement is not None:
+                self.app._xarray_behave_mainwin = replacement
+                self._switching_project = True
+                self.close()
+
+    def _open_project_recording(self, name: str) -> None:
+        if name == self.current_recording_name:
+            return
+        recording = self.project.recording(name)
+        if not recording.available:
+            QtWidgets.QMessageBox.warning(self, "Missing media", f"Relink the missing audio file for '{name}' first.")
+            return
+        self._capture_project_state(refresh_project_panel=False)
+        try:
+            ds = dataset_service.assemble_project_recording(recording)
+        except Exception as exc:
+            logger.exception("Could not open project recording %s", recording.name)
+            QtWidgets.QMessageBox.warning(self, "Could not open recording", f"{recording.audio_path}\n\n{exc}")
+            return
+        self._load_project_recording(ds, recording)
+
+    def save_project(self, qt_keycode=None) -> bool:
+        del qt_keycode
+        if self.project is None:
+            return False
+        if self.project.path is None:
+            return self.save_project_as()
+        self._capture_project_state()
+        try:
+            saved = project_model.write_project(self.project.path, self.project)
+            logger.info("Saved project to %s", saved)
+            if self.current_recording_name is not None:
+                self.setWindowTitle(f"{_project_title(self.project)} - {self.current_recording_name}")
+            self._refresh_project_panel()
+            return True
+        except Exception as exc:
+            logger.exception("Could not save project")
+            QtWidgets.QMessageBox.warning(self, "Could not save project", str(exc))
+            return False
+
+    def save_project_as(self, qt_keycode=None) -> bool:
+        del qt_keycode
+        if self.project is None:
+            return False
+        if self.project.path is not None:
+            default_path = self.project.path
+        elif self.project.recordings:
+            audio = self.project.recordings[0].audio_path
+            default_path = audio.with_name(audio.stem + project_model.PROJECT_SUFFIX)
+        else:
+            default_path = Path.cwd() / ("project" + project_model.PROJECT_SUFFIX)
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save project", str(default_path), "xarray-behave projects (*.xbp.yaml)"
+        )
+        if not filename:
+            return False
+        self._capture_project_state()
+        try:
+            saved = project_model.write_project(filename, self.project)
+            self.config_manager.source = str(saved)
+            logger.info("Saved project to %s", saved)
+            if self.current_recording_name is not None:
+                self.setWindowTitle(f"{_project_title(self.project)} - {self.current_recording_name}")
+            self._refresh_project_panel()
+            return True
+        except Exception as exc:
+            logger.exception("Could not save project")
+            QtWidgets.QMessageBox.warning(self, "Could not save project", str(exc))
+            return False
 
     def _add_keyed_menuitem(
         self,
@@ -303,22 +727,24 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         dialog.set_checked("Save channel information", True)
 
-        if dialog.exec_() == QtWidgets.QDialog.Accepted:
-            savefilename = dialog.selectedUrls()[0].toLocalFile()
-        else:
-            savefilename = ""
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return False
+        savefilename = dialog.selectedUrls()[0].toLocalFile()
+        if not savefilename:
+            return False
 
-        if len(savefilename):
-            logger.info(f"   Saving annotations to {savefilename}.")
-            self.export_to_csv(
-                savefilename,
-                preserve_empty=dialog.checked("Preserve empty"),
-                with_channels=dialog.checked("Save channel information"),
-            )
-            logger.info("Done.")
+        logger.info(f"   Saving annotations to {savefilename}.")
+        self.export_to_csv(
+            savefilename,
+            preserve_empty=dialog.checked("Preserve empty"),
+            with_channels=dialog.checked("Save channel information"),
+        )
+        self._saved_annotations = self._annotation_snapshot()
+        logger.info("Done.")
 
         if dialog.checked("Save definitions to separate file"):
             self.save_definitions()
+        return True
 
     def export_to_csv(
         self,
@@ -390,19 +816,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.nb_eventtypes = len(self.event_times)
         self.eventtype_colors = utils.make_colors(self.nb_eventtypes)
         self.update_eventtype_selector()
-        self._update_xy_with_event_table_refresh()
+        refresh = getattr(self, "_update_xy_with_event_table_refresh", None) or getattr(self, "update_xy", None)
+        if refresh is not None:
+            refresh()
 
     def _has_current_das_audio(self) -> bool:
-        return hasattr(self, "ds") and "song_raw" in self.ds
+        if not hasattr(self, "ds"):
+            return False
+        if hasattr(self, "_audio_dataarray_for_source"):
+            return self._audio_dataarray_for_source() is not None
+        return hasattr(self.ds, "song_raw")
+
+    def _das_audio_and_times(self):
+        if hasattr(self, "_audio_dataarray_for_source"):
+            return self._audio_dataarray_for_source().data, self._audio_time_values()
+        return self.ds.song_raw.data, np.asarray(self.ds.sampletime.values)
 
     def _das_current_audio(self, start_seconds: float, stop_seconds: float | None):
         if not self._has_current_das_audio():
             raise ValueError("No current audio is loaded.")
 
-        sampletime = np.asarray(self.ds.sampletime.values)
+        audio_data, sampletime = self._das_audio_and_times()
         start_index = utils.find_nearest_idx(sampletime, start_seconds)
         end_index = None if stop_seconds is None else utils.find_nearest_idx(sampletime, stop_seconds)
-        audio = self.ds.song_raw.data[start_index:end_index]
+        audio = audio_data[start_index:end_index]
         try:
             audio = audio.compute()
         except AttributeError:
@@ -418,7 +855,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self._has_current_das_audio():
             raise ValueError("No current audio is loaded.")
 
-        sampletime = np.asarray(self.ds.sampletime.values)
+        _, sampletime = self._das_audio_and_times()
         if sampletime.size == 0:
             raise ValueError("Current audio has no samples.")
         if sampletime.size == 1:
@@ -503,39 +940,6 @@ class MainWindow(QtWidgets.QMainWindow):
         window.show()
         return window
 
-    def _open_daws_window(self, initial_tab: str, *, use_current_audio: bool = False):
-        try:
-            from das_whisper.gui_app import DASWhisperWindow
-        except ImportError as e:
-            logger.exception(e)
-            logger.info("   Failed to import das-whisper. Install it in the current environment to use DAWS.")
-            return None
-
-        current_audio_provider = self._das_current_audio if use_current_audio and self._has_current_das_audio() else None
-        on_predictions = self._handle_das_predictions if current_audio_provider is not None else None
-        window = DASWhisperWindow(
-            initial_tab=initial_tab,
-            current_audio_provider=current_audio_provider,
-            on_predictions=on_predictions,
-            parent=self,
-        )
-        window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-        if not hasattr(self, "_daws_windows"):
-            self._daws_windows = []
-        self._daws_windows.append(window)
-
-        def forget_window(*_args, daws_window=window):
-            try:
-                windows = getattr(self, "_daws_windows", None)
-            except RuntimeError:
-                return
-            if windows is not None and daws_window in windows:
-                windows.remove(daws_window)
-
-        window.destroyed.connect(forget_window)
-        window.show()
-        return window
-
     def das_train(self, qt_keycode=None):
         del qt_keycode
         self._open_das_window("train", use_current_audio=True)
@@ -544,13 +948,45 @@ class MainWindow(QtWidgets.QMainWindow):
         del qt_keycode
         self._open_das_window("predict", use_current_audio=True)
 
-    def daws_train(self, qt_keycode=None):
+    @classmethod
+    def from_media(
+        cls,
+        qt_keycode=None,
+        *,
+        manifest: Optional[str] = None,
+        datename: str = "",
+        root: str = "",
+        dat_path: str = "dat",
+        res_path: str = "res",
+    ):
         del qt_keycode
-        self._open_daws_window("train")
-
-    def daws_predict(self, qt_keycode=None):
-        del qt_keycode
-        self._open_daws_window("predict", use_current_audio=True)
+        files = None
+        if manifest is not None:
+            try:
+                files = v2_api.discover(datename, root=root, dat_path=dat_path, res_path=res_path, manifest=manifest)
+            except Exception as exc:
+                logger.exception("Could not read media manifest")
+                QtWidgets.QMessageBox.warning(None, "Could not read manifest", str(exc))
+                return None
+        dialog = MediaFilesDialog(files=files)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return None
+        media_data = dialog.media_data()
+        first_audio = media_data["audio"][0]["path"]
+        config_manager = _get_config_manager()
+        config_manager.load_for_source(first_audio)
+        try:
+            ds = dataset_service.assemble_from_media(media_data)
+        except Exception as exc:
+            logger.exception("Could not assemble media dataset")
+            QtWidgets.QMessageBox.warning(None, "Could not load media", str(exc))
+            return None
+        return PSV(
+            ds,
+            title=f"Media dataset - {Path(first_audio).name}",
+            data_source=DataSource("media", first_audio),
+            config_manager=config_manager,
+        )
 
     @classmethod
     def from_file(
@@ -564,14 +1000,16 @@ class MainWindow(QtWidgets.QMainWindow):
         target_samplingrate=None,
         skip_dialog: bool = False,
         is_das: bool = False,
+        config_manager: Optional[gui_config.GuiConfigManager] = None,
     ):
         if not filename:
             # enable multiple filters: *.h5, *.npy, *.npz, *.wav, *.*
             file_filter = "Any file (*.*);;WAV files (*.wav);;HDF5 files (*.h5 *.hdf5);;NPY files (*.npy);;NPZ files (*.npz)"
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select file", filter=file_filter)
         if filename:
-            config_manager = _get_config_manager()
-            config_manager.load_for_source(filename)
+            if config_manager is None:
+                config_manager = _get_config_manager()
+                config_manager.load_for_source(filename)
             # infer loader from file name and set default in form
             # infer samplerate (catch error) and set default in form
             samplerate = None  # Hz
@@ -892,8 +1330,10 @@ class PSV(MainWindow):
         frame_fliplr: Optional[bool] = None,
         frame_flipud: Optional[bool] = None,
         config_manager: Optional[gui_config.GuiConfigManager] = None,
+        project_document: project_model.Project | None = None,
+        recording_name: str | None = None,
     ):
-        super().__init__(title=title)
+        super().__init__(title=title, is_das=project_document is not None, project_document=project_document)
         if config_manager is not None:
             self.config_manager = config_manager
         config = self.config_manager.config
@@ -915,6 +1355,7 @@ class PSV(MainWindow):
         # build model:
         self.ds = ds
         self.data_source = data_source
+        self.current_recording_name = recording_name
         self._audio_source_names = self._discover_audio_source_names()
         self._active_audio_source_name = self._audio_source_names[0] if self._audio_source_names else None
         self._audio_selector_items = []
@@ -930,6 +1371,7 @@ class PSV(MainWindow):
         self._merge_configured_event_types(config.get("event_types", []))
         self._current_event_name = self.event_times.names[-1] if self.event_times.names else None
         self._sync_event_colors_from_presets()
+        self._saved_annotations = self._annotation_snapshot()
 
         self.box_size = int(video_config.get("box_size", 200) if box_size is None else box_size)
         self.fmin = spectrogram_config.get("fmin") if fmin is None else fmin
@@ -1002,7 +1444,7 @@ class PSV(MainWindow):
         self.show_trace = bool(panel_config.get("waveform", True))
         self.show_tracks = bool(panel_config.get("tracks", False))
         self.show_movie = bool(panel_config.get("movie", True))
-        self.show_sidebar = bool(panel_config.get("sidebar", True))
+        self.show_sidebar = self.project is not None or bool(panel_config.get("sidebar", True))
         self.show_timeline = bool(panel_config.get("timeline", True))
         self.show_event_table = bool(panel_config.get("event_table", True))
         self.show_options = True
@@ -1045,7 +1487,7 @@ class PSV(MainWindow):
             self.thres_bandpass_high = self.fs_song / 2
 
         if self.vr is not None:
-            self.frame_interval = self.fs_song / self.vr.frame_rate  # song samples? TODO: get from self.ds
+            self.frame_interval = self.fs_song * self._active_video_frame_seconds()
         else:
             self.frame_interval = self.fs_song / 1_000
 
@@ -1080,10 +1522,17 @@ class PSV(MainWindow):
         # MENU
         self.file_menu.clear()
         self._viewer_actions = {}
-        self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
-            self.file_menu, "Open audio/annotations", self.from_file
-        )
-        self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
+        if self.project is not None:
+            self._add_keyed_menuitem(self.file_menu, "Open audio file", self.new_project_from_file)
+            self._add_keyed_menuitem(self.file_menu, "Import folder as project", self.new_project_from_folder)
+            self._add_keyed_menuitem(self.file_menu, "Open project", self.open_project)
+            self._add_keyed_menuitem(self.file_menu, "Add recordings", self._add_project_recordings)
+        else:
+            self._add_keyed_menuitem(self.file_menu, "New from media files", self.from_media)
+            self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
+                self.file_menu, "Open audio/annotations", self.from_file
+            )
+            self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
         self.file_menu.addSeparator()
@@ -1092,9 +1541,10 @@ class PSV(MainWindow):
         )
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Save swap files", self.save_swaps)
-        self._viewer_actions["save_annotations"] = self._add_keyed_menuitem(
-            self.file_menu, "Save annotations", self.save_annotations
-        )
+        self._viewer_actions["save_annotations"] = self._add_keyed_menuitem(self.file_menu, "Save", self.save_annotations)
+        if self.project is not None:
+            self._add_keyed_menuitem(self.file_menu, "Export annotations...", self.export_annotations)
+            self._add_keyed_menuitem(self.file_menu, "Save Project As...", self.save_project_as)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(self.file_menu, "Save dataset", self.save_dataset)
         self.file_menu.addSeparator()
@@ -1503,6 +1953,11 @@ class PSV(MainWindow):
         left_sidebar_layout = QtWidgets.QVBoxLayout(self.left_sidebar)
         left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
         left_sidebar_layout.setSpacing(8)
+        if self.project is not None:
+            if self.project_panel is None:
+                self.project_panel = self._make_project_panel()
+            self.project_panel.set_project(self.project, self.current_recording_name)
+            left_sidebar_layout.addWidget(self.project_panel, 1)
         left_sidebar_layout.addWidget(self.threshold_panel)
         left_sidebar_layout.addWidget(self.preset_panel, 1)
 
@@ -1521,7 +1976,7 @@ class PSV(MainWindow):
 
         def edit_time_finished(source=None):
             try:
-                self.t0 = float(source.text()) * self.fs_song
+                self.t0 = self._seconds_sample(float(source.text()))
             except Exception as e:
                 logger.debug(e)
             source.clearFocus()  # de-focus text field upon enter so we can continue annotating right away
@@ -1531,7 +1986,7 @@ class PSV(MainWindow):
                 frame_number = float(source.text())
                 frame_seconds = self._seconds_for_video_frame(frame_number)
                 if frame_seconds is not None:
-                    self.t0 = frame_seconds * self.fs_song
+                    self.t0 = self._seconds_sample(frame_seconds)
             except Exception as e:
                 print(e)
 
@@ -1579,6 +2034,130 @@ class PSV(MainWindow):
 
         self.update_xy()
         self.app.processEvents()
+
+    def _load_project_recording(self, ds, recording) -> None:
+        self._pause_playback()
+        self._stop_window_audio_playhead()
+        self._clear_playback_window()
+
+        event_names = self.event_times.names
+        selected_event_name = self.current_event_name
+        self.ds, original_spatial_units = dataset_service.prepare_for_display(ds)
+        if original_spatial_units is None:
+            self.__dict__.pop("original_spatial_units", None)
+        else:
+            self.original_spatial_units = original_spatial_units
+        self.data_source = DataSource("project", str(recording.audio_path))
+        self.current_recording_name = recording.name
+        self._audio_source_names = self._discover_audio_source_names()
+        self._active_audio_source_name = self._audio_source_names[0] if self._audio_source_names else None
+        self._audio_selector_items = []
+        self._video_sources = self._discover_video_sources()
+        self._active_video_name = next(iter(self._video_sources), None)
+        self.vr = self._video_reader_for_source(self._active_video_name) if self._active_video_name is not None else None
+
+        self.event_times = dataset_service.event_times_from_dataset(self.ds)
+        for name in event_names:
+            if name not in self.event_times:
+                self.event_times.add_name(name, category="event")
+        event_types_changed = self.event_times.names != event_names
+        for name in self.event_times.names:
+            self._event_preset(name)
+        self._current_event_name = selected_event_name if selected_event_name in self.event_times.names else None
+        self._sync_event_colors_from_presets()
+        self._saved_annotations = self._annotation_snapshot()
+
+        self.tmin = 0
+        self.fs_song = self._source_sampling_rate(self._active_audio_source_name) or float(
+            self.ds.attrs.get("target_sampling_rate_Hz", 1_000)
+        )
+        self.nb_channels = self._source_channel_count(self._active_audio_source_name)
+        audio_length = self._source_length(self._active_audio_source_name)
+        self.tmax = audio_length if audio_length is not None else len(self.ds.time) if "time" in self.ds else 0
+        self.nb_flies = _num_flies(self.ds)
+        self.other_fly = 1 if self.nb_flies > 1 else 0
+        if "poseparts" in self.ds:
+            self.bodyparts = self.ds.poseparts.data
+            self.nb_bodyparts = len(self.ds.poseparts)
+        elif "bodyparts" in self.ds:
+            self.bodyparts = self.ds.bodyparts.data
+            self.nb_bodyparts = len(self.ds.bodyparts)
+        else:
+            self.nb_bodyparts = 1
+            self.bodyparts = None
+        self.fly_colors = utils.make_colors(self.nb_flies)
+        self.bodypart_colors = utils.make_colors(self.nb_bodyparts)
+        self.swap_events = self.ds.attrs.get("swap_events", [])
+        self.fs_other = (
+            self.ds.song_events.attrs["sampling_rate_Hz"]
+            if "song_events" in self.ds
+            else float(self.ds.attrs.get("target_sampling_rate_Hz", self.fs_song))
+        )
+        self._t0 = 0
+        self._span = min(int(self.fs_song), self.tmax)
+        self._apply_active_audio_source()
+        self.frame_interval = self.fs_song * self._active_video_frame_seconds()
+
+        self._set_channel_selector_items()
+        self._setup_audio_clock(self._audio_source_path())
+        self._sync_threshold_panel()
+        self._sync_transport_controls()
+        self._sync_channel_selector_overlay()
+        if event_types_changed:
+            self.update_eventtype_selector(selected_name=selected_event_name)
+        self.project_panel.set_current_recording(recording.name)
+        self.setWindowTitle(f"{_project_title(self.project)} - {recording.name}")
+        self._force_next_event_table_refresh = True
+        self.update_xy()
+        self.update_frame()
+
+    def save_annotations(self, qt_keycode=None):
+        if self.project is None:
+            return super().save_annotations(qt_keycode)
+        self._capture_project_state()
+        if self.project.is_saved or len(self.project.recordings) > 1:
+            return self.save_project(qt_keycode)
+        saved = super().save_annotations(qt_keycode)
+        if saved:
+            recording = self.project.recording(self.current_recording_name)
+            recording.set_annotations(self.event_times)
+            recording.mark_annotations_saved()
+            self._refresh_project_panel()
+        return saved
+
+    def export_annotations(self, qt_keycode=None):
+        return MainWindow.save_annotations(self, qt_keycode)
+
+    def closeEvent(self, event):
+        if self.project is None:
+            super().closeEvent(event)
+            return
+        if self._switching_project:
+            self._finish_close(event, save_global=False)
+            return
+        self._capture_project_state()
+        if self.project.is_dirty:
+            choice = QtWidgets.QMessageBox.warning(
+                self,
+                "Unsaved project changes",
+                "Save changes before closing?",
+                QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel,
+                QtWidgets.QMessageBox.Save,
+            )
+            if choice == QtWidgets.QMessageBox.Cancel:
+                event.ignore()
+                return
+            if choice == QtWidgets.QMessageBox.Save and not self.save_annotations():
+                event.ignore()
+                return
+        save_global = not self.project.is_saved and len(self.project.recordings) <= 1
+        self._finish_close(event, save_global=save_global)
+
+    def _annotation_snapshot(self) -> pd.DataFrame:
+        return self.event_times.to_df(preserve_empty=True, with_channels=True).copy(deep=True)
+
+    def _annotations_changed(self) -> bool:
+        return not self._annotation_snapshot().equals(self._saved_annotations)
 
     def _remember_splitter_sizes(self):
         if hasattr(self, "center_splitter"):
@@ -1706,7 +2285,7 @@ class PSV(MainWindow):
         specs = [
             ("open_audio_annotations", "Open audio/annotations"),
             ("import_annotations", "Import annotations"),
-            ("save_annotations", "Save annotations"),
+            ("save_annotations", "Save project" if self.project is not None and self.project.is_saved else "Save annotations"),
             ("show_trace", "Show waveform"),
             ("show_spec", "Show spectrogram"),
             ("show_timeline", "Show event timeline"),
@@ -1872,7 +2451,10 @@ class PSV(MainWindow):
                 "bandpass_high": float(self.thres_bandpass_high),
             },
         }
-        config["event_types"] = [
+        return gui_config.sanitize_config(config)
+
+    def _event_type_settings(self):
+        return [
             {
                 "name": preset.name,
                 "fixed_duration": bool(preset.fixed_duration),
@@ -1884,7 +2466,6 @@ class PSV(MainWindow):
             }
             for preset in self._event_presets_in_order()
         ]
-        return gui_config.sanitize_config(config)
 
     def _update_model(self):
         try:
@@ -2039,6 +2620,8 @@ class PSV(MainWindow):
         return int(da.shape[1])
 
     def _audio_time_values(self) -> np.ndarray:
+        if not hasattr(self, "ds"):
+            return np.array([], dtype=float)
         da = self._audio_dataarray_for_source()
         if da is None:
             return np.array([], dtype=float)
@@ -2053,12 +2636,19 @@ class PSV(MainWindow):
     def _sample_seconds(self, sample: float) -> float:
         times = self._audio_time_values()
         if len(times):
-            index = int(np.clip(round(sample), 0, len(times) - 1))
-            return float(times[index])
+            return float(np.interp(float(sample), np.arange(len(times)), times))
         return float(sample) / self.fs_song
 
-    def _apply_active_audio_source(self, *, preserve_seconds: bool = False) -> None:
-        old_seconds = self._sample_seconds(self.t0) if preserve_seconds and hasattr(self, "_t0") else 0.0
+    def _seconds_sample(self, seconds: float) -> float:
+        times = self._audio_time_values()
+        if len(times):
+            return float(np.interp(float(seconds), times, np.arange(len(times))))
+        return float(seconds) * self.fs_song
+
+    def _apply_active_audio_source(self, *, preserve_seconds: bool = False, old_seconds: float = None) -> None:
+        if preserve_seconds and old_seconds is None and hasattr(self, "_t0"):
+            old_seconds = self._sample_seconds(self.t0)
+        old_seconds = 0.0 if old_seconds is None else float(old_seconds)
         da = self._audio_dataarray_for_source()
         if da is None:
             return
@@ -2066,7 +2656,7 @@ class PSV(MainWindow):
         self.nb_channels = self._source_channel_count(getattr(self, "_active_audio_source_name", None))
         self.tmax = int(da.shape[0])
         if preserve_seconds:
-            self._t0 = float(np.clip(old_seconds * self.fs_song, self.tmin, self.tmax_playhead))
+            self._t0 = float(np.clip(self._seconds_sample(old_seconds), self.tmin, self.tmax_playhead))
         elif hasattr(self, "_t0"):
             self._t0 = float(np.clip(self._t0, self.tmin, self.tmax_playhead))
 
@@ -2100,16 +2690,17 @@ class PSV(MainWindow):
             self.update_xy()
             return
         old_source = getattr(self, "_active_audio_source_name", None)
+        old_seconds = self._sample_seconds(self.t0)
         self._active_audio_source_name = selected[0]
         self._stop_window_audio_playhead()
         self._clear_playback_window()
         if getattr(self, "_is_playing", False):
             self._pause_playback()
-        self._apply_active_audio_source(preserve_seconds=True)
+        self._apply_active_audio_source(preserve_seconds=True, old_seconds=old_seconds)
         if selected[0] != old_source:
             self._setup_audio_clock(self._audio_source_path())
         if self.vr is not None:
-            self.frame_interval = self.fs_song / self.vr.frame_rate
+            self.frame_interval = self.fs_song * self._active_video_frame_seconds()
         self._sync_threshold_panel()
         self._sync_transport_controls()
         self.update_xy()
@@ -2179,7 +2770,7 @@ class PSV(MainWindow):
             return
         self._active_video_name = source_name
         self.vr = reader
-        self.frame_interval = self.fs_song / self.vr.frame_rate
+        self.frame_interval = self.fs_song * self._active_video_frame_seconds()
         self.update_frame()
 
     def _active_video_frame_times(self) -> np.ndarray | None:
@@ -2190,6 +2781,12 @@ class PSV(MainWindow):
         if frame_time_name not in self.ds:
             return None
         return np.asarray(self.ds[frame_time_name].data, dtype=float)
+
+    def _active_video_frame_seconds(self) -> float:
+        frame_times = self._active_video_frame_times()
+        if frame_times is not None and len(frame_times) > 1:
+            return float(np.median(np.diff(frame_times)))
+        return 1 / self.vr.frame_rate if self.vr is not None else 1 / 1_000
 
     def _seconds_for_video_frame(self, frame_number: float) -> float | None:
         frame_times = self._active_video_frame_times()
@@ -2322,16 +2919,16 @@ class PSV(MainWindow):
             self._slider.setValue(int(round(self.t0)))
             self._slider.blockSignals(False)
         if hasattr(self, "edit_time") and not self.edit_time.hasFocus():
-            self.edit_time.setText(str(self.t0 / self.fs_song))
+            self.edit_time.setText(str(self._sample_seconds(self.t0)))
         if self.vr is not None and hasattr(self, "edit_frame") and not self.edit_frame.hasFocus():
             self.edit_frame.setText(str(self.framenumber))
         if hasattr(self, "_clock_label"):
-            current = self._format_seconds(self.t0 / self.fs_song)
-            total = self._format_seconds(self.tmax_playhead / self.fs_song)
+            current = self._format_seconds(self._sample_seconds(self.t0))
+            total = self._format_seconds(self._sample_seconds(self.tmax_playhead))
             self._clock_label.setText(f"{current} / {total}")
 
     def _sync_playhead_only(self) -> None:
-        seconds = float(self.t0) / self.fs_song
+        seconds = self._sample_seconds(self.t0)
         if hasattr(self, "slice_view") and hasattr(self.slice_view, "set_playhead"):
             self.slice_view.set_playhead(seconds)
         if hasattr(self, "event_timeline"):
@@ -2342,7 +2939,7 @@ class PSV(MainWindow):
     def _playhead_requires_view_refresh(self) -> bool:
         if not hasattr(self, "x") or len(self.x) == 0:
             return True
-        seconds = float(self.t0) / self.fs_song
+        seconds = self._sample_seconds(self.t0)
         return seconds < float(self.x[0]) or seconds > float(self.x[-1])
 
     def _clear_playback_window(self) -> None:
@@ -2388,7 +2985,8 @@ class PSV(MainWindow):
 
     def _transport_frame_seek(self, direction: int) -> None:
         if direction:
-            self._seek_playhead(self.t0 + direction * self.frame_interval)
+            seconds = self._sample_seconds(self.t0) + direction * self._active_video_frame_seconds()
+            self._seek_playhead(self._seconds_sample(seconds))
 
     def _on_transport_seek(self, value: int) -> None:
         self._seek_playhead(value)
@@ -2411,6 +3009,8 @@ class PSV(MainWindow):
     def _audio_source_path(self):
         audio_suffixes = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".ogg", ".m4a"}
         da = self._audio_dataarray_for_source()
+        if da is not None and da.attrs.get("sampling_rate_overridden", False):
+            return None
         value = da.attrs.get("source_path") if da is not None else None
         if value:
             path = Path(str(value)).expanduser()
@@ -2785,11 +3385,11 @@ class PSV(MainWindow):
 
     @property
     def tmax_playhead(self):
-        return max(self.tmin, self.tmax - 1)
+        return max(getattr(self, "tmin", 0), self.tmax - 1)
 
     @property
     def trange(self):
-        return np.array([self.time0, self.time1]) / self.fs_song
+        return np.array([self._sample_seconds(self.time0), self._sample_seconds(max(self.time0, self.time1 - 1))])
 
     @property
     def t0(self):
@@ -2985,7 +3585,7 @@ class PSV(MainWindow):
     def _clamp_event_bounds(self, start_seconds: float, stop_seconds: float):
         start = max(0.0, float(start_seconds))
         stop = max(0.0, float(stop_seconds))
-        max_seconds = self.tmax / self.fs_song if getattr(self, "fs_song", 0) else None
+        max_seconds = self._sample_seconds(self.tmax_playhead) if getattr(self, "fs_song", 0) else None
         if max_seconds is not None:
             start = min(start, max_seconds)
             stop = min(stop, max_seconds)
@@ -3001,7 +3601,7 @@ class PSV(MainWindow):
                 center = (float(start_seconds) + float(stop_seconds)) / 2
             start = center - duration / 2
             stop = center + duration / 2
-            max_seconds = self.tmax / self.fs_song if getattr(self, "fs_song", 0) else None
+            max_seconds = self._sample_seconds(self.tmax_playhead) if getattr(self, "fs_song", 0) else None
             if max_seconds is not None and duration <= max_seconds:
                 if start < 0:
                     stop -= start
@@ -3101,9 +3701,15 @@ class PSV(MainWindow):
         if updated is None:
             return
         if updated.name != name:
-            self.event_times[updated.name] = self.event_times.pop(name)
-            self.event_times.categories.pop(name, None)
-            self.event_times.categories[updated.name] = "event"
+            if self.project is not None:
+                current = self.project.recording(self.current_recording_name)
+                current.set_annotations(self.event_times)
+                self.project.rename_event_type(name, updated.name)
+                self.event_times = annot.Events(current.annotations)
+            else:
+                self.event_times[updated.name] = self.event_times.pop(name)
+                self.event_times.categories.pop(name, None)
+                self.event_times.categories[updated.name] = "event"
             self.event_presets.pop(name, None)
         self.event_presets[updated.name] = updated
         self._sync_after_event_type_change(selected_name=updated.name)
@@ -3120,8 +3726,14 @@ class PSV(MainWindow):
         )
         if confirmed != QtWidgets.QMessageBox.Yes:
             return
-        del self.event_times[name]
-        self.event_times.categories.pop(name, None)
+        if self.project is not None:
+            current = self.project.recording(self.current_recording_name)
+            current.set_annotations(self.event_times)
+            self.project.delete_event_type(name)
+            self.event_times = annot.Events(current.annotations)
+        else:
+            del self.event_times[name]
+            self.event_times.categories.pop(name, None)
         self.event_presets.pop(name, None)
         selected_name = self.event_times.names[0] if self.event_times.names else None
         self._sync_after_event_type_change(selected_name=selected_name)
@@ -3275,7 +3887,7 @@ class PSV(MainWindow):
                 channel_filter=channel_filter,
             )
         self.event_timeline.set_selected_ids(self.events_table.selected_record_ids())
-        self.event_timeline.set_playhead(float(self.t0) / self.fs_song)
+        self.event_timeline.set_playhead(self._sample_seconds(self.t0))
         if table_follows_view and not self._syncing_event_selection:
             try:
                 self._syncing_event_selection = True
@@ -3310,7 +3922,7 @@ class PSV(MainWindow):
             width_samples = max(200, int((stop - start) * self.fs_song * 1.25))
             if width_samples > self.span:
                 self.span = width_samples
-            self.t0 = center * self.fs_song
+            self.t0 = self._seconds_sample(center)
         finally:
             self._syncing_event_selection = False
 
@@ -3572,7 +4184,7 @@ class PSV(MainWindow):
         return (low, high) if low <= high else (high, low)
 
     def _threshold_duration_limit(self) -> float:
-        duration = self.tmax / self.fs_song if getattr(self, "fs_song", 0) else 1.0
+        duration = self._sample_seconds(self.tmax_playhead) if getattr(self, "fs_song", 0) else 1.0
         return min(max(1.0, float(duration)), 100.0)
 
     def _threshold_duration_bounds(self) -> tuple[float, float]:
@@ -3605,8 +4217,8 @@ class PSV(MainWindow):
                 return
             deleted_events = self.event_times.delete_range(
                 self.current_event_name,
-                self.time0 / self.fs_song,
-                self.time1 / self.fs_song,
+                self._sample_seconds(self.time0),
+                self._sample_seconds(max(self.time0, self.time1 - 1)),
             )
             nb_deleted_events = len(deleted_events)
             if nb_deleted_events:
@@ -3620,7 +4232,11 @@ class PSV(MainWindow):
         for event_name in self.event_times.names:
             if not self._event_type_can_edit(event_name):
                 continue
-            deleted_events = self.event_times.delete_range(event_name, self.time0 / self.fs_song, self.time1 / self.fs_song)
+            deleted_events = self.event_times.delete_range(
+                event_name,
+                self._sample_seconds(self.time0),
+                self._sample_seconds(max(self.time0, self.time1 - 1)),
+            )
             nb_deleted_events = len(deleted_events)
             if nb_deleted_events:
                 logger.info(f"   Deleted {nb_deleted_events} annotation(s) of type {event_name}.")
@@ -3786,11 +4402,11 @@ class PSV(MainWindow):
         # else:  # of any type
         #     names = self.event_times.names
         names = [self.current_event_name]
-        t = (self.t0 - 1) / self.fs_song
+        t = self._sample_seconds(self.t0 - 1)
         nxt = self.event_times.find_prev(t, names)
 
         if nxt is not None:
-            self.t0 = nxt * self.fs_song
+            self.t0 = self._seconds_sample(nxt)
 
     def set_next_cuepoint(self, qt_keycode):
         # if self.edit_only_current_events:  # of the currently active type
@@ -3798,11 +4414,11 @@ class PSV(MainWindow):
         # else:  # of any type
         #     names = self.event_times.names
         names = [self.current_event_name]
-        t = (self.t0 + 1) / self.fs_song
+        t = self._sample_seconds(self.t0 + 1)
         nxt = self.event_times.find_next(t, names)
 
         if nxt is not None:
-            self.t0 = nxt * self.fs_song
+            self.t0 = self._seconds_sample(nxt)
 
     def zoom_in_song(self, qt_keycode):
         self.span /= 2
@@ -3811,10 +4427,10 @@ class PSV(MainWindow):
         self.span *= 2
 
     def single_frame_reverse(self, qt_keycode):
-        self.t0 -= self.frame_interval
+        self._transport_frame_seek(-1)
 
     def single_frame_advance(self, qt_keycode):
-        self.t0 += self.frame_interval
+        self._transport_frame_seek(1)
 
     def jump_reverse(self, qt_keycode):
         self.t0 -= self.span / 2
@@ -3897,7 +4513,7 @@ class PSV(MainWindow):
                 enabled=self.threshold_mode,
                 threshold=self.thres_value,
             )
-            self.slice_view.set_playhead(float(self.t0) / self.fs_song)
+            self.slice_view.set_playhead(self._sample_seconds(self.t0))
             self.slice_view.clear_annotations()
             self.slice_view.show()
         else:
@@ -4200,8 +4816,8 @@ class PSV(MainWindow):
             editable_events = self._event_times_for_names(self._editable_visible_event_names())
             old_name = editable_events._get_name_of_nearest(
                 mouseT,
-                min_time=self.time0 / self.fs_song,
-                max_time=self.time1 / self.fs_song,
+                min_time=self._sample_seconds(self.time0),
+                max_time=self._sample_seconds(max(self.time0, self.time1 - 1)),
             )
             if old_name is None:
                 return
@@ -4209,8 +4825,8 @@ class PSV(MainWindow):
                 time=mouseT,
                 new_name=current_event_name,
                 tol=0.05,
-                min_time=self.time0 / self.fs_song,
-                max_time=self.time1 / self.fs_song,
+                min_time=self._sample_seconds(self.time0),
+                max_time=self._sample_seconds(max(self.time0, self.time1 - 1)),
                 old_name=old_name,
             )
             if changed_time is not None:
@@ -4256,8 +4872,8 @@ class PSV(MainWindow):
                 editable_events = self._event_times_for_names(self._editable_visible_event_names())
                 current_event_name = editable_events._get_name_of_nearest(
                     mouseT,
-                    min_time=self.time0 / self.fs_song,
-                    max_time=self.time1 / self.fs_song,
+                    min_time=self._sample_seconds(self.time0),
+                    max_time=self._sample_seconds(max(self.time0, self.time1 - 1)),
                 )
             else:
                 current_event_name = self.current_event_name
@@ -4268,8 +4884,8 @@ class PSV(MainWindow):
                 time=mouseT,
                 name=current_event_name,
                 tol=0.05,
-                min_time=self.time0 / self.fs_song,
-                max_time=self.time1 / self.fs_song,
+                min_time=self._sample_seconds(self.time0),
+                max_time=self._sample_seconds(max(self.time0, self.time1 - 1)),
             )
             if len(deleted_time):
                 logger.info(f"  Deleted {deleted_name} at t={deleted_time[0]:1.4f}:{deleted_time[1]:1.4f} seconds.")
@@ -4439,10 +5055,19 @@ def main(
 
     mainwin = None
     if not len(source):
-        mainwin = MainWindow()
+        mainwin = MainWindow(media_manifest=manifest, is_das=is_das)
         mainwin.show()
     elif not os.path.exists(source):
         logger.info(f"{source} does not exist - skipping.")
+    elif source.lower().endswith(project_model.PROJECT_SUFFIX):
+        mainwin = MainWindow.open_project(filename=source)
+    elif is_das and Path(source).suffix.lower() in project_model.AUDIO_SUFFIXES:
+        mainwin = MainWindow.new_project_from_file(
+            filename=source,
+            events_string=events_string,
+            spec_freq_min=spec_freq_min,
+            spec_freq_max=spec_freq_max,
+        )
     elif (
         source.lower().endswith(".wav")
         or source.lower().endswith(".npz")
@@ -4470,18 +5095,26 @@ def main(
             is_das=is_das,
         )
     elif os.path.isdir(source):
-        mainwin = MainWindow.from_dir(
-            dirname=source,
-            events_string=events_string,
-            target_samplingrate=target_samplingrate,
-            box_size=box_size,
-            spec_freq_min=spec_freq_min,
-            spec_freq_max=spec_freq_max,
-            pixel_size_mm=pixel_size_mm,
-            manifest=manifest,
-            skip_dialog=skip_dialog,
-            is_das=is_das,
-        )
+        if is_das and project_model.audio_files_in_folder(source):
+            mainwin = MainWindow.new_project_from_folder(
+                dirname=source,
+                events_string=events_string,
+                spec_freq_min=spec_freq_min,
+                spec_freq_max=spec_freq_max,
+            )
+        else:
+            mainwin = MainWindow.from_dir(
+                dirname=source,
+                events_string=events_string,
+                target_samplingrate=target_samplingrate,
+                box_size=box_size,
+                spec_freq_min=spec_freq_min,
+                spec_freq_max=spec_freq_max,
+                pixel_size_mm=pixel_size_mm,
+                manifest=manifest,
+                skip_dialog=skip_dialog,
+                is_das=is_das,
+            )
     app._xarray_behave_mainwin = mainwin
 
     # # Start Qt event loop unless running in interactive mode or using pyside.
@@ -4505,6 +5138,7 @@ def main_das(
             Optional - will open an empty GUI if omitted.
             Source can be the path to:
             - an audio file,
+            - a folder containing wav files,
             - a numpy file (npy or npz),
             - an h5 file
             - an xarray-behave dataset constructed from an ethodrome data folder saved as a zarr file,

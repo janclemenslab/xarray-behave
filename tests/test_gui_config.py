@@ -45,6 +45,21 @@ def test_manager_merges_global_local_and_explicit_configs(tmp_path):
     assert config["viewer"]["audio"]["waveform_all"] is False
 
 
+def test_manager_merges_project_between_global_and_explicit(tmp_path):
+    home = tmp_path / "home"
+    explicit = tmp_path / "profile.yaml"
+    _write(home / ".das.yaml", {"version": 1, "viewer": {"spectrogram": {"colormap": "magma"}}})
+    _write(explicit, {"version": 1, "viewer": {"spectrogram": {"colormap": "gray"}}})
+    manager = gui_config.GuiConfigManager(str(explicit), home=home)
+
+    config = manager.load_for_project(
+        str(tmp_path / "songs.xbp.yaml"),
+        {"version": 1, "viewer": {"spectrogram": {"colormap": "viridis", "compression": 2}}},
+    )
+
+    assert config["viewer"]["spectrogram"] == {"colormap": "gray", "compression": 2}
+
+
 def test_source_specific_dialog_fields_are_never_saved():
     data = {
         "samplerate": 10_000,
@@ -63,7 +78,7 @@ def test_source_specific_dialog_fields_are_never_saved():
     }
 
 
-def test_config_round_trip_filters_unknown_keys_and_preserves_event_order(tmp_path, caplog):
+def test_config_round_trip_filters_unknown_keys_and_omits_event_types(tmp_path, caplog):
     path = tmp_path / "profile.yaml"
     gui_config.write_config(
         path,
@@ -79,9 +94,9 @@ def test_config_round_trip_filters_unknown_keys_and_preserves_event_order(tmp_pa
     )
 
     loaded = gui_config.read_config(path)
-    assert list(loaded) == ["version", "viewer", "event_types"]
+    assert list(loaded) == ["version", "viewer"]
     assert loaded["viewer"]["waveform"] == {"color": "#ffffff"}
-    assert [item["name"] for item in loaded["event_types"]] == ["pulse", "song"]
+    assert "event_types" not in loaded
     assert "unknown GUI config" in caplog.text
 
 
@@ -122,7 +137,7 @@ def test_write_config_omits_selection_and_leaves_no_temporary_file(tmp_path):
     assert list(tmp_path.glob(".*.tmp")) == []
 
 
-def test_write_config_converts_numpy_scalars_to_yaml_safe_values(tmp_path):
+def test_write_config_omits_event_types(tmp_path):
     path = tmp_path / ".das.yaml"
     gui_config.write_config(
         path,
@@ -139,6 +154,4 @@ def test_write_config_converts_numpy_scalars_to_yaml_safe_values(tmp_path):
     )
 
     loaded = gui_config.read_config(path)
-    assert loaded["event_types"][0]["name"] == "sine"
-    assert type(loaded["event_types"][0]["name"]) is str
-    assert loaded["event_types"][0]["duration_seconds"] == 0.25
+    assert "event_types" not in loaded
