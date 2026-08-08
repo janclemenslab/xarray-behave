@@ -117,11 +117,17 @@ and swap into y/x before returning arrays.
 
 - `src/xarray_behave/_dataset_service.py`
   - Thin internal service layer between `gui.app` and dataset logic.
-  - Wraps GUI-facing assembly from file/directory, zarr loading, song filtering,
-    legacy event-category normalization, event-time extraction, display unit
-    conversion, and save preparation.
+  - Wraps GUI-facing assembly from media/project recordings and files/directories,
+    zarr loading, song filtering, legacy event-category normalization, event-time
+    extraction, display unit conversion, and save preparation.
   - Must stay free of Qt imports. Keep helpers small and avoid extra validation;
     this module exists to separate concerns, not to change behavior.
+
+- `src/xarray_behave/gui/project.py`
+  - Stores project recordings, their media paths, embedded annotations, and
+    project-specific GUI settings in `.xbp.yaml` files.
+  - Annotation types and presets belong to the project settings, not the global
+    GUI config. Project saves must not rewrite annotation sidecar files.
 
 ## IO Provider System
 
@@ -188,8 +194,8 @@ alignment throughout the package.
 ## GUI Architecture
 
 - `src/xarray_behave/gui/app.py`
-  - `MainWindow` handles initial menus, dialogs, DAS/DAWS integration, saving UI,
-    and annotation editing.
+  - `MainWindow` handles initial menus, dialogs, DAS integration, saving UI,
+    annotation editing, and project recording management.
   - Dataset assembly/loading/filtering/event extraction/save prep is delegated to
     `xarray_behave._dataset_service`; keep new non-Qt dataset orchestration
     there instead of adding it directly to GUI methods.
@@ -198,15 +204,18 @@ alignment throughout the package.
   - In the audio-focused layout the center stack is waveform, spectrogram,
     event timeline, then event table, with initial splitter weights `1:4:1:2`.
     Event presets live in the left preset panel. The current audio channel
-    selector lives above it in the left sidebar; there is intentionally no top
+    selector overlays the waveform or spectrogram; there is intentionally no top
     event/channel selector row.
+  - Switching a project recording keeps the window, project list, and preset
+    panel alive. Refresh only recording-dependent views and rebuild the preset
+    panel only when annotation types actually differ.
   - Event table/timeline edits update the shared `annot.Events` instance.
     Keep table-row selection, timeline selection, and audio view synchronization
     in `PSV` rather than duplicating annotation mutation in widget classes.
   - Transport playback is QMediaPlayer-backed when an audio source path is
     available. Playback should run continuously; when the visible window flips,
     update the displayed range without calling `setPosition()`/`play()` again.
-  - DAS/DAWS helpers provide current-audio slices and prediction callbacks.
+  - DAS helpers provide current-audio slices and prediction callbacks.
     Focused tests live in `tests/test_gui_das.py`.
 - `src/xarray_behave/gui/event_widgets.py`
   - Qt/PyQtGraph widgets for the event table, waveform pane, event timeline, and
@@ -234,6 +243,9 @@ alignment throughout the package.
   - PyAV-backed reader used by the GUI movie path. It exposes the small reader
     protocol expected by `views.MovieView` (`read`, `__getitem__`, frame shape,
     frame count, and rate metadata).
+- `src/xarray_behave/gui/media_dialog.py`
+  - Collects named audio/video sources and optional timestamp, offset, rate, and
+    dataset overrides before `dataset_service.assemble_from_media(...)` loads them.
 - `src/xarray_behave/gui/formbuilder.py`
   - YAML-driven Qt form builder. Forms live under `src/xarray_behave/gui/forms`.
 - `src/xarray_behave/gui/utils.py`
@@ -286,6 +298,9 @@ creating an env from `env/xb.yml`.
   `_dataset_service.py` first and add/adjust a focused test in
   `tests/test_dataset_service.py`. Keep `gui.app` responsible for Qt dialogs and
   viewer construction.
+- Changing project persistence or recording switching: update `gui/project.py`,
+  the focused `tests/test_gui_project.py` / `tests/test_gui_event_widgets.py`,
+  and keep project-wide panels intact during a recording change.
 - Changing event table/timeline behavior: update `src/xarray_behave/gui/event_widgets.py`
   and `tests/test_gui_event_widgets.py`. Keep widgets signal-driven and keep
   dataset mutation in `PSV`.
@@ -294,8 +309,8 @@ creating an env from `env/xb.yml`.
   `tests/test_gui_event_widgets.py` together. Smoke launch the audio GUI after
   such changes:
   `conda run -n das-conformer python -m xarray_behave.gui.app scratch/dat/Dmel_male.wav --skip-dialog`.
-- Changing GUI DAS/DAWS behavior: update `tests/test_gui_das.py`; the tests
-  intentionally monkeypatch external `das` and `das_whisper` modules.
+- Changing GUI DAS behavior: update `tests/test_gui_das.py`; the tests
+  intentionally monkeypatch the external `das` module.
 - Changing color maps or GUI helper behavior: update `tests/test_gui_utils.py`.
 - Changing saved dataset structure: check `save`, `load`, GUI save logic, and
   manual annotation loaders together.
@@ -322,6 +337,9 @@ creating an env from `env/xb.yml`.
   the source of truth.
 - The current audio channel selector lives in `ChannelSelectorPanel.channel_combo`;
   `PSV.cb2` is a compatibility alias used by existing channel-selection methods.
+- Project recordings can have different audio data and annotations, but share
+  project presets and settings. Do not recreate the whole viewer just to switch
+  recordings.
 - The linked table/audio behavior is optional. Respect
   `EventsTableWidget.sync_enabled` before changing the audio range in response
   to table selection.
