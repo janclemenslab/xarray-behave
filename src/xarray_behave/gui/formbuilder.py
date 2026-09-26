@@ -315,10 +315,11 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         Args:
             items_to_create: list of dictionaries with keys
 
-              * name: used as key when we return form data as dict
-              * label: string to show in form
+              * name: used as key when we return form data as dict (except text)
+              * label: string to show in form (except text)
               * type: supports double, int, optional_int, optional_double,
-                bool, list, string, file_open, button, stacked
+                bool, list, string, file_open, file_dir, button, stacked, text
+              * text: content for a non-editable text item
               * default: default value for form field
               * [options]: comma separated list of options,
                 used for list or stack field-types
@@ -335,6 +336,12 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
             self.add_item(item)
 
     def add_item(self, item: Dict[Text, Any]):
+        if item["type"] == "text":
+            field = QtWidgets.QLabel(item["text"])
+            field.setWordWrap(True)
+            self.addRow(field)
+            return
+
         # double: show spinbox (number w/ up/down controls)
         if item["type"] == "double":
             field = QtWidgets.QDoubleSpinBox()
@@ -422,7 +429,7 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         else:
             field = QtWidgets.QLineEdit()
             field.setText(str(item.get("default", "")))
-            if item["type"].split("_")[0] == "file":
+            if item["type"] == "file_open":
                 field.setDisabled(True)
 
         # Store name and type on widget
@@ -453,8 +460,11 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
         file_button = QtWidgets.QPushButton("Select " + item["label"])
 
         def select_file(*args, x=field):
-            filter = item.get("filter", "Any File (*.*)")
-            filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, caption="Open File", filter=filter)
+            if item["type"] == "file_dir":
+                filename = QtWidgets.QFileDialog.getExistingDirectory(None, caption="Select " + item["label"])
+            else:
+                filter = item.get("filter", "Any File (*.*)")
+                filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, caption="Open File", filter=filter)
             if len(filename):
                 x.setText(filename)
             self.valueChanged.emit()

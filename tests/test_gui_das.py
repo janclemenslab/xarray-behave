@@ -59,33 +59,26 @@ def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatc
     qtbot.addWidget(window)
     source = tmp_path / "recordings"
     source.mkdir()
-    values = {}
+    destination = tmp_path / "dataset"
     notices = []
     message_threads = []
 
-    class Field:
-        def __init__(self, key):
-            self.key = key
-
-        def setText(self, text):
-            values[self.key] = text
-
-    class Dialog:
-        def __init__(self, *args, **kwargs):
-            self.form = SimpleNamespace(
-                fields={name: Field(name) for name in ("data_folder", "store_folder")},
-                get_form_data=lambda: {**values, "split_by": "samples", "validation_fraction": 0.2,
-                                       "test_fraction": 0.2, "seed": None},
-            )
-
-        def exec_(self):
-            return gui_app.QtWidgets.QDialog.Accepted
+    def accept_dialog(dialog):
+        labels = dialog.form.findChildren(gui_app.QtWidgets.QLabel)
+        assert any(label.text() == "Create a DAS training dataset from audio files and their annotation CSV files." for label in labels)
+        assert "text" not in dialog.form.get_form_data()
+        assert dialog.form.fields["data_folder"].isEnabled()
+        assert dialog.form.fields["store_folder"].isEnabled()
+        next(button for button in dialog.form.findChildren(gui_app.QtWidgets.QPushButton)
+             if button.text() == "Select Dataset folder").click()
+        return gui_app.QtWidgets.QDialog.Accepted
 
     builder = ModuleType("das.data.dataset_builder")
     builder.make_training_dataset = lambda *args, **kwargs: notices.append((args, kwargs)) or args[1]
     monkeypatch.setitem(sys.modules, "das.data.dataset_builder", builder)
-    monkeypatch.setattr(gui_app, "YamlDialog", Dialog)
-    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda *args: str(source))
+    monkeypatch.setattr(gui_app.YamlDialog, "exec_", accept_dialog)
+    folder_choices = iter((str(source), str(destination)))
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda *args, **kwargs: next(folder_choices))
     app = gui_app.QtWidgets.QApplication.instance()
     monkeypatch.setattr(
         gui_app.QtWidgets.QMessageBox,
@@ -96,7 +89,7 @@ def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatc
     window.das_make()
     qtbot.waitUntil(lambda: not app._das_dataset_jobs)
 
-    assert notices == [((str(source), str(source) + ".npy"),
+    assert notices == [((str(source), str(destination)),
                         {"split_by": "samples", "validation_fraction": 0.2,
                          "test_fraction": 0.2, "seed": None})]
     assert message_threads == [True]
