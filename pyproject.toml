@@ -34,7 +34,7 @@ dev = ["pytest", "flit"]
 
 [project.urls]
 source = "https://github.com/janclemenslab/xarray-behave"
-documentation = "https://janclemenslab.org/das/"
+documentation = "https://janclemenslab.org/das-alpha/"
 
 [tool.flit.module]
 name = "xarray_behave"
