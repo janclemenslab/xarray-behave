@@ -45,12 +45,7 @@ except Exception:  # pragma: no cover - optional Qt runtime module
     QMediaPlayer = None
     QUrl = None
 
-try:
-    import numba
-
-    pg.setConfigOption("useNumba", True)
-except ImportError:
-    pass
+pg.setConfigOption("useNumba", True)
 
 sys.setrecursionlimit(10**6)  # increase recursion limit to avoid errors when keeping key pressed for a long time
 package_dir: str = xarray_behave.__path__[0]
@@ -1349,12 +1344,6 @@ class PSV(MainWindow):
         panel_config = config.get("window", {}).get("panels", {})
         self.setStyleSheet(WINDOW_STYLESHEET)
         pg.setConfigOptions(useOpenGL=False)  # appears to be faster that way
-        try:
-            import numba
-
-            pg.setConfigOptions(useNumba=True)  # appears to be faster that way
-        except ImportError:
-            pass
         # build model:
         self.ds = ds
         self.data_source = data_source

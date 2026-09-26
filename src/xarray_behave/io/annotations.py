@@ -1,7 +1,6 @@
 import h5py
 import flammkuchen
 import numpy as np
-import pandas as pd
 import scipy.io
 import logging
 from typing import Optional

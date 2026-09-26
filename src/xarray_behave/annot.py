@@ -323,10 +323,8 @@ class Events(UserDict):
 
         if np.abs(nearest_start - time) < np.abs(nearest_stop - time):
             index = np.where(self.start_seconds(name) == nearest_start)[0][0]
-            nearest_is_start = True
         else:
             index = np.where(self.stop_seconds(name) == nearest_stop)[0][0]
-            nearest_is_start = False
 
         start = self.start_seconds(name)[index]
         stop = self.stop_seconds(name)[index]

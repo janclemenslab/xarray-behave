@@ -46,9 +46,9 @@ class _FakeDialog:
         self.form = _FakeForm()
 
 
-def test_main_das_folder_imports_unsaved_project(tmp_path, monkeypatch):
-    (tmp_path / "b.wav").write_bytes(b"")
-    (tmp_path / "a.wav").write_bytes(b"")
+def test_main_das_opens_single_audio_file(tmp_path, monkeypatch):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"")
     captured = {}
     fake_app = SimpleNamespace(
         exec_=lambda: captured.setdefault("event_loop", True),
@@ -56,18 +56,19 @@ def test_main_das_folder_imports_unsaved_project(tmp_path, monkeypatch):
     )
     replacement = object()
 
-    def fake_from_folder(cls, **kwargs):
+    def fake_from_file(cls, **kwargs):
         captured.update(kwargs)
         return replacement
 
     monkeypatch.setattr(gui_app.pg, "mkQApp", lambda: fake_app)
     monkeypatch.setattr(gui_app.QtWidgets.QApplication, "instance", staticmethod(lambda: fake_app))
-    monkeypatch.setattr(gui_app.MainWindow, "new_project_from_folder", classmethod(fake_from_folder))
+    monkeypatch.setattr(gui_app.MainWindow, "from_file", classmethod(fake_from_file))
     monkeypatch.setattr(gui_app.MainWindow, "from_dir", classmethod(lambda cls, **kwargs: (_ for _ in ()).throw(AssertionError())))
 
-    gui_app.main(str(tmp_path), is_das=True)
+    gui_app.main(str(audio), is_das=True)
 
-    assert captured["dirname"] == str(tmp_path)
+    assert captured["filename"] == str(audio)
+    assert captured["is_das"] is True
     assert fake_app._xarray_behave_mainwin is replacement
     assert captured["event_loop"] is True
 
