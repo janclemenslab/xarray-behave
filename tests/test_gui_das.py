@@ -64,6 +64,7 @@ def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatc
     message_threads = []
 
     def accept_dialog(dialog):
+        assert dialog.form.fields["store_folder"].text() == str(source) + ".npy"
         labels = dialog.form.findChildren(gui_app.QtWidgets.QLabel)
         assert any(label.text() == "Create a DAS training dataset from audio files and their annotation CSV files." for label in labels)
         assert "text" not in dialog.form.get_form_data()
@@ -77,7 +78,7 @@ def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatc
     builder.make_training_dataset = lambda *args, **kwargs: notices.append((args, kwargs)) or args[1]
     monkeypatch.setitem(sys.modules, "das.data.dataset_builder", builder)
     monkeypatch.setattr(gui_app.YamlDialog, "exec_", accept_dialog)
-    folder_choices = iter((str(source), str(destination)))
+    folder_choices = iter((str(source) + "/", str(destination)))
     monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda *args, **kwargs: next(folder_choices))
     app = gui_app.QtWidgets.QApplication.instance()
     monkeypatch.setattr(
@@ -89,7 +90,7 @@ def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatc
     window.das_make()
     qtbot.waitUntil(lambda: not app._das_dataset_jobs)
 
-    assert notices == [((str(source), str(destination)),
+    assert notices == [((str(source) + "/", str(destination)),
                         {"split_by": "samples", "validation_fraction": 0.2,
                          "test_fraction": 0.2, "seed": None})]
     assert message_threads == [True]

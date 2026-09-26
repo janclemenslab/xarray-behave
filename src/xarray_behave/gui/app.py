@@ -976,7 +976,7 @@ class MainWindow(QtWidgets.QMainWindow):
             title="Make dataset for training",
         )
         dialog.form.fields["data_folder"].setText(data_folder)
-        dialog.form.fields["store_folder"].setText(data_folder + ".npy")
+        dialog.form.fields["store_folder"].setText(os.path.normpath(data_folder) + ".npy")
         if dialog.exec_() != QtWidgets.QDialog.Accepted:
             return
 
