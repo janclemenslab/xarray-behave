@@ -234,20 +234,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.file_menu = self.bar.addMenu("File")
         if self.is_das:
-            self._add_keyed_menuitem(self.file_menu, "Open audio file", self.new_project_from_file)
-            self._add_keyed_menuitem(self.file_menu, "Import folder as project", self.new_project_from_folder)
-            self._add_keyed_menuitem(self.file_menu, "Open project", self.open_project)
-            if self.project is not None:
-                self._add_keyed_menuitem(self.file_menu, "Add recordings", self._add_project_recordings)
-                self.file_menu.addSeparator()
-                self._add_keyed_menuitem(self.file_menu, "Save Project", self.save_project)
-                self._add_keyed_menuitem(self.file_menu, "Save Project As...", self.save_project_as)
+            self._add_keyed_menuitem(self.file_menu, "Open audio file", partial(self.from_file, is_das=True))
+            self._add_keyed_menuitem(
+                self.file_menu, "Create dataset from ethodrome folder", partial(self.from_dir, is_das=True)
+            )
         else:
             self._add_keyed_menuitem(self.file_menu, "New from media files", media_callback)
             self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
             self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
         self.file_menu.addSeparator()
-        self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
+        self._add_keyed_menuitem(
+            self.file_menu, "Load dataset", partial(self.from_zarr, is_das=True) if self.is_das else self.from_zarr
+        )
         self.file_menu.addSeparator()
         self.file_menu.addAction("Save Configuration As...", self.save_gui_config_as)
         self.file_menu.addAction("Exit", self.close)
@@ -262,9 +260,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.project_panel = self._make_project_panel()
             self.hb.addWidget(self.project_panel, 1)
         elif self.is_das:
-            self.hb.addWidget(self.add_button("Open audio file", self.new_project_from_file))
-            self.hb.addWidget(self.add_button("Import folder as project", self.new_project_from_folder))
-            self.hb.addWidget(self.add_button("Open project", self.open_project))
+            self.hb.addWidget(self.add_button("Open audio file", partial(self.from_file, is_das=True)))
+            self.hb.addWidget(self.add_button("Create dataset from ethodrome folder", partial(self.from_dir, is_das=True)))
         else:
             self.hb.addWidget(self.add_button("Create dataset from media files", media_callback))
             self.hb.addWidget(self.add_button("Load audio from file", self.from_file))
@@ -894,7 +891,7 @@ class MainWindow(QtWidgets.QMainWindow):
         logger.info(f"   Added {added} predicted annotations.")
         self._refresh_annotations_after_das()
 
-    def _open_das_window(self, initial_tab: str, *, use_current_audio: bool = False):
+    def _open_das_window(self, initial_tab: str, *, use_current_audio: bool = False, startup_config=None):
         try:
             from das.gui_app import DASConformerWindow
         except ImportError as e:
@@ -910,6 +907,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "on_predictions": on_predictions,
             "parent": self,
         }
+        if startup_config is not None:
+            window_kwargs["startup_config"] = startup_config
         das_signature = inspect.signature(DASConformerWindow)
         accepts_extra_kwargs = any(
             parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in das_signature.parameters.values()
@@ -1112,6 +1111,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     fmax=dialog.form["spec_freq_max"],
                     data_source=DataSource("file", filename),
                     config_manager=config_manager,
+                    is_das=is_das,
                 )
 
     @classmethod
@@ -1208,6 +1208,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     box_size=dialog.form["box_size_px"],
                     data_source=DataSource("dir", dirname),
                     config_manager=config_manager,
+                    is_das=is_das,
                 )
 
     @classmethod
@@ -1273,6 +1274,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     box_size=dialog.form["box_size"],
                     data_source=DataSource("zarr", filename),
                     config_manager=config_manager,
+                    is_das=is_das,
                 )
 
     def save_dataset(self, qt_keycode=None):
@@ -1332,8 +1334,9 @@ class PSV(MainWindow):
         config_manager: Optional[gui_config.GuiConfigManager] = None,
         project_document: project_model.Project | None = None,
         recording_name: str | None = None,
+        is_das: bool = False,
     ):
-        super().__init__(title=title, is_das=project_document is not None, project_document=project_document)
+        super().__init__(title=title, is_das=is_das or project_document is not None, project_document=project_document)
         if config_manager is not None:
             self.config_manager = config_manager
         config = self.config_manager.config
@@ -1527,6 +1530,13 @@ class PSV(MainWindow):
             self._add_keyed_menuitem(self.file_menu, "Import folder as project", self.new_project_from_folder)
             self._add_keyed_menuitem(self.file_menu, "Open project", self.open_project)
             self._add_keyed_menuitem(self.file_menu, "Add recordings", self._add_project_recordings)
+        elif self.is_das:
+            self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
+                self.file_menu, "Open audio/annotations", partial(self.from_file, is_das=True)
+            )
+            self._add_keyed_menuitem(
+                self.file_menu, "Create dataset from ethodrome folder", partial(self.from_dir, is_das=True)
+            )
         else:
             self._add_keyed_menuitem(self.file_menu, "New from media files", self.from_media)
             self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
@@ -1534,7 +1544,9 @@ class PSV(MainWindow):
             )
             self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
         self.file_menu.addSeparator()
-        self._add_keyed_menuitem(self.file_menu, "Load dataset", self.from_zarr)
+        self._add_keyed_menuitem(
+            self.file_menu, "Load dataset", partial(self.from_zarr, is_das=True) if self.is_das else self.from_zarr
+        )
         self.file_menu.addSeparator()
         self._viewer_actions["import_annotations"] = self._add_keyed_menuitem(
             self.file_menu, "Import annotations...", self.import_annotations
@@ -5019,6 +5031,7 @@ def main(
     manifest: Optional[str] = None,
     skip_dialog: bool = False,
     is_das: bool = False,
+    das_startup_config=None,
 ):
     """
     Args:
@@ -5059,15 +5072,8 @@ def main(
         mainwin.show()
     elif not os.path.exists(source):
         logger.info(f"{source} does not exist - skipping.")
-    elif source.lower().endswith(project_model.PROJECT_SUFFIX):
+    elif not is_das and source.lower().endswith(project_model.PROJECT_SUFFIX):
         mainwin = MainWindow.open_project(filename=source)
-    elif is_das and Path(source).suffix.lower() in project_model.AUDIO_SUFFIXES:
-        mainwin = MainWindow.new_project_from_file(
-            filename=source,
-            events_string=events_string,
-            spec_freq_min=spec_freq_min,
-            spec_freq_max=spec_freq_max,
-        )
     elif (
         source.lower().endswith(".wav")
         or source.lower().endswith(".npz")
@@ -5095,27 +5101,25 @@ def main(
             is_das=is_das,
         )
     elif os.path.isdir(source):
-        if is_das and project_model.audio_files_in_folder(source):
-            mainwin = MainWindow.new_project_from_folder(
-                dirname=source,
-                events_string=events_string,
-                spec_freq_min=spec_freq_min,
-                spec_freq_max=spec_freq_max,
-            )
-        else:
-            mainwin = MainWindow.from_dir(
-                dirname=source,
-                events_string=events_string,
-                target_samplingrate=target_samplingrate,
-                box_size=box_size,
-                spec_freq_min=spec_freq_min,
-                spec_freq_max=spec_freq_max,
-                pixel_size_mm=pixel_size_mm,
-                manifest=manifest,
-                skip_dialog=skip_dialog,
-                is_das=is_das,
-            )
+        mainwin = MainWindow.from_dir(
+            dirname=source,
+            events_string=events_string,
+            target_samplingrate=target_samplingrate,
+            box_size=box_size,
+            spec_freq_min=spec_freq_min,
+            spec_freq_max=spec_freq_max,
+            pixel_size_mm=pixel_size_mm,
+            manifest=manifest,
+            skip_dialog=skip_dialog,
+            is_das=is_das,
+        )
     app._xarray_behave_mainwin = mainwin
+    if is_das and das_startup_config is not None and mainwin is not None:
+        mainwin._open_das_window(
+            "predict" if das_startup_config.mode == "predict" else "train",
+            use_current_audio=True,
+            startup_config=das_startup_config,
+        )
 
     # # Start Qt event loop unless running in interactive mode or using pyside.
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
@@ -5130,6 +5134,7 @@ def main_das(
     spec_freq_min: Optional[float] = None,
     spec_freq_max: Optional[float] = None,
     skip_dialog: bool = False,
+    das_startup_config=None,
 ):
     """GUI for annotating song and training and using das networks.
 
@@ -5163,6 +5168,7 @@ def main_das(
         spec_freq_max=spec_freq_max,
         skip_dialog=skip_dialog,
         is_das=True,
+        das_startup_config=das_startup_config,
     )
 
 

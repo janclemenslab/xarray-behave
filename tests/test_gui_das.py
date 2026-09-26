@@ -41,6 +41,15 @@ def test_num_flies_uses_dimension_size_not_coordinate_values():
     assert _num_flies(xr.Dataset(coords={"time": [0.0]})) == 1
 
 
+def test_das_gui_starts_with_single_file_actions(qtbot):
+    window = MainWindow(is_das=True)
+    qtbot.addWidget(window)
+    labels = [action.text() for action in window.file_menu.actions()]
+    assert "Open audio file" in labels
+    assert "Import folder as project" not in labels
+    assert "Open project" not in labels
+
+
 def test_add_das_prediction_rows_preserves_known_categories():
     window = MainWindow.__new__(MainWindow)
     window.event_times = annot.Events(categories={"pulse": "event", "sine": "segment"})
