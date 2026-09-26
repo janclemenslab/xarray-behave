@@ -379,6 +379,7 @@ class SpecView(pg.ImageView):
         self.view.getViewBox().invertY(False)
         self.view.setMouseEnabled(x=False, y=False)
         self.view.setMenuEnabled(False)
+        self.view.hideButtons()
         self.view.getViewBox().setBackgroundColor(TIMELINE_BACKGROUND)
         self.settings_button = _compact_tool_button(_settings_icon(), "Spectrogram display settings", self)
         self.settings_button.setObjectName("spectrogramSettingsButton")

@@ -168,8 +168,8 @@ QToolButton#transportPlayButton {{
     max-height: 22px;
 }}
 QToolButton#transportLoopButton {{
-    min-width: 40px;
-    max-width: 40px;
+    min-width: 28px;
+    max-width: 28px;
 }}
 QSlider::groove:horizontal {{
     background: {SURFACE_INTERACTIVE};

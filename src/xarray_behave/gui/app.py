@@ -193,6 +193,34 @@ def _apply_project_cli_settings(manager, events_string="", spec_freq_min=None, s
     manager.config = gui_config.sanitize_config(config)
 
 
+class _DatasetBuildWorker(QtCore.QObject):
+    finished = QtCore.Signal()
+
+    def __init__(self, values):
+        super().__init__()
+        self.values = values
+        self.result = None
+        self.error = None
+
+    @QtCore.Slot()
+    def run(self):
+        try:
+            from das.data.dataset_builder import make_training_dataset
+
+            self.result = make_training_dataset(
+                self.values["data_folder"],
+                self.values["store_folder"],
+                split_by=self.values["split_by"],
+                validation_fraction=self.values["validation_fraction"],
+                test_fraction=self.values["test_fraction"],
+                seed=self.values["seed"],
+            )
+        except Exception as exc:
+            logger.exception("Could not create DAS training dataset")
+            self.error = str(exc)
+        self.finished.emit()
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
@@ -230,13 +258,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.file_menu = self.bar.addMenu("File")
         if self.is_das:
             self._add_keyed_menuitem(self.file_menu, "Open audio file", partial(self.from_file, is_das=True))
-            self._add_keyed_menuitem(
-                self.file_menu, "Create dataset from ethodrome folder", partial(self.from_dir, is_das=True)
-            )
+            self._add_keyed_menuitem(self.file_menu, "Open etho folder", partial(self.from_dir, is_das=True))
         else:
             self._add_keyed_menuitem(self.file_menu, "New from media files", media_callback)
             self._add_keyed_menuitem(self.file_menu, "New from file", self.from_file)
-            self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
+            self._add_keyed_menuitem(self.file_menu, "Open etho folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(
             self.file_menu, "Load dataset", partial(self.from_zarr, is_das=True) if self.is_das else self.from_zarr
@@ -246,6 +272,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.file_menu.addAction("Exit", self.close)
 
         self.das_menu = self.bar.addMenu("DAS")
+        self._add_keyed_menuitem(self.das_menu, "Make dataset for training", self.das_make, None)
         self._add_keyed_menuitem(self.das_menu, "Train", self.das_train, None)
         self._add_keyed_menuitem(self.das_menu, "Predict", self.das_predict, None)
 
@@ -256,11 +283,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.hb.addWidget(self.project_panel, 1)
         elif self.is_das:
             self.hb.addWidget(self.add_button("Open audio file", partial(self.from_file, is_das=True)))
-            self.hb.addWidget(self.add_button("Create dataset from ethodrome folder", partial(self.from_dir, is_das=True)))
+            self.hb.addWidget(self.add_button("Open etho folder", partial(self.from_dir, is_das=True)))
         else:
             self.hb.addWidget(self.add_button("Create dataset from media files", media_callback))
             self.hb.addWidget(self.add_button("Load audio from file", self.from_file))
-            self.hb.addWidget(self.add_button("Create dataset from ethodrome folder", self.from_dir))
+            self.hb.addWidget(self.add_button("Open etho folder", self.from_dir))
             self.hb.addWidget(self.add_button("Load dataset (zarr)", self.from_zarr))
 
         self.cb = pg.GraphicsLayoutWidget()
@@ -938,6 +965,51 @@ class MainWindow(QtWidgets.QMainWindow):
         del qt_keycode
         self._open_das_window("train", use_current_audio=True)
 
+    def das_make(self, qt_keycode=None):
+        del qt_keycode
+        data_folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select annotated audio folder")
+        if not data_folder:
+            return
+        dialog = YamlDialog(
+            yaml_file=package_dir + "/gui/forms/das_make.yaml",
+            parent=self,
+            title="Make dataset for training",
+        )
+        dialog.form.fields["data_folder"].setText(data_folder)
+        dialog.form.fields["store_folder"].setText(data_folder + ".npy")
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+
+        values = dialog.form.get_form_data()
+        app = QtWidgets.QApplication.instance()
+        progress = QtWidgets.QProgressDialog("Creating training dataset...", "", 0, 0)
+        progress.setCancelButton(None)
+        progress.setWindowTitle("DAS")
+        progress.show()
+        thread = QtCore.QThread(app)
+        worker = _DatasetBuildWorker(values)
+        worker.moveToThread(thread)
+        if not hasattr(app, "_das_dataset_jobs"):
+            app._das_dataset_jobs = []
+        job = (thread, worker, progress)
+        app._das_dataset_jobs.append(job)
+
+        def finish():
+            progress.close()
+            if worker.error is not None:
+                QtWidgets.QMessageBox.critical(None, "Dataset creation failed", worker.error)
+            else:
+                QtWidgets.QMessageBox.information(None, "Dataset created", f"Saved dataset to {worker.result}")
+            app._das_dataset_jobs.remove(job)
+            progress.deleteLater()
+
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(finish)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
     def das_predict(self, qt_keycode=None):
         del qt_keycode
         self._open_das_window("predict", use_current_audio=True)
@@ -1523,15 +1595,13 @@ class PSV(MainWindow):
             self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
                 self.file_menu, "Open audio/annotations", partial(self.from_file, is_das=True)
             )
-            self._add_keyed_menuitem(
-                self.file_menu, "Create dataset from ethodrome folder", partial(self.from_dir, is_das=True)
-            )
+            self._add_keyed_menuitem(self.file_menu, "Open etho folder", partial(self.from_dir, is_das=True))
         else:
             self._add_keyed_menuitem(self.file_menu, "New from media files", self.from_media)
             self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
                 self.file_menu, "Open audio/annotations", self.from_file
             )
-            self._add_keyed_menuitem(self.file_menu, "New from ethodrome folder", self.from_dir)
+            self._add_keyed_menuitem(self.file_menu, "Open etho folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(
             self.file_menu, "Load dataset", partial(self.from_zarr, is_das=True) if self.is_das else self.from_zarr
@@ -2830,11 +2900,11 @@ class PSV(MainWindow):
                 object_name="transportPlayButton",
             ),
             self._build_transport_button(
-                "Loop",
+                "🔁",
                 "Play current window (E)",
                 lambda: self.play_audio("E"),
                 object_name="transportLoopButton",
-                width=40,
+                width=28,
             ),
             self._build_transport_button(
                 ">|",

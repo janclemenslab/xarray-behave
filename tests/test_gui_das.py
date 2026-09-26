@@ -46,8 +46,60 @@ def test_das_gui_starts_with_single_file_actions(qtbot):
     qtbot.addWidget(window)
     labels = [action.text() for action in window.file_menu.actions()]
     assert "Open audio file" in labels
+    assert "Open etho folder" in labels
     assert "Import folder as project" not in labels
     assert "Open project" not in labels
+    assert "Make dataset for training" in [action.text() for action in window.das_menu.actions()]
+
+
+def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatch, tmp_path):
+    from xarray_behave.gui import app as gui_app
+
+    window = MainWindow(is_das=True)
+    qtbot.addWidget(window)
+    source = tmp_path / "recordings"
+    source.mkdir()
+    values = {}
+    notices = []
+    message_threads = []
+
+    class Field:
+        def __init__(self, key):
+            self.key = key
+
+        def setText(self, text):
+            values[self.key] = text
+
+    class Dialog:
+        def __init__(self, *args, **kwargs):
+            self.form = SimpleNamespace(
+                fields={name: Field(name) for name in ("data_folder", "store_folder")},
+                get_form_data=lambda: {**values, "split_by": "samples", "validation_fraction": 0.2,
+                                       "test_fraction": 0.2, "seed": None},
+            )
+
+        def exec_(self):
+            return gui_app.QtWidgets.QDialog.Accepted
+
+    builder = ModuleType("das.data.dataset_builder")
+    builder.make_training_dataset = lambda *args, **kwargs: notices.append((args, kwargs)) or args[1]
+    monkeypatch.setitem(sys.modules, "das.data.dataset_builder", builder)
+    monkeypatch.setattr(gui_app, "YamlDialog", Dialog)
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda *args: str(source))
+    app = gui_app.QtWidgets.QApplication.instance()
+    monkeypatch.setattr(
+        gui_app.QtWidgets.QMessageBox,
+        "information",
+        lambda *args: message_threads.append(gui_app.QtCore.QThread.currentThread() == app.thread()),
+    )
+
+    window.das_make()
+    qtbot.waitUntil(lambda: not app._das_dataset_jobs)
+
+    assert notices == [((str(source), str(source) + ".npy"),
+                        {"split_by": "samples", "validation_fraction": 0.2,
+                         "test_fraction": 0.2, "seed": None})]
+    assert message_threads == [True]
 
 
 def test_add_das_prediction_rows_preserves_known_categories():

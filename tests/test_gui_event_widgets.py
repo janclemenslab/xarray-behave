@@ -1319,7 +1319,7 @@ def test_transport_loop_button_uses_audio_window_shortcut():
 
     loop_button = panel.findChild(QtWidgets.QToolButton, "transportLoopButton")
     assert loop_button is not None
-    assert loop_button.text() == "Loop"
+    assert loop_button.text() == "🔁"
     loop_button.click()
     assert played == ["E"]
 
