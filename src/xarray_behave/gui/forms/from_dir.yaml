@@ -84,9 +84,9 @@ main:
   default: False
 
 - name: events_string
-  label: Initialize event names
+  label: Initialize event names and categories (event, segment)
   type: string
-  default: "pulse_manual;sine_manual;vibration_manual"
+  default: "pulse_manual,event;sine_manual,segment;vibration_manual,event"
 
 - name: filter_song
   label: Bandpass filter song

@@ -20,82 +20,8 @@ import logging
 from .. import io
 from typing import Optional, Sequence
 
+
 logger = logging.getLogger(__name__)
-
-
-class SoundFileArray:
-    """Small NumPy-like wrapper for random-access reads from an audio file."""
-
-    ndim = 2
-
-    def __init__(self, filename: str, dtype: str = "float32"):
-        import soundfile as sf
-
-        self.filename = str(filename)
-        self.dtype = np.dtype(dtype)
-        with sf.SoundFile(self.filename) as file:
-            self.shape = (len(file), file.channels)
-            self.sampling_rate = file.samplerate
-
-    def __getitem__(self, key):
-        if key is Ellipsis:
-            key = (slice(None), slice(None))
-        elif not isinstance(key, tuple):
-            key = (key, slice(None))
-        elif any(item is Ellipsis for item in key):
-            key = tuple(slice(None) if item is Ellipsis else item for item in key)
-
-        if len(key) == 1:
-            key = (key[0], slice(None))
-        if len(key) != 2:
-            raise IndexError("Audio data must be indexed as samples[, channels].")
-
-        sample_key, channel_key = key
-        sample_scalar = np.isscalar(sample_key)
-        if sample_scalar:
-            sample_index = int(sample_key)
-            if sample_index < 0:
-                sample_index += self.shape[0]
-            if sample_index < 0 or sample_index >= self.shape[0]:
-                raise IndexError("sample index out of range")
-            start = sample_index
-            stop = sample_index + 1
-            step = 1
-        elif isinstance(sample_key, slice):
-            start, stop, step = sample_key.indices(self.shape[0])
-            if step < 0:
-                raise ValueError("negative sample strides are not supported for lazy audio")
-        else:
-            sample_indices = np.asarray(sample_key)
-            if sample_indices.dtype == bool:
-                sample_indices = np.flatnonzero(sample_indices)
-            sample_indices = sample_indices.astype(int, copy=False)
-            sample_indices = np.where(sample_indices < 0, sample_indices + self.shape[0], sample_indices)
-            if sample_indices.size == 0:
-                data = np.empty((0, self.shape[1]), dtype=self.dtype)
-                return data[:, channel_key]
-            start = int(sample_indices.min())
-            stop = int(sample_indices.max()) + 1
-            step = None
-
-        import soundfile as sf
-
-        data, _ = sf.read(
-            self.filename,
-            start=start,
-            stop=stop,
-            dtype=self.dtype.name,
-            always_2d=True,
-        )
-        if isinstance(sample_key, slice) and step != 1:
-            data = data[::step]
-        elif not sample_scalar and not isinstance(sample_key, slice):
-            data = data[sample_indices - start]
-
-        data = data[:, channel_key]
-        if sample_scalar:
-            data = data[0]
-        return data
 
 
 def split_song_and_nonsong(data, song_channels=None, return_nonsong_channels=False):
@@ -272,15 +198,6 @@ class AudioFile(io.BaseProvider):
     ):
         if filename is None:
             filename = self.path
-
-        if lazy:
-            import dask.array as daskarray
-
-            data = SoundFileArray(filename)
-            sampling_rate = data.sampling_rate
-            data = daskarray.from_array(data, chunks=(100_000, data.shape[1]), asarray=False)
-            song, non_song = split_song_and_nonsong(data, song_channels, return_nonsong_channels)
-            return song, non_song, sampling_rate
 
         import librosa
 

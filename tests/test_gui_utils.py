@@ -4,7 +4,7 @@ from xarray_behave.gui import utils
 from xarray_behave.gui import views
 
 
-def test_make_colors_returns_rgb_uint8_rows():
+def test_make_colors_uses_available_colorcet_palette():
     colors = utils.make_colors(3)
 
     assert colors.shape == (3, 3)

@@ -1,10 +1,12 @@
 import h5py
 import flammkuchen
 import numpy as np
+import pandas as pd
 import scipy.io
 import logging
 from typing import Optional
 from .. import io, annot
+
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +144,7 @@ class FlySongSegmenter(io.BaseProvider):
         fs = 10_000  # Hz
 
         res["event_names"] = ["song_pulse_any_fss", "song_pulse_slow_fss", "song_pulse_fast_fss", "sine_fss"]
-        res["event_categories"] = ["event", "event", "event", "event"]
+        res["event_categories"] = ["event", "event", "event", "segment"]
         res["event_indices"] = [
             res["pulse_times_samples"],
             res["pulse_times_samples"][res["pulse_labels"] == 1],
@@ -158,6 +160,6 @@ class FlySongSegmenter(io.BaseProvider):
         }
         # event_categories
         event_categories = {}
-        for cat, typ in zip(event_seconds.keys(), ["event", "event", "event", "event"]):
+        for cat, typ in zip(event_seconds.keys(), ["event", "event", "event", "segment"]):
             event_categories[cat] = typ
         return event_seconds, event_categories

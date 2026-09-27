@@ -4,7 +4,6 @@ def test_imports():
     import xarray_behave.metrics
     import xarray_behave.loaders
     import xarray_behave.annot
-    import xarray_behave.v1
 
     from xarray_behave.io import annotations, annotations_manual, audio, balltracks, movieparams, poses, tracks
-    from xarray_behave.gui import app, formbuilder, utils, views
+    from xarray_behave.gui import app, formbuilder, table, utils, views

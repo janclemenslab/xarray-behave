@@ -1,4 +1,4 @@
-import xarray_behave.v1 as xb
+import xarray_behave as xb
 import logging
 
 logging.getLogger().setLevel(logging.INFO)

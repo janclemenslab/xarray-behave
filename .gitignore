@@ -120,7 +120,6 @@ fig*
 !/tests/
 !/env/
 !/docs/
-!/AGENTS.md
 !/*.toml
 !/.github
 !/conda

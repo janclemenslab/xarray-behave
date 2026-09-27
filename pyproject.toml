@@ -10,6 +10,7 @@ dynamic = ["version", "description"]
 requires-python = ">=3.10"
 dependencies = [
        'defopt==6.3',
+       'rich',
        'flammkuchen',
        'h5py',
        'pyyaml',
@@ -17,15 +18,21 @@ dependencies = [
        'dask',
        'pandas',
        'xarray',
+       'scikit-image',
+       'peakutils',
        'numba',
        'numpy',
        'scipy>1.9',
+       'sounddevice',
        'soundfile',
        'librosa>0.8',
-       'av>=12',
-       'PySide6>=6.10',
+       'opencv-python-headless',
+       'pyvideoreader',
+       'PySide6-Essentials==6.8.*',
        'pyqtgraph>0.12.2',
        'qtpy',
+       'superqt',
+       'colorcet',
 ]
 readme = "README.md"
 
@@ -34,7 +41,7 @@ dev = ["pytest", "flit"]
 
 [project.urls]
 source = "https://github.com/janclemenslab/xarray-behave"
-documentation = "https://janclemenslab.org/das-alpha/"
+documentation = "https://janclemenslab.org/das/"
 
 [tool.flit.module]
 name = "xarray_behave"

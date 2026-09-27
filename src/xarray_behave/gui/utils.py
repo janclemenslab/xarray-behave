@@ -1,17 +1,114 @@
 from typing import Iterable
+import cv2
 import numpy as np
+import h5py
+import colorcet
+from typing import Iterable
 
 import pyqtgraph as pg
 from qtpy import QtGui, QtWidgets, QtCore
+import logging
+from videoreader import VideoReader
+from typing import Union
 
 
 def make_colors(nb_colors: int) -> Iterable:
-    if nb_colors <= 0:
-        return np.zeros((0, 3), dtype=np.uint8)
-    return np.asarray(
-        [pg.intColor(index, hues=nb_colors).getRgb()[:3] for index in range(nb_colors)],
-        dtype=np.uint8,
-    )
+    colors = []
+    if nb_colors > 0:
+        for cmap_name in ["glasbey_bw_minc_20_minl_30", "glasbey_light", "glasbey"]:
+            palette = colorcet.palette.get(cmap_name)
+            if palette:
+                colors = np.array([_hex_to_rgb(color) for color in palette[1:]], dtype=np.uint8)  # ignore first red
+                if len(colors) < nb_colors:
+                    colors = np.resize(colors, (nb_colors, 3))
+                else:
+                    colors = colors[:nb_colors]
+                break
+        else:
+            cmap = colorcet.cm.get("glasbey_bw_minc_20_minl_30")
+            if callable(cmap):
+                colors = (cmap(np.linspace(0, 1, nb_colors + 1))[1:] * 255)[:, :3].astype(np.uint8)
+            else:
+                colors = np.resize(
+                    np.array(
+                        [
+                            [1, 135, 0],
+                            [181, 0, 255],
+                            [0, 172, 198],
+                            [255, 128, 0],
+                            [127, 78, 0],
+                            [255, 0, 110],
+                        ],
+                        dtype=np.uint8,
+                    ),
+                    (nb_colors, 3),
+                )
+    return colors
+
+
+def _hex_to_rgb(color: str) -> tuple[int, int, int]:
+    color = color.lstrip("#")
+    return tuple(int(color[ii : ii + 2], 16) for ii in (0, 2, 4))
+
+
+def fast_plot(plot_widget, x, y, pen=None):
+    """[summary]
+
+    Args:
+        plot_widget ([type]): [description]
+        x ([type]): [description]
+        y ([type]): [description]
+        pen ([type], optional): [description]. Defaults to None.
+    """
+    # as per: https://stackoverflow.com/questions/17103698/plotting-large-arrays-in-pyqtgraph
+    # not worth it when plotting all channels but may speed up drawing events
+    conn = np.ones_like(x, dtype=np.bool)
+    conn[:, -1] = False  # make sure plots are disconnected
+    path = pg.arrayToQPath(x.flatten(), y.flatten(), conn.flatten())
+    item = QtWidgets.QGraphicsPathItem(path)
+    if pen is None:
+        pen = pg.mkPen(color=(196, 128, 128))
+    item.setPen(pen)
+    plot_widget.addItem(item)
+    return item
+
+
+class VideoReaderNP(VideoReader):
+    """VideoReader posing as numpy array."""
+
+    def __getitem__(self, index):
+        return self.read(index)[1]
+
+    @property
+    def dtype(self):
+        return np.uint8
+
+    @property
+    def shape(self):
+        return (self.number_of_frames, *self.frame_shape)
+
+    @property
+    def ndim(self):
+        return len(self.shape)
+
+    @property
+    def size(self):
+        return np.product(self.shape)
+
+    def min(self):
+        return 0
+
+    def max(self):
+        return 255
+
+    def transpose(self, *args):
+        return self
+
+
+class ImageViewVR(pg.ImageView):
+    def quickMinMax(self, data):
+        """Dummy min/max for numpy videoreader. The original function tries to read the full video!"""
+        return 0, 255
 
 
 class FastImageWidget(pg.GraphicsLayoutWidget):
@@ -63,18 +160,114 @@ class FastImageWidget(pg.GraphicsLayoutWidget):
         self.viewBox.setRange(xRange=(0, width), yRange=(0, height), padding=0)
 
 
-def find_nearest_idx(array, values):
-    """Find nearest index for scalar or array values in a sorted array."""
+def find_nearest(array, value):
     array = np.asarray(array)
-    values = np.asarray(values)
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+
+
+def allkeys(obj, keys=None):
+    """Recursively find all keys"""
+    # from https://stackoverflow.com/questions/59897093/get-all-keys-and-its-hierarchy-in-h5-file-using-python-library-h5py
+    if keys is None:
+        keys = []
+
+    keys.append(obj.name)
+    if isinstance(obj, h5py.Group):
+        for item in obj:
+            if isinstance(obj[item], h5py.Group):
+                allkeys(obj[item], keys)
+            else:  # isinstance(obj[item], h5py.Dataset):
+                keys.append(obj[item].name)
+    return keys
+
+
+def is_sorted(array):
+    return np.all(np.diff(array) >= 0)
+
+
+def find_nearest_idx(array: np.array, values: Union[int, float, np.array]):
+    """Find nearest index of each value from values in array
+
+    from https://stackoverflow.com/a/46184652
+
+    Args:
+        array (np.array): array to search in
+        values (Union[int, float, np.array]): query, should be sorted.
+
+    Returns:
+        [type]: indices of entries in array closest to each value in values
+    """
+
+    # scalar query
+    if isinstance(values, float) or isinstance(values, int):
+        return (np.abs(array - values)).argmin()
+
+    # make sure array is a numpy array
+    array = np.array(array)
+    if not is_sorted(array):
+        array = np.sort(array)
+
+    # get insert positions
     idxs = np.searchsorted(array, values, side="left")
-    idxs = np.clip(idxs, 0, len(array) - 1)
-    prev_idxs = np.clip(idxs - 1, 0, len(array) - 1)
-    use_prev = np.abs(values - array[prev_idxs]) < np.abs(values - array[idxs])
-    idxs = np.where(use_prev, prev_idxs, idxs)
-    if values.ndim == 0:
-        return int(idxs)
+
+    # find indexes where previous index is closer
+    prev_idx_is_less = (idxs == len(array)) | (
+        np.fabs(values - array[np.maximum(idxs - 1, 0)]) < np.fabs(values - array[np.minimum(idxs, len(array) - 1)])
+    )
+    idxs[prev_idx_is_less] -= 1
     return idxs
+
+
+class Worker(QtCore.QRunnable):
+    """Worker thread
+
+    Inherits from QRunnable to handler worker thread setup, signals and wrap-up.
+
+    Args:
+    fn: The function callback to run on this worker thread. Supplied args and
+                     kwargs will be passed through to the runner.
+    args: Arguments to pass to the callback function
+    kwargs: Keywords to pass to the callback function
+    """
+
+    def __init__(self, fn, *args, **kwargs):
+        super(Worker, self).__init__()
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+
+    @QtCore.Slot()
+    def run(self):
+        """
+        Initialise the runner function with passed args, kwargs.
+        """
+        self.fn(*self.args, **self.kwargs)
+
+
+class InvokeEvent(QtCore.QEvent):
+    EVENT_TYPE = QtCore.QEvent.Type(QtCore.QEvent.registerEventType())
+
+    def __init__(self, fn, *args, **kwargs):
+        QtCore.QEvent.__init__(self, InvokeEvent.EVENT_TYPE)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+
+
+class Invoker(QtCore.QObject):
+    def event(self, event):
+        event.fn(*event.args, **event.kwargs)
+
+        return True
+
+
+_invoker = Invoker()
+
+
+def invoke_in_main_thread(fn, *args, **kwargs):
+    QtCore.QCoreApplication.postEvent(_invoker, InvokeEvent(fn, *args, **kwargs))
 
 
 class CheckableComboBox(QtWidgets.QComboBox):

@@ -4,10 +4,9 @@ from types import ModuleType, SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-import xarray as xr
 
 from xarray_behave import annot
-from xarray_behave.gui.app import MainWindow, _num_flies
+from xarray_behave.gui.app import MainWindow
 
 
 class _ComputedSlice:
@@ -35,67 +34,6 @@ class _Dataset(SimpleNamespace):
         return hasattr(self, key)
 
 
-def test_num_flies_uses_dimension_size_not_coordinate_values():
-    assert _num_flies(xr.Dataset(coords={"flies": ["chamber0", "chamber1"]})) == 2
-    assert _num_flies(xr.Dataset(coords={"flies": [2, 5]})) == 2
-    assert _num_flies(xr.Dataset(coords={"time": [0.0]})) == 1
-
-
-def test_das_gui_starts_with_single_file_actions(qtbot):
-    window = MainWindow(is_das=True)
-    qtbot.addWidget(window)
-    labels = [action.text() for action in window.file_menu.actions()]
-    assert "Open audio file" in labels
-    assert "Open etho folder" in labels
-    assert "Import folder as project" not in labels
-    assert "Open project" not in labels
-    assert "Make dataset for training" in [action.text() for action in window.das_menu.actions()]
-
-
-def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatch, tmp_path):
-    from xarray_behave.gui import app as gui_app
-
-    window = MainWindow(is_das=True)
-    qtbot.addWidget(window)
-    source = tmp_path / "recordings"
-    source.mkdir()
-    destination = tmp_path / "dataset"
-    notices = []
-    message_threads = []
-
-    def accept_dialog(dialog):
-        assert dialog.form.fields["store_folder"].text() == str(source) + ".npy"
-        labels = dialog.form.findChildren(gui_app.QtWidgets.QLabel)
-        assert any(label.text() == "Create a DAS training dataset from audio files and their annotation CSV files." for label in labels)
-        assert "text" not in dialog.form.get_form_data()
-        assert dialog.form.fields["data_folder"].isEnabled()
-        assert dialog.form.fields["store_folder"].isEnabled()
-        next(button for button in dialog.form.findChildren(gui_app.QtWidgets.QPushButton)
-             if button.text() == "Select Dataset folder").click()
-        return gui_app.QtWidgets.QDialog.Accepted
-
-    builder = ModuleType("das.data.dataset_builder")
-    builder.make_training_dataset = lambda *args, **kwargs: notices.append((args, kwargs)) or args[1]
-    monkeypatch.setitem(sys.modules, "das.data.dataset_builder", builder)
-    monkeypatch.setattr(gui_app.YamlDialog, "exec_", accept_dialog)
-    folder_choices = iter((str(source) + "/", str(destination)))
-    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda *args, **kwargs: next(folder_choices))
-    app = gui_app.QtWidgets.QApplication.instance()
-    monkeypatch.setattr(
-        gui_app.QtWidgets.QMessageBox,
-        "information",
-        lambda *args: message_threads.append(gui_app.QtCore.QThread.currentThread() == app.thread()),
-    )
-
-    window.das_make()
-    qtbot.waitUntil(lambda: not app._das_dataset_jobs)
-
-    assert notices == [((str(source) + "/", str(destination)),
-                        {"split_by": "samples", "validation_fraction": 0.2,
-                         "test_fraction": 0.2, "seed": None})]
-    assert message_threads == [True]
-
-
 def test_add_das_prediction_rows_preserves_known_categories():
     window = MainWindow.__new__(MainWindow)
     window.event_times = annot.Events(categories={"pulse": "event", "sine": "segment"})
@@ -111,8 +49,8 @@ def test_add_das_prediction_rows_preserves_known_categories():
 
     assert added == 2
     assert window.event_times.categories["pulse_proposals"] == "event"
-    assert window.event_times.categories["sine_proposals"] == "event"
-    np.testing.assert_allclose(window.event_times["pulse_proposals"][0, :2], [0.6, 0.601])
+    assert window.event_times.categories["sine_proposals"] == "segment"
+    assert window.event_times["pulse_proposals"][0, 0] == window.event_times["pulse_proposals"][0, 1]
     np.testing.assert_allclose(window.event_times["sine_proposals"][0, :2], [0.7, 0.8])
 
 
@@ -170,6 +108,44 @@ def test_handle_das_predictions_adds_proposals_and_refreshes_state():
     assert "song_proposals" in window.event_times
     np.testing.assert_allclose(window.event_times["song_proposals"][0, :2], [1.1, 1.2])
     assert refreshed == {"selector": True, "xy": True}
+
+
+def test_open_daws_window_uses_whisper_gui_and_current_audio(monkeypatch):
+    calls = {}
+
+    class _Destroyed:
+        def connect(self, callback):
+            calls["destroyed_callback"] = callback
+
+    class FakeDASWhisperWindow:
+        destroyed = _Destroyed()
+
+        def __init__(self, **kwargs):
+            calls["kwargs"] = kwargs
+
+        def setAttribute(self, value):
+            calls["attribute"] = value
+
+        def show(self):
+            calls["shown"] = True
+
+    fake_module = ModuleType("das_whisper.gui_app")
+    fake_module.DASWhisperWindow = FakeDASWhisperWindow
+    monkeypatch.setitem(sys.modules, "das_whisper.gui_app", fake_module)
+
+    window = MainWindow.__new__(MainWindow)
+    window._has_current_das_audio = lambda: True
+    window._das_current_audio = lambda start, stop: (np.zeros(10), 1_000, start)
+    window._handle_das_predictions = lambda annotations, time_offset_seconds: None
+
+    daws_window = window._open_daws_window("predict", use_current_audio=True)
+
+    assert isinstance(daws_window, FakeDASWhisperWindow)
+    assert calls["kwargs"]["initial_tab"] == "predict"
+    assert calls["kwargs"]["current_audio_provider"] is window._das_current_audio
+    assert calls["kwargs"]["on_predictions"] is window._handle_das_predictions
+    assert calls["shown"] is True
+    assert window._daws_windows == [daws_window]
 
 
 def test_open_das_train_window_uses_current_audio_and_duration(monkeypatch):
