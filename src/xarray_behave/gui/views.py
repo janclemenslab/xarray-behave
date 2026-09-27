@@ -1,27 +1,45 @@
-from qtpy import QtGui, QtCore
+from qtpy import QtCore
 import pyqtgraph as pg
 import numpy as np
-import skimage.draw
 import logging
 from typing import Tuple
 
-from .. import xarray_behave as xb
 from . import utils
+from .event_widgets import (
+    _activate_dialog,
+    _compact_tool_button,
+    _delete_dialog_later,
+    _dialog_is_open,
+    _settings_icon,
+)
+from .style_profile import TIMELINE_BACKGROUND, TIMELINE_GRID, TIMELINE_PLAYHEAD, TEXT_MUTED
 
 logger = logging.getLogger(__name__)
 
+Y_AXIS_WIDTH = 72
 
-class Model:
-    def __init__(self, ds):
-        self.ds = ds
 
-    def save(self, filename):
-        xb.save(filename, self.ds)
+def _configure_y_axis_inside(axis, label: str) -> None:
+    axis.setWidth(Y_AXIS_WIDTH)
+    axis.setLabel(label)
+    axis.setStyle(
+        tickLength=-7,
+        tickTextOffset=-44,
+        tickTextWidth=42,
+        autoExpandTextSpace=False,
+        autoReduceTextSpace=False,
+    )
+    axis.setPen(pg.mkPen(TIMELINE_GRID, width=1))
+    axis.setTextPen(pg.mkPen(TEXT_MUTED))
 
-    @classmethod
-    def from_file(cls, filename):
-        ds = xb.load(filename)
-        return cls(ds)
+
+def _circle_perimeter(row: int, col: int, radius: int, shape: tuple[int, ...]) -> tuple[np.ndarray, np.ndarray]:
+    n_points = max(16, int(np.ceil(2 * np.pi * radius * 2)))
+    angles = np.linspace(0, 2 * np.pi, n_points, endpoint=False)
+    rows = np.rint(row + radius * np.sin(angles)).astype(int)
+    cols = np.rint(col + radius * np.cos(angles)).astype(int)
+    valid = (rows >= 0) & (rows < shape[0]) & (cols >= 0) & (cols < shape[1])
+    return rows[valid], cols[valid]
 
 
 class SegmentItem(pg.LinearRegionItem):
@@ -86,84 +104,6 @@ class EventItem(pg.InfiniteLine):
         self.xrange = xrange
         # this corresponds to the undelrying only for TraceView, not for SpecView
         self._parent = self.getViewWidget
-
-
-class SegmentRectItem(pg.RectROI):
-    def __init__(
-        self,
-        bounds: Tuple[float, float],
-        event_index: int,
-        xrange,
-        nb_eventtypes: int = 1,
-        time_bounds: Tuple[float, float] = None,
-        movable=True,
-        pen=None,
-        brush=None,
-        change_finished_fun=None,
-        **kwargs,
-    ):
-        """[summary]
-
-        Args:
-            bounds (Tuple[float, float]): (onset, offset) in seconds.
-            event_index (int): for directly indexing event_types in ds.song_events
-            xrange: prop from parent
-            time_bounds (Tuple[float, float], optional): if axis coords is not seconds
-            movable (bool, optional): [description]. Defaults to True.
-            pen ([type], optional): [description]. Defaults to None.
-            brush ([type], optional): [description]. Defaults to None.
-            change_finished_fun ([type], optional): [description]. Defaults to None.
-            **kwargs passed to pg.LinearRegionItem
-        """
-        snapSize = 1 / nb_eventtypes
-        pos = [bounds[0], event_index * snapSize]
-        size = [bounds[1] - bounds[0], snapSize]
-        super().__init__(
-            pos,
-            size=size,
-            angle=0.0,
-            invertible=False,
-            maxBounds=None,
-            snapSize=snapSize,
-            # translateSnap=False,
-            pen=pen,
-            movable=True,
-            rotatable=False,
-            resizable=True,
-            removable=True,
-        )
-        # breakpoint()
-        [self.removeHandle(handle) for handle in self.getHandles()]
-        # self.addScaleHandle([0, 1], [1, 1])
-        # self.addScaleHandle([1, 1], [1, 1])
-        self.addScaleHandle([0, 1], [1, 1])
-        self.addScaleHandle([1, 0], [0, 0])
-        self.currentBrush = brush
-
-        if time_bounds is None:
-            self.bounds = bounds
-        else:
-            self.bounds = time_bounds
-        self.event_index = event_index
-        self.xrange = xrange
-        # this corresponds to the underlying view only for TraceView, not for SpecView
-        self._parent = self.getViewWidget
-        if change_finished_fun is not None:
-            self.sigRegionChangeFinished.connect(change_finished_fun)
-
-    def getRegion(self):
-        return [self.pos()[0], self.pos()[0] + self.size()[0]]
-
-    def paint(self, p, opt, widget):
-        # Note: don't use self.boundingRect here, because subclasses may need to redefine it.
-        r = QtCore.QRectF(0, 0, self.state["size"][0], self.state["size"][1]).normalized()
-
-        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        p.setPen(self.currentPen)
-        p.setBrush(self.currentBrush)
-        p.translate(r.left(), r.top())
-        p.scale(r.width(), r.height())
-        p.drawRect(0, 0, 1, 1)
 
 
 class Draggable(pg.GraphItem):
@@ -269,6 +209,8 @@ class TraceView(pg.PlotWidget):
     def __init__(self, model, callback, ylim=None):
         # additionally make names of trace and event arrays in ds args?
         super().__init__()
+        self.setMinimumHeight(100)
+        self.setBackground(TIMELINE_BACKGROUND)
         self.setMouseEnabled(x=False, y=False)
         # this should be just a link/ref so changes in ds made by the controller will propagate
         # mabe make Model as thin wrapper around ds that also handles ion and use ref to Modle instance
@@ -277,7 +219,12 @@ class TraceView(pg.PlotWidget):
         self.setDefaultPadding(0.0)
         # leave enought space so axes are aligned aligned
         y_axis = self.getAxis("left")
-        y_axis.setWidth(50)
+        _configure_y_axis_inside(y_axis, "Waveform")
+        axis_pen = pg.mkPen(TIMELINE_GRID, width=1)
+        for axis_name in ("bottom",):
+            axis = self.getAxis(axis_name)
+            axis.setPen(axis_pen)
+            axis.setTextPen(pg.mkPen(TEXT_MUTED))
 
         self._m = model
         self.callback = callback
@@ -341,7 +288,9 @@ class TraceView(pg.PlotWidget):
             self.setXRange(np.min(x), np.max(x))
 
         # time of current frame in trace
-        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
+        pos_line = pg.InfiniteLine(
+            self.m.t0 / self.m.fs_song, movable=False, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1)
+        )
         self.addItem(pos_line)
 
         # draw actice envelope and threshold
@@ -403,9 +352,16 @@ class TrackView(TraceView):
 
 
 def _lookup_colormap_lut(colormap: str):
-    cmap = pg.colormap.getFromMatplotlib(colormap)
+    cmap = None
+    try:
+        cmap = pg.colormap.getFromMatplotlib(colormap)
+    except Exception:
+        pass
     if cmap is None:
-        cmap = pg.colormap.get(colormap)
+        try:
+            cmap = pg.colormap.get(colormap)
+        except Exception:
+            cmap = None
     if cmap is None:
         cmap = pg.colormap.get("viridis")
     return cmap.getLookupTable()
@@ -414,6 +370,7 @@ def _lookup_colormap_lut(colormap: str):
 class SpecView(pg.ImageView):
     def __init__(self, model, callback, colormap="turbo"):
         super().__init__(view=pg.PlotItem())
+        self.setMinimumHeight(140)
         self.ui.histogram.hide()
         self.ui.roiBtn.hide()
         self.ui.menuBtn.hide()
@@ -421,12 +378,25 @@ class SpecView(pg.ImageView):
         self.view.setAspectLocked(False)
         self.view.getViewBox().invertY(False)
         self.view.setMouseEnabled(x=False, y=False)
+        self.view.setMenuEnabled(False)
+        self.view.hideButtons()
+        self.view.getViewBox().setBackgroundColor(TIMELINE_BACKGROUND)
+        self.settings_button = _compact_tool_button(_settings_icon(), "Spectrogram display settings", self)
+        self.settings_button.setObjectName("spectrogramSettingsButton")
+        self.settings_button.setProperty("role", "presetGlobal")
+        self.settings_button.setFixedSize(22, 22)
+        self.settings_button.clicked.connect(lambda: self._open_settings_dialog())
+        self._settings_dialog = None
 
         # leave enough space so axes are aligned aligned
         self.y_axis = self.getView().getAxis("left")
-        self.y_axis.setWidth(50)
-        self.y_axis.setLabel("Frequency", units="Hz")
+        _configure_y_axis_inside(self.y_axis, "Frequency (Hz)")
         self.y_axis.enableAutoSIPrefix()
+        axis_pen = pg.mkPen(TIMELINE_GRID, width=1)
+        for axis_name in ("bottom",):
+            axis = self.getView().getAxis(axis_name)
+            axis.setPen(axis_pen)
+            axis.setTextPen(pg.mkPen(TEXT_MUTED))
 
         self._m = model
         self.callback = callback
@@ -434,11 +404,12 @@ class SpecView(pg.ImageView):
         self.t_step = 1
         self.max_pix = 6_000
 
-        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
+        self.pos_line = pg.InfiniteLine(pos=0.5, movable=False, angle=90, pen=pg.mkPen(TIMELINE_PLAYHEAD, width=1))
         self.addItem(self.pos_line)
 
         self.imageItem.setLookupTable(_lookup_colormap_lut(colormap))  # apply the colormap
         self.old_items = []
+        self._position_settings_button()
 
     @property
     def m(self):  # read only access to the model
@@ -461,25 +432,73 @@ class SpecView(pg.ImageView):
     def clear_annotations(self):
         [self.removeItem(item) for item in self.old_items]  # remove annotations <- slowest part of update_spec!!!
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_settings_button()
+
+    def _position_settings_button(self):
+        if not hasattr(self, "settings_button"):
+            return
+        margin = 8
+        left = max(margin, self.width() - self.settings_button.width() - margin)
+        self.settings_button.move(left, margin)
+        combo = getattr(self, "channel_combo", None)
+        if combo is not None and combo.parent() is self and not combo.isHidden():
+            gap = 6
+            max_width = max(80, left - margin - gap)
+            width = min(max(150, combo.sizeHint().width()), max_width)
+            combo.setFixedWidth(width)
+            combo.move(max(margin, left - width - gap), margin - 1)
+            combo.raise_()
+        self.settings_button.raise_()
+
+    def _open_settings_dialog(self):
+        from . import view_dialog
+
+        if _dialog_is_open(self._settings_dialog):
+            _activate_dialog(self._settings_dialog)
+            return
+        dialog = view_dialog.SpectrogramSettingsDialog(parent=self.window(), model=self.m)
+        self._settings_dialog = dialog
+        dialog.finished.connect(lambda _result, active_dialog=dialog: self._clear_settings_dialog(active_dialog))
+        _activate_dialog(dialog)
+
+    def _clear_settings_dialog(self, dialog):
+        if self._settings_dialog is dialog:
+            self._settings_dialog = None
+        _delete_dialog_later(dialog)
+
+    def set_colormap(self, colormap: str):
+        self.imageItem.setLookupTable(_lookup_colormap_lut(colormap))
+        self.imageItem.update()
+
     def update_spec(self, x, y):
         # tuple-ify y for caching
         mel = self.m.spec_mel
         self.S, f, t = self._calc_spec(
             tuple(y), self.m.spec_win, self.m.spec_compression_ratio, self.m.fmin, self.m.fmax, self.m.spec_denoise, mel
         )
+        if self.S.size == 0 or len(f) == 0 or len(t) == 0:
+            self.clear()
+            return
         trange = self.m.x[-1] - self.m.x[0]
         self.max_pix = 6_000
         self.t_step = max(1, self.S.shape[1] // self.max_pix)
+        frequency_scale = (f[-1] - f[0]) / len(f) if len(f) > 1 else 1.0
         self.setImage(
             self.S.T[:: self.t_step],
             autoRange=False,
-            scale=[trange / len(t) * self.t_step, (f[-1] - f[0]) / len(f)],
+            scale=[trange / len(t) * self.t_step, frequency_scale],
             autoLevels=None in self.m.spec_levels,
             levels=None if None in self.m.spec_levels else self.m.spec_levels,
             pos=[self.m.x[0], f[0]],
         )
-        self.view.setRange(xRange=self.m.x[[0, -1]], yRange=(f[0], f[-1]), padding=0)
-        self.pos_line.setValue(self.m.x[int(self.m.span / 2)])
+        if len(f) > 1:
+            y_range = (f[0], f[-1])
+        else:
+            y_range = (max(0.0, f[0] - 0.5), f[0] + 0.5)
+        self.view.setRange(xRange=self.m.x[[0, -1]], yRange=y_range, padding=0)
+        self.pos_line.setValue(self.m.t0 / self.m.fs_song)
 
     def _calc_spec(self, y, spec_win, spec_compression_ratio, fmin, fmax, spec_denoise: bool, mel: bool):
         y = np.array(y).astype(float)
@@ -499,28 +518,23 @@ class SpecView(pg.ImageView):
             t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
             f = librosa.fft_frequencies(sr=self.m.fs_song, n_fft=nfft)
 
-            # select freq limits
-            f_idx0 = 0
-            if fmin is not None:
-                f_idx0 = np.argmax(f >= self.m.fmin)
-            f_idx1 = -1
-            if fmax is not None:
-                f_idx1 = len(f) - 1 - np.argmax(f[::-1] <= self.m.fmax)
+            fmin, fmax = self._valid_frequency_bounds(fmin, fmax)
+            f_idx = np.flatnonzero((f >= fmin) & (f <= fmax))
+            if not len(f_idx):
+                center = np.clip((fmin + fmax) / 2, f[0], f[-1])
+                nearest = int(np.argmin(np.abs(f - center)))
+                start = max(0, nearest - 1)
+                stop = min(len(f), nearest + 2)
+                f_idx = np.arange(start, stop)
+            elif len(f_idx) == 1 and len(f) > 1:
+                idx = int(f_idx[0])
+                if idx == 0:
+                    f_idx = np.array([0, 1])
+                else:
+                    f_idx = np.array([idx - 1, idx])
 
-            S = np.abs(psd[f_idx0:f_idx1, :])
-            f = f[f_idx0:f_idx1]
-        # else:
-        #     import librosa.feature
-        #     fmin = 0 if fmin is None else fmin
-        #     fmin = max(fmin, 1)
-        #     fmax = self.m.fs_song // 2 if fmax is None else fmax
-        #     psd = librosa.feature.melspectrogram(y=y, sr=self.m.fs_song, n_fft=nfft, win_length=spec_win, hop_length=spec_win // 2, fmin=fmin, fmax=fmax)
-        #     # f = np.linspace(fmin, fmax, psd.shape[0])
-        #     f = librosa.mel_frequencies(n_mels=psd.shape[0], fmin=fmin, fmax=fmax, htk=False)
-        #     t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
-        #     # t = np.arange(spec_win // 2, len(y), spec_win // 2)
-        #     S = psd
-
+            S = np.abs(psd[f_idx, :])
+            f = f[f_idx]
         if spec_denoise:
             noise_floor = np.nanmedian(S, axis=1, keepdims=True)
             S /= noise_floor
@@ -528,6 +542,28 @@ class SpecView(pg.ImageView):
         S = np.log2(1.0 + 2.0**spec_compression_ratio * S)
         # S = S / np.max(S) * 255  # normalize to 0...255
         return S, f, t
+
+    def _valid_frequency_bounds(self, fmin, fmax):
+        nyquist = float(self.m.fs_song) / 2
+
+        def valid_or_default(value, default):
+            if value is None:
+                return default
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                return default
+            if not np.isfinite(value):
+                return default
+            return float(np.clip(value, 0.0, nyquist))
+
+        fmin = valid_or_default(fmin, 0.0)
+        fmax = valid_or_default(fmax, nyquist)
+        if fmin > fmax:
+            fmin, fmax = fmax, fmin
+        if fmin == fmax:
+            fmin, fmax = 0.0, nyquist
+        return fmin, fmax
 
     def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
         region = SegmentItem(
@@ -564,110 +600,6 @@ class SpecView(pg.ImageView):
         pos = event.pos()[0]
         mouseT = self.pos_to_time(pos) * self.t_step
         self.callback(mouseT, event.button())
-
-
-class AnnotView(pg.PlotWidget):
-    def __init__(self, model, callback, ylim=None):
-        # additionally make names of trace and event arrays in ds args?
-        super().__init__()
-        self.setMouseEnabled(x=False, y=False)
-        self.disableAutoRange()
-        self.enableAutoRange(False, False)
-        self.setDefaultPadding(0.0)
-
-        self._m = model
-        self.callback = callback
-        self.getPlotItem().mouseClickEvent = self._click
-        self.scene().sigMouseMoved.connect(self.mouseMoved)
-
-        self.annotation_items = []
-        # self.getAxis("left").setStyle(tickFont=self.m.font_condensed)
-        self.getAxis("left").setWidth(50)
-
-        self.mousePoint = None
-
-    @property
-    def m(self):  # read-only property
-        return self._m
-
-    @property
-    def trange(self):
-        return None
-
-    @property
-    def xrange(self):
-        return np.array(self.viewRange()[0])
-
-    @property
-    def yrange(self):
-        return np.array(self.viewRange()[1])
-
-    @property
-    def threshold(self):
-        if self.threshold_line is not None:
-            return self.threshold_line.value()
-
-    def update_trace(self):
-        self.clear()
-        self.setYRange(0, 1)
-        self.setXRange(self.m.x[0], self.m.x[-1])
-
-        # time of current frame in trace
-        pos_line = pg.InfiniteLine(self.m.x[int(self.m.span / 2)], movable=False, angle=90, pen=pg.mkPen(color="r", width=1))
-        self.addItem(pos_line)
-
-        # update event names on y-axis
-        yticks = [((cnt + 0.5) / self.m.nb_eventtypes, name) for cnt, name in enumerate(self.m.event_times.names)]
-        self.getAxis("left").setTicks([yticks])
-
-    def add_segment(self, onset, offset, region_typeindex, brush=None, pen=None, movable=True, text=None):
-        # span = [region_typeindex / self.m.nb_eventtypes, (region_typeindex + 1) / self.m.nb_eventtypes]
-        region = SegmentRectItem(
-            (onset, offset),
-            region_typeindex,
-            self.xrange,
-            nb_eventtypes=self.m.nb_eventtypes,
-            brush=brush,
-            pen=pen,
-            movable=movable,
-            # span=span,
-            change_finished_fun=self.m.on_region_change_finished if movable else None,
-        )
-        self.addItem(region)
-
-    def add_event(self, xx, event_type, pen, movable=False, text=None):
-        if not len(xx):
-            return
-
-        span = [event_type / self.m.nb_eventtypes, (event_type + 1) / self.m.nb_eventtypes]
-        for x in xx:
-            line = EventItem(x, event_type, self.xrange, movable=movable, angle=90, pen=pen, span=span)
-            line.sigPositionChangeFinished.connect(self.m.on_position_change_finished)
-            self.addItem(line)
-
-    def time_to_pos(self, t):
-        return np.interp(t, self.m.trange, self.xrange)
-
-    def pos_to_time(self, pos):
-        return np.interp(pos, self.xrange, self.m.trange)
-
-    def _click(self, event):
-        # event.accept()
-        pos = event.pos()
-        mouseT = self.getPlotItem().getViewBox().mapSceneToView(pos).x()
-        self.callback(mouseT, event.button())
-
-    # def mouseMoveEvent(self, ev):
-    #     pos = ev.pos()
-    #     # print(pos)
-    #     if self.sceneBoundingRect().contains(pos):
-    #         self.mousePoint = self.getPlotItem().vb.mapSceneToView(pos)
-    #         print(self.mousePoint)
-
-    def mouseMoved(self, pos):
-        # pass
-        if self.sceneBoundingRect().contains(pos):
-            self.mousePoint = self.getPlotItem().vb.mapSceneToView(pos)
 
 
 class MovieView(utils.FastImageWidget):
@@ -785,9 +717,9 @@ class MovieView(utils.FastImageWidget):
             fly_pos = np.array(fly_pos).astype(np.uintp)  # in case this is a dask.array
             # only plot circle if fly is within the frame (also prevents overflow errors
             # for tracking errors that lead to VERY large position values)
-            if fly_pos[0] <= frame.shape[0] and fly_pos[1] <= frame.shape[1]:
-                xx, yy = skimage.draw.circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, method="bresenham")
-                frame[xx, yy, :] = color
+            if fly_pos[0] < frame.shape[0] and fly_pos[1] < frame.shape[1]:
+                rows, cols = _circle_perimeter(fly_pos[0], fly_pos[1], self.m.circle_size, frame.shape)
+                frame[rows, cols, :] = color
         return frame
 
     def annotate_poses(self, frame):

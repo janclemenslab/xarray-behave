@@ -21,7 +21,7 @@ class Events(UserDict):
 
         Args:
             data: dict or Events
-            categories (dict[str: str]): name, category mapping
+            categories (dict[str: str]): legacy name/category mapping. Values are normalized to "event".
 
         """
         if data is None:
@@ -45,19 +45,20 @@ class Events(UserDict):
         # drop nan
         self._drop_nan()
 
-        # preserve cats from input
+        # preserve names from input, but normalize categories. Event duration is
+        # represented by start/stop values; category labels are legacy only.
         if hasattr(data, "categories"):
-            for name, cat in data.categories.items():
+            for name, _cat in data.categories.items():
                 if name in self:  # update only existing keys
-                    self.categories[name] = cat
+                    self.categories[name] = "event"
 
-        # update cats from arg
+        # update names from arg, but normalize categories.
         if categories is not None:
-            for name, cat in categories.items():
+            for name, _cat in categories.items():
                 if name in self:  # update only existing keys
-                    self.categories[name] = cat
+                    self.categories[name] = "event"
                 elif add_names_from_categories:
-                    self.add_name(name=name, category=cat)
+                    self.add_name(name=name, category="event")
 
     @classmethod
     def from_df(cls, df: pd.DataFrame, possible_event_names: Optional[List[str]] = None):
@@ -161,34 +162,41 @@ class Events(UserDict):
         if hasattr(self, "categories") and hasattr(new_dict, "categories"):
             self.categories.update(new_dict.categories)
 
-    def _init_df(self, with_channel: bool = True):
-        columns = ["name", "start_seconds", "stop_seconds"]
-        if with_channel:
-            columns.append("channel")
-        return pd.DataFrame(columns=columns)
+    def _to_columns(self, preserve_empty: bool = True):
+        names = []
+        starts = []
+        stops = []
+        channels = []
+        for name in self.names:
+            values = np.asarray(self[name])
+            if len(values):
+                names.extend([name] * len(values))
+                starts.append(values[:, 0])
+                stops.append(values[:, 1])
+                channels.append(values[:, 2])
+            elif preserve_empty:
+                names.append(name)
+                starts.append(np.array([np.nan]))
+                stops.append(np.array([np.nan]))
+                channels.append(np.array([-1]))
 
-    def _append_row(
-        self, df: pd.DataFrame, name: str, start_seconds: float, stop_seconds: Optional[float] = None, channel: int = -1
-    ):
-        if stop_seconds is None:
-            stop_seconds = start_seconds
-
-        data = [name, start_seconds, stop_seconds, channel]
-        new_row = pd.DataFrame(np.array(data)[np.newaxis, :], columns=df.columns)
-        return pd.concat((df, new_row), ignore_index=True)
+        if starts:
+            start_seconds = np.concatenate(starts).astype(float, copy=False)
+            stop_seconds = np.concatenate(stops).astype(float, copy=False)
+            channels = np.concatenate(channels).astype(float, copy=False)
+        else:
+            start_seconds = np.array([], dtype=float)
+            stop_seconds = np.array([], dtype=float)
+            channels = np.array([], dtype=float)
+        return np.asarray(names), start_seconds, stop_seconds, channels
 
     def to_df(self, preserve_empty: bool = True, with_channels: bool = True):
         """Convert to pandas.DataFeame
 
         Args:
             preserve_empty (bool, optional):
-                In keeping with the convention that events have identical start and stop times and segments do not,
-                empty events are coded with np.nan as both start and stop and
-                empty segments are coded as np.nan as start and 0 as stop.
-                `from_df()` will obey this convention - if both start and stop are np.nan,
-                the name will be a segment,
-                if only the start is np.nan (the stop does not matter), the name will be an event
-                Defaults to True.
+                Preserve event names without annotations as rows with np.nan
+                start and stop values. Defaults to True.
             with_channels (bool, optional):
                 Will add channel information as 4th column to df.
                 Defaults to True.
@@ -196,22 +204,14 @@ class Events(UserDict):
         Returns:
             pandas.DataFrame: with columns name, start_seconds, stop_seconds, channels (if with_channels). One row per event.
         """
-        df = self._init_df()
-        for name in self.names:
-            for start_second, stop_second, channel in zip(
-                self.start_seconds(name), self.stop_seconds(name), self.channels(name)
-            ):
-                df = self._append_row(df, name, start_second, stop_second, channel)
-        if preserve_empty:  # ensure we keep events without annotations
-            for name, cat in zip(self.names, self.categories.values()):
-                if name not in df.name.values:
-                    stop_seconds = (
-                        np.nan if cat == "event" else 0
-                    )  # (np.nan, np.nan) -> empty events, (np.nan, some number) -> empty segments
-                    df = self._append_row(df, name, start_seconds=np.nan, stop_seconds=stop_seconds)
-        # make sure start and stop seconds are numeric
-        df["start_seconds"] = pd.to_numeric(df["start_seconds"], errors="coerce")
-        df["stop_seconds"] = pd.to_numeric(df["stop_seconds"], errors="coerce")
+        names, start_seconds, stop_seconds, channels = self._to_columns(preserve_empty=preserve_empty)
+        data = {
+            "name": names,
+            "start_seconds": start_seconds,
+            "stop_seconds": stop_seconds,
+            "channel": channels,
+        }
+        df = pd.DataFrame(data)
         if not with_channels:
             del df["channel"]
         return df
@@ -221,23 +221,13 @@ class Events(UserDict):
 
         Args:
             preserve_empty (bool, optional):
-                In keeping with the convention that events have identical start and stop times and segments do not,
-                empty events are coded with np.nan as both start and stop and
-                empty segments are coded as np.nan as start and 0 as stop.
-                `from_df()` will obey this convention - if both start and stop are np.nan,
-                the name will be a segment,
-                if only the start is np.nan (the stop does not matter), the name will be an event
-                Defaults to True.
+                Preserve event names without annotations as rows with np.nan
+                start and stop values. Defaults to True.
 
         Returns:
             Tuple[List[str], List[float], List[float]: with names, start_seconds, stop_seconds.
         """
-        df = self.to_df(preserve_empty=preserve_empty)
-        names = df.name.values
-        start_seconds = df.start_seconds.values.astype(float)
-        stop_seconds = df.stop_seconds.values.astype(float)
-        channels = df.channel.values.astype(float)
-        return names, start_seconds, stop_seconds, channels
+        return self._to_columns(preserve_empty=preserve_empty)
 
     def to_dataset(self):
         names, start_seconds, stop_seconds, channels = self.to_lists()
@@ -259,7 +249,7 @@ class Events(UserDict):
     def add_name(
         self,
         name: str,
-        category: str = "segment",
+        category: str = "event",
         times: Optional[np.array] = None,
         overwrite: bool = False,
         append: bool = False,
@@ -268,8 +258,8 @@ class Events(UserDict):
         """[summary]
 
         Args:
-            name (str): Name of the segment/event.
-            category (str, optional): Song type category ('segment' or 'event'). Defaults to 'segment'.
+            name (str): Event name.
+            category (str, optional): Legacy category label. Ignored; all names are events.
             times (np.array, optional): [N,2] array of floats with start (index 0) and end (index 1) of the annotations.
                                         Defaults to None.
             overwrite (bool, optional): Replace times and category if name exists. Defaults to False.
@@ -281,7 +271,7 @@ class Events(UserDict):
 
         if name not in self or (name in self and overwrite):
             self.update({name: times})
-            self.categories[name] = category
+            self.categories[name] = "event"
         elif name in self and append:
             self[name] = np.append(self[name], times, axis=0)
             if sort_after_append:
@@ -333,25 +323,18 @@ class Events(UserDict):
 
         if np.abs(nearest_start - time) < np.abs(nearest_stop - time):
             index = np.where(self.start_seconds(name) == nearest_start)[0][0]
-            nearest_is_start = True
         else:
             index = np.where(self.stop_seconds(name) == nearest_stop)[0][0]
-            nearest_is_start = False
 
-        if self.categories[name] == "segment":
-            if nearest_is_start:
-                matching_stop = self.stop_seconds(name)[index]
-                event_at_time = matching_stop > time
-            else:
-                matching_start = self.start_seconds(name)[index]
-                event_at_time = matching_start < time
-        elif self.categories[name] == "event":
-            if nearest_is_start:
-                event_at_time = np.abs(time - nearest_start) <= tol
-            else:
-                event_at_time = np.abs(time - nearest_stop) <= tol
-        else:
+        start = self.start_seconds(name)[index]
+        stop = self.stop_seconds(name)[index]
+        if not np.isfinite(start) or not np.isfinite(stop):
             event_at_time = False
+        elif start == stop:
+            event_at_time = min(np.abs(time - start), np.abs(time - stop)) <= tol
+        else:
+            lo, hi = sorted([start, stop])
+            event_at_time = (lo <= time <= hi) or min(np.abs(time - lo), np.abs(time - hi)) <= tol
 
         if not event_at_time:
             return None
@@ -386,7 +369,7 @@ class Events(UserDict):
             name = old_name
 
         # nothing to do
-        if name is None or name == new_name or self.categories[name] != self.categories[new_name]:
+        if name is None or name == new_name:
             return None, None, None
 
         index = self._get_index_of_nearest(time, name, tol, min_time, max_time)
@@ -408,15 +391,14 @@ class Events(UserDict):
         category: Optional[str] = None,
         channel: int = -1,
     ):
-        """Add a new segment/event.
+        """Add a new event.
 
         Args:
-            name (str): Name of the segment/event.
-            start_seconds (float): Start of the segment/event
-            stop_seconds (float, optional): End of the segment/event (for events, should equal start).
-                                            Defaults to None (use start_seconds).
-            add_new_name (bool, optional): Add new song type if name does not exist yet. Defaults to True.
-            category (str, optional): Manually specify category here.
+            name (str): Event name.
+            start_seconds (float): Event start.
+            stop_seconds (float, optional): Event stop. Defaults to None (use start_seconds).
+            add_new_name (bool, optional): Add new event name if name does not exist yet. Defaults to True.
+            category (str, optional): Legacy category label. Ignored.
             channel (int, optional): Index into channel.
         """
         if stop_seconds is None:
@@ -424,7 +406,7 @@ class Events(UserDict):
 
         if name not in self and add_new_name:
             if category is None:
-                category = "event" if stop_seconds == start_seconds else "segment"
+                category = "event"
             self.add_name(name, category=category)
 
         data = sorted([start_seconds, stop_seconds])  # sort to make sure start is before stop
@@ -617,25 +599,7 @@ class Events(UserDict):
             return array[idx]
 
     def _infer_categories(self):
-        categories = dict()
-        for name in self.names:
-            if len(self[name]) == 0:
-                if not hasattr(self, "categories") or name not in self.categories:
-                    categories[name] = None
-                elif hasattr(self, "categories") and name in self.categories:
-                    categories[name] = self.categories[name]
-            else:
-                first_start = self.start_seconds(name)[0]
-                first_stop = self.stop_seconds(name)[0]
-
-                if (np.isnan(first_start) and np.isnan(first_stop)) or (first_start == first_stop):
-                    category = "event"
-                else:
-                    category = "segment"
-
-                categories[name] = category
-
-        return categories
+        return {name: "event" for name in self.names}
 
     def _drop_nan(self):
         # remove entries with nan stop or start (but keep their name)

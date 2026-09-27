@@ -44,7 +44,8 @@ def assemble(
     fix_fly_indices: bool = True,
     pixel_size_mm: Optional[float] = None,
     lazy_load_song: bool = False,
-    make_song_events: bool = True,
+    make_song_events: bool = False,
+    annotation_column: str = "Annotation",
 ) -> xr.Dataset:
     """[summary]
 
@@ -69,7 +70,7 @@ def assemble(
         audio_channels (List[int], optional): Defaults to None (all channels).
         audio_dataset (str, optional): Name of the dataset in NPZ and H5 files that contains the audio data. Defaults to 'data'.
         event_names (List[str], optional): List of event names to initialize dataset with. Defaults to [].
-        event_categories (List[str], optional): 'segment' or 'event' for each item in `event_names`. Defaults to 'segment'.
+        event_categories (List[str], optional): Legacy category labels. All values are normalized to 'event'.
         resample_video_data (bool, optional): Or keep video with original frame times. Defaults to True.
         include_song (bool, optional): [description]. Defaults to True.
         include_tracks (bool, optional): [description]. Defaults to True.
@@ -79,7 +80,8 @@ def assemble(
         fix_fly_indices (bool, optional): Will attempt to load swap info and fix fly id's accordingly, Defaults to True.
         pixel_size_mm (float, optional): Size of a pixel (in mm) in the video. Used to convert tracking data to mm.
         lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
-        make_song_events (bool, optional): Make binary matrix of song events. Defaults to True.
+        make_song_events (bool, optional): Make binary matrix of song events. Defaults to False.
+        annotation_column (str, optional): Raven Pro column containing event names. Defaults to 'Annotation'.
     Returns:
         xarray.Dataset
     """
@@ -113,9 +115,9 @@ def assemble(
         path_tried = (filepath_daq, filepath_timestamps)
     elif os.path.exists(filepath_video):  # Video (+tracks) w/o DAQ
         # if there is only the video, generate fake samples from fps
-        from videoreader import VideoReader
+        from .gui.modern_video import PyAVVideoReader
 
-        vr = VideoReader(filepath_video)
+        vr = PyAVVideoReader(filepath_video)
 
         if os.path.exists(filepath_timestamps):
             _, frame_times = io.timestamps.CamStamps().load(filepath_timestamps)
@@ -191,31 +193,6 @@ def assemble(
     if not resample_video_data:
         logger.info(f"  setting targetsamplingrate to avg. fps ({fps}).")
         target_sampling_rate = fps
-
-    # # LOAD VIDEO
-    # with_video = False
-    # include_video = False  #True
-    # if include_video:
-    #     logger.info("Loading video:")
-    #     if filepath_video is not None:
-    #         video_loader = io.get_loader(kind="video", basename=filepath_video, basename_is_full_name=True)
-    #     else:
-    #         video_loader = io.get_loader(kind="video", basename=os.path.join(root, res_path, datename, datename))
-    #     # breakpoint()
-    #     if video_loader:
-    #         try:
-    #             xr_video = video_loader.make(video_loader.path)
-    #             xr_video = add_time(xr_video, ss, dim="frame_number")
-    #             xr_video = xr_video.drop_indexes(["frame_number"])
-    #             xr_video = xr_video.set_xindex("frametimes")
-    #             logger.info(f"  {video_loader.path} loaded.")
-    #             with_video = True
-    #         except Exception as e:
-    #             logger.info(f"  Loading {video_loader.path} failed.")
-    #             logger.exception(e)
-    #     else:
-    #         logger.info("   Found no tracks.")
-    #     logger.info("Done.")
 
     # LOAD TRACKS
     with_tracks = False
@@ -331,8 +308,8 @@ def assemble(
         event_categories = []
 
     if event_names and not event_categories:
-        logger.info("No event_categories specified - defaulting to segments")
-        event_categories = ["segment"] * len(event_names)
+        logger.info("No event_categories specified - defaulting to events")
+        event_categories = ["event"] * len(event_names)
     manual_event_seconds: Dict[str, Any] = {name: np.zeros((0,)) for name in event_names}
     manual_event_categories: Dict[str, Any] = {nam: cat for nam, cat in zip(event_names, event_categories)}
 
@@ -374,7 +351,14 @@ def assemble(
         )
         if manual_annot_loader:
             try:
-                manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(manual_annot_loader.path)
+                if isinstance(manual_annot_loader, io.annotations_manual.RavenPro):
+                    manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(
+                        manual_annot_loader.path, annotation_column=annotation_column
+                    )
+                else:
+                    manual_event_seconds_loaded, manual_event_categories_loaded = manual_annot_loader.load(
+                        manual_annot_loader.path
+                    )
                 manual_event_seconds.update(manual_event_seconds_loaded)
                 manual_event_categories.update(manual_event_categories_loaded)
                 logger.info(f"   {manual_annot_loader.path} loaded.")
@@ -457,7 +441,9 @@ def assemble(
     event_categories.update(manual_event_categories)
 
     event_seconds = ld.fix_keys(event_seconds)
-    event_categories = ld.fix_keys(event_categories)
+    event_categories = {name: "event" for name in ld.fix_keys(event_categories).keys()}
+    for name in event_seconds:
+        event_categories.setdefault(name, "event")
 
     # PREPARE sample/time/framenumber grids
     if not with_tracks:
@@ -561,15 +547,6 @@ def assemble(
     # BODY POSITION
     if pixel_size_mm is None:
         pixel_size_mm = np.nan
-
-    # if with_video:
-    #     logger.info("   Video")
-    #     # set frametimes rel to ref-time
-    #     xr_video["frametimes_rel"] = xr_video.frametimes - ref_time
-    #     xr_video["frametimes"] = xr_video["frametimes_rel"]
-    #     xr_video = xr_video.drop_vars("frametimes_rel")
-    #     xr_video = xr_video.set_xindex("frametimes")
-    #     dataset_data["video"] = xr_video
 
     if with_tracks:
         logger.info("   Tracking")
@@ -1123,9 +1100,10 @@ def save(savepath, dataset):
 
     with zarr.ZipStore(savepath, mode="w") as zarr_store:
         # re-chunking does not seem to help with IO speed upon lazy loading
-        chunks = dict(dataset.dims)
-        chunks["time"] = 100_000
-        chunks["sampletime"] = 100_000
+        chunks = dict(dataset.sizes)
+        for dim in chunks:
+            if dim in ("time", "sampletime") or dim.endswith("_time"):
+                chunks[dim] = 100_000
         dataset = dataset.chunk(chunks)
         dataset.to_zarr(store=zarr_store, compute=True)
 

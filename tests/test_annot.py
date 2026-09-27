@@ -71,9 +71,9 @@ def test_from_lists(test_lists):
     names, start_seconds, stop_seconds = test_lists
     et = Events.from_lists(names, start_seconds, stop_seconds)
     assert et.categories["pulse"] == "event"
-    assert et.categories["sine"] == "segment"
+    assert et.categories["sine"] == "event"
     assert et.categories["empty_event"] == "event"
-    assert et.categories["empty_segment"] == "segment"
+    assert et.categories["empty_segment"] == "event"
 
 
 def test_to_df(test_events):
