@@ -1639,7 +1639,7 @@ class PSV(MainWindow):
         current_sampletime = self.ds.sampletime.data[int(self.t0)]
         current_time = self.ds.time.sel(time=current_sampletime, method="nearest")
         index_other = np.where(self.ds.time == current_time)[0]
-        return int(index_other)
+        return index_other.item()
 
     def _add_keyed_menuitem(
         self,
