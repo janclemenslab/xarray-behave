@@ -1,0 +1,264 @@
+main:
+
+- type: text
+  text: '<b>Data set</b><br />'
+
+- name: data_dir
+  label: Data directory
+  type: file_dir
+  default: " "
+  filter: "*.npy"
+  help: '<b>Directory should be created with <b>Multi-Animal Bottom-Up Pipeline</b>:<br />
+  This pipeline uses single model with two output heads:
+  a "<u>confidence map</u>" head to predicts the
+  nodes for an entire image and a "<u>part affinity field</u>" head to group
+  the nodes into distinct animal instances.'
+
+- name: save_dir
+  label: Save directory
+  type: file_dir
+  default: " "
+
+
+- name: save_prefix
+  label: Prefix for saved files
+  type: string
+  default: ""
+  help: Results will be save as "{save_dir}/{save_prefix}_YYYYMMDD_HHMMSS"
+
+# populate as list from dataset
+- name: y_suffix
+  label: Song type
+  type: optional_list
+  help: 'Select song type to fit the network to. If nothing is selected, will fit network for all targets in the data set'
+
+- name: fraction_data
+  label: Data fraction
+  type: optional_double
+  none_label: Use all
+  default_disabled: True
+  default: 0.1
+  decimals: 3
+  range: 0,1
+  help: 'Fraction of data to use for training. Use smaller fractions to speed up training at the expense of poor performance.'
+
+- name: seed
+  label: Seed
+  type: optional_int
+  none_label: No seed
+  default_disabled: True
+  default: 1
+  range: 1,1000
+  help: 'Random seed to reproducibly select data fractions.'
+
+- name: version_data
+  label: Version training data
+  type: bool
+  default: True
+  help: Calculate and save a hash of the dataset used for training.
+
+- name: balance
+  label: Balance classes
+  type: bool
+  default: False
+  help: Balance classes. Helps if song is extremely sparse.
+
+- type: text
+  text: '<b>Network parameters</b><br />'
+
+- name: frontend
+  label: Downsampling frontend
+  type: stacked
+
+  default: "STFT"
+  options: "None,STFT"  #,TCN"
+
+  "None":
+
+  "STFT":
+  - name: nb_pre_conv
+    label: Downsample factor
+    type: list
+    default: 16
+    options: 1,2,4,8,16,32,64,128
+
+  - name: pre_nb_dft
+    label: Number of frequency bands
+    type: int
+    default: 64
+    range: 1,1000
+
+
+  # "TCN":
+  # - name: pre_nb_filters
+  #   label: Number of filters
+  #   type: int
+  #   default: 16
+  #   range: 1,1000
+
+  # - name: pre_kernel_size
+  #   label: Filter duration
+  #   type: int
+  #   default: 16
+  #   range: 1,1000
+
+  # - name: pre_nb_conv
+  #   label: Downsample factor
+  #   type: list
+  #   default: 16
+  #   options: 1,2,4,8,16,32,64,128
+
+- name: nb_hist
+  label: Chunk duration (samples)
+  type: int
+  default: 1024
+  range: 1,100000
+  help: Number of samples processed at once. Sets the maximal temporal context available for inference.
+
+- name: ignore_boundaries
+  label: Ignore boundaries
+  type: bool
+  default: True
+  help: Reduces edge effects by discarding predictions at the chunk boundaries and running with overlapping chunks.
+
+- name: nb_filters
+  label: Number of filters
+  type: int
+  default: 32
+  range: 1,1024
+
+- name: kernel_size
+  label: Filter duration (samples)
+  type: int
+  default: 16
+  range: 1,1000
+
+- name: nb_conv
+  label: Number of TCN blocks
+  type: int
+  default: 3
+  range: 1,100
+
+# should be multi_checkbox with nb_conv checkboxes
+- name: use_separable
+  label: Separable TCN blocks
+  type: string_list
+  default: "False False False"
+  help: 'One boolean ("True" or "False") per TCN block. Separate by spaces.
+         Produces networks with better performance with less training data.
+         Only the first few blocks should be made separable if at all.'
+
+- name: nb_lstm_units
+  label: Number of LSTM units
+  type: optional_int
+  none_label: No LSTM
+  default_disabled: True
+  default: 128
+  range: 0,10000
+  help: Reduce learning rate if performance does not improve after patience epochs.
+
+
+- name: postopt
+  label: Optimize postprocessing
+  type: stacked
+  default: "No"
+  options: "No,Yes"
+
+  "No":
+
+  "Yes":
+  - type: text
+    text: 'Will bruteforce grid search using training data. Can take a while and be memory intensive.
+           <b>Only use with small-ish training datasets.</b> Otherwise you will get an out-of-memory error
+           and the post-optimization will fail. However, you will still be able to use the trained network.'
+
+  - type: text
+    text: '<i>Fill gaps shorter than a threshold</i>'
+
+  - name: post_opt_fill_gaps_min
+    label:  Minimal gap size to try (seconds)
+    type: float
+    default: 0.001
+    range: 0.001,1000
+  - name: post_opt_fill_gaps_max
+    label: Maximal gap size to try (seconds)
+    type: float
+    default: 0.1
+    range: 0.002,1000
+  - name: post_opt_fill_gaps_steps
+    label: Number gap sizes to try (min->max, log2-spaced)
+    type: int
+    default: 10
+    range: 1,100
+
+  - type: text
+    text: '<i>Remove syllables shorter than a threshold</i>'
+
+  - name: post_opt_min_len_min
+    label:  Minimal duration to try (seconds)
+    type: float
+    default: 0.001
+    range: 0.001,1000
+  - name: post_opt_min_len_max
+    label: Maximal duration to try (seconds)
+    type: float
+    default: 0.1
+    range: 0.002,1000
+  - name: post_opt_min_len_steps
+    label: Number of durations to try (min->max, log2-spaced)
+    type: int
+    default: 10
+    range: 1,100
+
+
+- type: text
+  text: '<b>Training parameters</b>'
+
+- name: batch_size
+  label: Batch size
+  type: int
+  range: 0,100000
+  default: 32
+
+- name: learning_rate
+  label: Learning rate
+  type: double
+  decimals: 6
+  default: 0.0001
+
+- name: reduce_lr_patience
+  label: Reduce learning rate patience
+  type: optional_int
+  none_label: No reduction
+  default_disabled: True
+  default: 4
+  help: Reduce learning rate if performance does not improve after patience epochs.
+
+- name: nb_epoch
+  label: Number of epochs
+  type: int
+  default: 400
+  range: 1,100000
+  help: Maximal number of training epochs. Will stop early if performance does not improve for 20 epochs.
+
+- name: tensorboard
+  label: Create tensorboard logs
+  type: bool
+  default: False
+
+- name: load
+  label: Load config
+  type: button
+
+- name: save
+  label: Save config
+  type: button
+
+- name: make_cli
+  label: Save runtime script
+  type: button
+
+- name: train
+  label: Start training in GUI
+  type: button
+  default: main action

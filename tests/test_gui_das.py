@@ -186,3 +186,69 @@ def test_open_das_train_window_uses_current_audio_and_duration(monkeypatch):
     assert calls["kwargs"]["current_duration_provider"] is window._das_current_audio_duration
     assert calls["kwargs"]["annotated_region_provider"] is window._das_annotated_regions
     assert calls["kwargs"]["on_predictions"] is window._handle_das_predictions
+
+
+@pytest.mark.parametrize("tab", ["train", "predict"])
+def test_open_das_033_dialogs(monkeypatch, tmp_path, tab):
+    pytest.importorskip("das")
+    from qtpy import QtWidgets
+    from xarray_behave.gui import das_legacy
+    import das.utils
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    monkeypatch.setitem(sys.modules, "das.gui_app", None)
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getExistingDirectory", lambda *args, **kwargs: str(tmp_path))
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *args, **kwargs: (str(tmp_path / "test_model.h5"), ""))
+    monkeypatch.setattr(das.utils, "load_params", lambda path: {})
+    dialogs = []
+
+    def reject_dialog(dialog):
+        dialogs.append(dialog)
+        return QtWidgets.QDialog.Rejected
+
+    monkeypatch.setattr(das_legacy.YamlDialog, "exec_", reject_dialog)
+    window = MainWindow()
+    try:
+        window._open_das_window(tab)
+        assert len(dialogs) == 1
+        field = "data_dir" if tab == "train" else "model_path"
+        assert field in dialogs[0].form.fields
+    finally:
+        window.close()
+        for dialog in dialogs:
+            dialog.close()
+        app.processEvents()
+
+
+def test_das_033_training_arguments(monkeypatch, tmp_path):
+    pytest.importorskip("das")
+    import inspect
+    import das.train
+    from qtpy import QtCore, QtWidgets
+    from xarray_behave.gui import das_legacy
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    monkeypatch.setitem(sys.modules, "das.gui_app", None)
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getExistingDirectory", lambda *args, **kwargs: str(tmp_path))
+    dialogs = []
+
+    def accept_dialog(dialog):
+        dialogs.append(dialog)
+        dialog.form["postopt"] = "Yes"
+        return QtWidgets.QDialog.Accepted
+
+    monkeypatch.setattr(das_legacy.YamlDialog, "exec_", accept_dialog)
+    workers = []
+    monkeypatch.setattr(QtCore.QThreadPool, "globalInstance", lambda: SimpleNamespace(start=workers.append))
+    window = MainWindow()
+    try:
+        window.das_train()
+        training = next(worker for worker in workers if worker.fn is das.train.train)
+        inspect.signature(das.train.train).bind(**training.kwargs)
+        assert training.kwargs["post_opt"] is True
+        training.kwargs["_qt_progress"][0].close()
+    finally:
+        window.close()
+        for widget in app.topLevelWidgets():
+            widget.close()
+        app.processEvents()

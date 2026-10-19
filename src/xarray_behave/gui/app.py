@@ -366,6 +366,10 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             from das.gui_app import DASConformerWindow
         except ImportError as e:
+            if isinstance(e, ModuleNotFoundError) and e.name == "das.gui_app":
+                from . import das_legacy
+
+                return getattr(das_legacy, f"das_{initial_tab}")(self, None)
             logger.exception(e)
             logger.info("   Failed to import das-conformer. Install it in the current environment to use DAS.")
             return None
