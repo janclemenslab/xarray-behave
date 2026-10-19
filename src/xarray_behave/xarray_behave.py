@@ -290,7 +290,7 @@ def assemble(
     if include_movieparams:
         logger.info("Loading movie params:")
         if ss_movie is None:
-            logger.warning("   Failed loading movie params - no ss_movie")
+            logger.debug("   Failed loading movie params - no ss_movie")
         else:
             movieparams_loader = io.get_loader(
                 kind="movieparams",
