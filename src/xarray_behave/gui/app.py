@@ -3911,7 +3911,7 @@ class PSV(MainWindow):
     def index_other(self):
         current_time = self.ds.time.sel(time=self._sample_seconds(self.t0), method="nearest")
         index_other = np.where(self.ds.time == current_time)[0]
-        return int(index_other)
+        return index_other.item()
 
     def _event_color_map(self):
         colors = {}
