@@ -1,0 +1,167 @@
+main:
+
+- name: model_path
+  label: Model
+  type: file_open
+  default: " "
+  filter: "*_model.h5"
+
+
+- name: file
+  label: Predict song for
+  type: stacked
+  options: "Current file,Select file or folder"
+  default: "Current file"
+
+  "Current file":
+  - type: text
+    text: 'Predict song for the current loaded file.'
+
+  - name: start_seconds
+    label: Start seconds
+    type: double
+    default: 0.0
+    decimals: 4
+    range: 0.0,10000000.0
+
+  - name: end_seconds
+    label: End seconds
+    type: optional_double
+    default: 0.0
+    default_disabled: True
+    none_label: Recording end
+    decimals: 4
+    range: 0.0,1000000.0
+
+
+  "Select file or folder":
+  - type: text
+    text: 'Predict song for a selected file or all files in a folder.'
+
+  - name: folder
+    label: 'folder'
+    type: file_dir
+    default: " "
+
+  - name: file
+    label: 'file'
+    type: file_open
+    default: " "
+
+  - name: save_format
+    label: Annotation file format
+    type: list
+    default: csv
+    options: csv,h5
+
+  - type: text
+    text: 'csv: tabular text file with label, start and end seconds for each predicted song.<br>
+           h5: more stuff.'
+
+
+- name: proof_reading_mode
+  label: Proof reading mode
+  type: bool
+  default: True
+  help: Appends '_proposals' to song name. Individual proposals can be corrected and approved.
+
+- name: resample
+  label: Resample audio to rate used for training
+  type: bool
+  default: True
+
+- name: filter_song
+  label: Bandpass filter audio
+  type: stacked
+  default: "no"
+  options: "no,yes"
+
+  "no":
+
+  "yes":
+  - name: bandpass_low_freq
+    label: Lower cutoff
+    type: double
+    default: 50.0
+    range: 0.0, 1000000.0
+
+  - name: bandpass_up_freq
+    label: Upper cutoff
+    type: double
+    default: 10000.0
+    range: 0.0, 1000000.0
+
+- type: text
+  text: '<b>Event detection</b>'
+
+- name: event_thres
+  label: Threshold
+  type: double
+  default: 0.5
+  range: 0,1
+
+- name: event_dist
+  label: Minimal event interval for detection (seconds)
+  type: double
+  default: 0.01
+  decimals: 4
+  range: 0,100000
+
+- type: text
+  text: '<i>Filter events by interval after detection</i><br />
+    Will discard events that come too close (minimal distance) or
+    too far (maximal distance) after other events.'
+
+- name: event_dist_min
+  label: Delete events closer than (seconds)
+  type: double
+  default: 0.0
+  decimals: 4
+  range: 0,100000
+
+- name: event_dist_max
+  label: Delete events farther than (seconds)
+  type: optional_double
+  default: 1
+  default_disabled: True
+  none_label: infinity
+  decimals: 4
+  range: 0,100000
+
+
+- type: text
+  text: '<b>Segment detection</b>'
+
+- name: segment_thres
+  label: Threshold
+  type: double
+  default: 0.5
+  decimals: 2
+  range: 0,1
+
+- type: text
+  text: '<i>Post process segments</i><br />
+    Will fill short gaps within a segement and discard short segments.'
+
+- name: segment_fillgap
+  label: Fill gaps shorter than (seconds)
+  type: optional_double
+  default: 0.02
+  default_disabled: True
+  none_label: Do not fill
+  decimals: 4
+  range: 0,1000000
+
+- name: segment_minlen
+  label: Delete segments shorter than (seconds)
+  type: optional_double
+  default: 0.02
+  default_disabled: True
+  none_label: Do not delete
+  decimals: 4
+  range: 0,1000000
+
+- name: save_button
+  label: Predict song labels
+  type: button
+  default: main action
