@@ -1345,6 +1345,8 @@ class WaveformPane(pg.PlotWidget):
 
     def __init__(self, parent=None, callback=None, region_changed_callback=None, position_changed_callback=None) -> None:
         super().__init__(parent=parent)
+        if QtWidgets.QApplication.platformName() != "offscreen":
+            self.useOpenGL(True)
         self.setMinimumHeight(60)
         self.setBackground(TIMELINE_BACKGROUND)
         self.setMouseEnabled(x=False, y=False)
@@ -1497,6 +1499,7 @@ class WaveformPane(pg.PlotWidget):
         y_other: np.ndarray | None = None,
         scale_y_all: bool = True,
         max_points: int = 6000,
+        background_step: int = 2,
     ) -> None:
         self._clear_other_curves()
         if x is None or y is None or len(x) == 0 or len(y) == 0:
@@ -1517,7 +1520,7 @@ class WaveformPane(pg.PlotWidget):
                 curve = pg.PlotCurveItem(pen=pg.mkPen("#4d5968", width=0.9))
                 curve.setZValue(-5)
                 self.addItem(curve)
-                self._set_curve_data(curve, x, y_other[:, channel], max_points=max_points)
+                self._set_curve_data(curve, x[::background_step], y_other[::background_step, channel], max_points=max_points)
                 self._other_curves.append(curve)
         self._set_curve_data(self._curve, x, y, max_points=max_points)
         self.setXRange(float(x[0]), float(x[-1]), padding=0)
@@ -1939,9 +1942,10 @@ class EventTimelineWidget(QtWidgets.QWidget):
         y: np.ndarray,
         y_other: np.ndarray | None = None,
         scale_y_all: bool = True,
+        background_step: int = 2,
     ) -> None:
         if self.waveform is not None:
-            self.waveform.set_waveform(x, y, y_other=y_other, scale_y_all=scale_y_all)
+            self.waveform.set_waveform(x, y, y_other=y_other, scale_y_all=scale_y_all, background_step=background_step)
             return
         if x is not None and len(x):
             self.events.setXRange(float(x[0]), float(x[-1]), padding=0)

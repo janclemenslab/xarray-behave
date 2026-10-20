@@ -31,3 +31,26 @@ def test_tracking_index_is_a_scalar_for_the_nearest_time(sample_index, expected)
 
     assert isinstance(index, int)
     assert index == expected
+
+
+@pytest.mark.parametrize("times", [[10.0], [10.0, 10.001, 10.002], [10.0, 10.002, 10.009, 10.012], [10.0, 10.002, 10.002, 10.01]])
+def test_audio_timestamp_conversion_matches_interpolation(times):
+    from types import SimpleNamespace
+    from xarray_behave.gui.app import PSV
+
+    times = np.asarray(times)
+    window = SimpleNamespace(_audio_time_values=lambda: times, fs_song=1000)
+    indices = np.arange(len(times))
+    for sample in [-1, 0, 0.25, 1, 1.5, len(times) - 1, len(times) + 1]:
+        assert PSV._sample_seconds(window, sample) == pytest.approx(np.interp(sample, indices, times))
+    for seconds in [9.0, 10.0, 10.001, 10.002, 10.005, times[-1], 11.0]:
+        assert PSV._seconds_sample(window, seconds) == pytest.approx(np.interp(seconds, times, indices))
+
+
+def test_audio_timestamp_conversion_without_coordinates():
+    from types import SimpleNamespace
+    from xarray_behave.gui.app import PSV
+
+    window = SimpleNamespace(_audio_time_values=lambda: np.array([]), fs_song=1000)
+    assert PSV._sample_seconds(window, 1.5) == 0.0015
+    assert PSV._seconds_sample(window, 0.0015) == 1.5

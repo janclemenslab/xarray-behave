@@ -674,13 +674,13 @@ class MovieView(utils.FastImageWidget):
                 else:
                     self.fly_positions.setData(pos=None)  # this deletes the graph
 
-                x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
+                x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
                 if self.m.crop and not self.m.maintain_custom_crop:
                     x_range, y_range = self.crop_frame(frame)
                 # else:
-                # x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
+                # x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
             else:
-                x_range, y_range = [0, self.m.vr.frame_height], [0, self.m.vr.frame_width]
+                x_range, y_range = [0, self.m.vr.frame_width], [0, self.m.vr.frame_height]
 
             # this overrides everything
             if self.m.maintain_custom_crop:
@@ -739,8 +739,8 @@ class MovieView(utils.FastImageWidget):
         # makes sure crop does not exceed frame bounds
         fly_pos[0] = np.clip(fly_pos[0], self.m.box_size, self.m.vr.frame_height - 1 - self.m.box_size)
         fly_pos[1] = np.clip(fly_pos[1], self.m.box_size, self.m.vr.frame_width - 1 - self.m.box_size)
-        x_range = (int(fly_pos[0] - self.m.box_size), int(fly_pos[0] + self.m.box_size))
-        y_range = (int(fly_pos[1] - self.m.box_size), int(fly_pos[1] + self.m.box_size))
+        x_range = (int(fly_pos[1] - self.m.box_size), int(fly_pos[1] + self.m.box_size))
+        y_range = (int(fly_pos[0] - self.m.box_size), int(fly_pos[0] + self.m.box_size))
         # frame = frame[slice(*x_range), slice(*y_range), :]  # now crop frame around the focal fly
         # return frame, x_range, y_range
         return x_range, y_range

@@ -1,6 +1,6 @@
 """xarray tools for behavioral data."""
 
-__version__ = "0.38.0a2"
+__version__ = "0.38.0a3"
 
 import os
 

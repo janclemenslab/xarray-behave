@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import xarray as xr
 
@@ -244,9 +246,12 @@ def _toolbar_action(window, tooltip: str):
     raise AssertionError(f"Missing toolbar action {tooltip!r}")
 
 
-def test_psv_annotation_toolbar_exposes_and_toggles_view_actions():
+def test_psv_annotation_toolbar_exposes_and_toggles_view_actions(tmp_path):
     _app()
-    window = PSV(_audio_dataset(Events({"song": np.array([[0.1, 0.2, 0]])})))
+    window = PSV(
+        _audio_dataset(Events({"song": np.array([[0.1, 0.2, 0]])})),
+        config_manager=gui_config.GuiConfigManager(home=tmp_path),
+    )
 
     tooltips = {action.toolTip() for action in window.annotation_toolbar.actions() if action.toolTip()}
     assert {
@@ -331,9 +336,33 @@ def test_psv_annotation_toolbar_includes_movie_action_when_video_is_loaded():
     window.close()
 
 
-def test_psv_audio_selector_switches_v2_audio_sources():
+def test_psv_audio_selection_during_construction_waits_for_views(tmp_path, monkeypatch):
     _app()
-    window = PSV(_v2_audio_dataset())
+    errors = []
+    monkeypatch.setattr(sys, "excepthook", lambda *error: errors.append(error))
+    init_spec = views.SpecView.__init__
+
+    def init_spec_with_channel_change(self, model, *args, **kwargs):
+        model.cb2.setCurrentIndex(1)
+        init_spec(self, model, *args, **kwargs)
+
+    monkeypatch.setattr(views.SpecView, "__init__", init_spec_with_channel_change)
+    ds = _audio_dataset()
+    ds.song_raw.data[:, 1] = 0.5
+    window = PSV(ds, config_manager=gui_config.GuiConfigManager(home=tmp_path))
+    try:
+        assert not errors, [str(error[1]) for error in errors]
+        assert window.current_channel_index == 1
+        np.testing.assert_array_equal(window.y, ds.song_raw.data[:, 1])
+        window.cb2.setCurrentIndex(0)
+        np.testing.assert_array_equal(window.y, ds.song_raw.data[:, 0])
+    finally:
+        window.close()
+
+
+def test_psv_audio_selector_switches_v2_audio_sources(tmp_path):
+    _app()
+    window = PSV(_v2_audio_dataset(), config_manager=gui_config.GuiConfigManager(home=tmp_path))
 
     labels = [window.cb2.itemText(index) for index in range(window.cb2.count())]
     assert labels == ["audio: Channel 0", "audio: Channel 1", "other: Channel 2"]
@@ -525,6 +554,7 @@ def test_table_follow_audio_view_filters_or_leaves_table_unchanged(monkeypatch):
     window.events_table.window_filter_checkbox.setChecked(False)
     window._refresh_event_widgets(sync_table_to_view=False)
     assert _table_row_count(window.events_table) == 3
+    selected_before = window.events_table.selected_records()
     table_refreshes = []
     original_set_events = window.events_table.set_events
 
@@ -538,7 +568,7 @@ def test_table_follow_audio_view_filters_or_leaves_table_unchanged(monkeypatch):
 
     assert table_refreshes == []
     assert _table_row_count(window.events_table) == 3
-    assert [record.name for record in window.events_table.selected_records()] == []
+    assert window.events_table.selected_records() == selected_before
 
     window.events_table.window_filter_checkbox.setChecked(True)
     assert table_refreshes == [True]
@@ -1068,6 +1098,37 @@ def test_waveform_pane_uses_continuous_trace_below_four_seconds():
 
     assert len(calls[-1][0][0]) == 10_000
     assert calls[-1][1]["connect"] == "finite"
+
+
+def test_waveform_pane_samples_only_background_channels():
+    _app()
+    widget = WaveformPane()
+    x = np.arange(20) / 10
+    y = np.arange(20, dtype=float)
+    y_other = np.column_stack([y * 2, y * 3])
+
+    for step in [2, 4]:
+        widget.set_waveform(x, y, y_other=y_other, background_step=step)
+        np.testing.assert_array_equal(widget._curve.getData()[0], x)
+        np.testing.assert_array_equal(widget._curve.getData()[1], y)
+        for channel, curve in enumerate(widget._other_curves):
+            np.testing.assert_array_equal(curve.getData()[0], x[::step])
+            np.testing.assert_array_equal(curve.getData()[1], y_other[::step, channel])
+        np.testing.assert_array_equal(widget._last_waveform_y_other, y_other)
+
+
+def test_psv_uses_master_background_stride_when_zoomed_out(tmp_path):
+    _app()
+    ds = _audio_dataset().reindex(sampletime=np.arange(8000) / 1000, fill_value=0)
+    window = PSV(ds, config_manager=gui_config.GuiConfigManager(home=tmp_path))
+    window.span = 4000
+    window.t0 = 4000
+
+    assert window.step == 2
+    background_x, background_y = window.slice_view._other_curves[0].getData()
+    np.testing.assert_array_equal(background_x, window.x[::4])
+    np.testing.assert_array_equal(background_y, window.y_other[::4, 0])
+    window.close()
 
 
 def test_waveform_pane_uses_overview_pairs_at_four_seconds():
@@ -1716,6 +1777,44 @@ def test_start_playback_qt_array_audio_queues_before_transport_clock():
     assert window._playback_window_stop == 600
     assert window._playback_audio_stop_sample == 1_000
     assert events == [("audio_play", 400, 1_000, False), "clock_restart", "timer_start"]
+
+
+def test_playback_tick_updates_video_within_waveform_window(tmp_path, monkeypatch):
+    _app()
+
+    class VideoReader:
+        frame_rate = 50
+        frame_width = 5
+        frame_height = 4
+
+        def __getitem__(self, index):
+            frames.append(index)
+            return np.full((4, 5, 3), index, dtype=np.uint8)
+
+    frames = []
+    ds = _audio_dataset().assign_coords(
+        time=np.arange(50) / 50,
+        nearest_frame=("time", np.arange(50)),
+    )
+    window = PSV(ds, vr=VideoReader(), config_manager=gui_config.GuiConfigManager(home=tmp_path))
+    window._is_playing = True
+    window._playback_window_start = 0
+    window._playback_window_stop = 1_000
+    window._transport_uses_qmedia_audio = lambda: True
+    positions = iter([100, 140, 141])
+    window._audio_player = type("Player", (), {"position": lambda self: next(positions)})()
+    redraws = []
+    monkeypatch.setattr(window, "update_xy", lambda: redraws.append(True))
+    frames.clear()
+    try:
+        for _ in range(3):
+            window._on_playback_tick()
+        assert frames == [5, 7]
+        assert redraws == []
+        assert window.t0 == 141
+    finally:
+        window._is_playing = False
+        window.close()
 
 
 def test_playback_tick_flips_to_next_window_at_visible_end():

@@ -23,6 +23,7 @@ class PyAVVideoReader:
         if self._stream is None:
             self.close()
             raise RuntimeError(f"No video stream in {self.filename}")
+        self._stream.thread_type = "AUTO"
 
         self.frame_rate = self._rate_hz(self._stream)
         self.frame_width = int(getattr(self._stream, "width", 0) or 0)
@@ -32,6 +33,10 @@ class PyAVVideoReader:
         if self.number_of_frames <= 0:
             duration = self._duration_seconds()
             self.number_of_frames = int(np.ceil(max(0.0, duration) * self.frame_rate))
+        self._decoder = None
+        self._previous_frame = None
+        self._current_frame = None
+        self._last_target_seconds = None
 
     def __getitem__(self, index: int):
         return self.read(index)[1]
@@ -60,32 +65,50 @@ class PyAVVideoReader:
 
     def frame_at_seconds(self, seconds: float):
         target_seconds = max(0.0, float(seconds))
-        target_pts = self._seconds_to_pts(target_seconds)
-        try:
-            self._container.seek(target_pts, stream=self._stream, backward=True, any_frame=False)
-        except Exception:
-            self._container.seek(int(target_seconds * 1_000_000), backward=True)
-        try:
-            self._stream.codec_context.flush_buffers()
-        except Exception:
-            pass
+        # Keep decoding during playback; seek for backwards moves and jumps over a second.
+        if (
+            self._decoder is None
+            or target_seconds < self._last_target_seconds
+            or target_seconds - self._last_target_seconds > 1.0
+        ):
+            self._decoder = None
+            target_pts = self._seconds_to_pts(target_seconds)
+            try:
+                self._container.seek(target_pts, stream=self._stream, backward=True, any_frame=False)
+            except Exception:
+                self._container.seek(int(target_seconds * 1_000_000), backward=True)
+            try:
+                self._stream.codec_context.flush_buffers()
+            except Exception:
+                pass
+            self._decoder = self._container.decode(self._stream)
+            self._previous_frame = self._current_frame = None
+        self._last_target_seconds = target_seconds
 
-        best_frame = None
-        best_distance = None
-        for frame in self._container.decode(self._stream):
-            frame_seconds = self._frame_seconds(frame)
-            distance = abs(frame_seconds - target_seconds)
-            if best_distance is None or distance <= best_distance:
-                best_distance = distance
-                best_frame = frame
-            if frame_seconds >= target_seconds and best_frame is not None:
+        while self._current_frame is None or self._frame_seconds(self._current_frame) < target_seconds:
+            frame = next(self._decoder, None)
+            if frame is None:
                 break
+            # Some recordings have non-monotonic PTS; retain the nearest earlier frame.
+            if self._current_frame is not None and (
+                self._previous_frame is None
+                or self._frame_seconds(self._current_frame) >= self._frame_seconds(self._previous_frame)
+            ):
+                self._previous_frame = self._current_frame
+            self._current_frame = frame
 
-        if best_frame is None:
+        if self._current_frame is None:
             return None
-        return np.ascontiguousarray(best_frame.to_ndarray(format="rgb24"))
+        best_frame = self._current_frame
+        if self._previous_frame is not None and abs(self._frame_seconds(self._previous_frame) - target_seconds) < abs(
+            self._frame_seconds(best_frame) - target_seconds
+        ):
+            best_frame = self._previous_frame
+        return best_frame.to_ndarray(format="rgb24").copy()  # Tracking overlays modify the returned image.
 
     def close(self):
+        self._decoder = None
+        self._previous_frame = self._current_frame = None
         container = getattr(self, "_container", None)
         self._container = None
         if container is not None:

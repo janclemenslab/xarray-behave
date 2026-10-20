@@ -1415,7 +1415,7 @@ class PSV(MainWindow):
         threshold_config = viewer_config.get("thresholding", {})
         panel_config = config.get("window", {}).get("panels", {})
         self.setStyleSheet(WINDOW_STYLESHEET)
-        pg.setConfigOptions(useOpenGL=False)  # appears to be faster that way
+        pg.setConfigOptions(useOpenGL=False)  # WaveformPane enables OpenGL independently.
         # build model:
         self.ds = ds
         self.data_source = data_source
@@ -1561,7 +1561,7 @@ class PSV(MainWindow):
         self._is_playing = False
         self._is_slider_scrubbing = False
         self._playback_timer = QtCore.QTimer(self)
-        self._playback_timer.setInterval(20)
+        self._playback_timer.setInterval(min(20, max(1, int(1_000 / self.vr.frame_rate))) if self.vr is not None else 20)
         self._playback_timer.timeout.connect(self._on_playback_tick)
         self._playback_clock = QtCore.QElapsedTimer()
         self._playback_anchor_sample = 0.0
@@ -1944,7 +1944,6 @@ class PSV(MainWindow):
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.preset_panel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
         self._syncing_event_selection = False
-        self.slice_view.channel_changed.connect(self._on_audio_selection_changed)
         self.slice_view.audio_settings_changed.connect(self._set_audio_settings)
         self.events_table.window_filter_checkbox.toggled.connect(
             lambda checked: self._refresh_event_widgets(True, force_table=bool(checked))
@@ -2096,6 +2095,7 @@ class PSV(MainWindow):
         self._sync_threshold_mode_ui()
         self._restore_window_geometry()
 
+        self.slice_view.channel_changed.connect(self._on_audio_selection_changed)
         self.show()
         self.update_xy()
         self.update_frame()
@@ -2707,13 +2707,20 @@ class PSV(MainWindow):
     def _sample_seconds(self, sample: float) -> float:
         times = self._audio_time_values()
         if len(times):
-            return float(np.interp(float(sample), np.arange(len(times)), times))
+            sample = min(max(float(sample), 0.0), len(times) - 1)
+            index = int(sample)
+            return float(times[index] + (sample - index) * (times[min(index + 1, len(times) - 1)] - times[index]))
         return float(sample) / self.fs_song
 
     def _seconds_sample(self, seconds: float) -> float:
         times = self._audio_time_values()
         if len(times):
-            return float(np.interp(float(seconds), times, np.arange(len(times))))
+            index = int(np.searchsorted(times, seconds, side="right"))
+            if index == 0:
+                return 0.0
+            if index == len(times):
+                return float(index - 1)
+            return float(index - 1 + (seconds - times[index - 1]) / (times[index] - times[index - 1]))
         return float(seconds) * self.fs_song
 
     def _apply_active_audio_source(self, *, preserve_seconds: bool = False, old_seconds: float = None) -> None:
@@ -3039,6 +3046,7 @@ class PSV(MainWindow):
             self._stop_window_audio_playhead()
             self._clear_playback_window()
         old_t0 = getattr(self, "_t0", self.tmin)
+        old_frame = self.framenumber if not refresh and self.vr is not None else None
         self._t0 = np.clip(sample, self.tmin, self.tmax_playhead)
         if force_refresh or not np.isclose(self._t0, old_t0, rtol=0.0, atol=1.0e-4):
             self._sync_transport_controls()
@@ -3047,6 +3055,8 @@ class PSV(MainWindow):
                 self.update_frame()
             else:
                 self._sync_playhead_only()
+                if self.vr is not None and self.framenumber != old_frame:
+                    self.update_frame()
             if process_events:
                 self.app.processEvents()
 
@@ -4577,6 +4587,7 @@ class PSV(MainWindow):
                 self.y,
                 y_other=self.y_other,
                 scale_y_all=self._audio_settings().scale_y_all,
+                background_step=self.step * 2,
             )
             self.slice_view.set_threshold_data(
                 self.x,
@@ -4598,6 +4609,7 @@ class PSV(MainWindow):
                 self.y,
                 y_other=self.y_other,
                 scale_y_all=self._audio_settings().scale_y_all,
+                background_step=self.step * 2,
             )
 
         if "pose_positions_allo" in self.ds:
@@ -5120,6 +5132,9 @@ def main(
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
         is_das (bool): reduced GUI for audio only data
     """
+    surface_format = QtGui.QSurfaceFormat.defaultFormat()
+    surface_format.setSwapInterval(0)  # Avoid a refresh-rate wait on each waveform update.
+    QtGui.QSurfaceFormat.setDefaultFormat(surface_format)
     app = pg.mkQApp()
     config_manager = gui_config.GuiConfigManager(config)
     config_manager.load_for_source(source or None)
