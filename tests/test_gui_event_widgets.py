@@ -1,4 +1,5 @@
 import sys
+import weakref
 
 import numpy as np
 import xarray as xr
@@ -72,6 +73,26 @@ def _v2_audio_dataset():
     ds.audio.attrs["sampling_rate_Hz"] = 1_000
     ds.other.attrs["sampling_rate_Hz"] = 500
     return ds
+
+
+def test_closing_viewer_keeps_widgets_alive_until_qt_deletes_window(tmp_path, qtbot):
+    manager = gui_config.GuiConfigManager(home=tmp_path)
+    window = PSV(_audio_dataset(), config_manager=manager)
+    data_ref = weakref.ref(window.ds)
+    central_widget = window.centralWidget()
+    destroyed = []
+    window.destroyed.connect(lambda: destroyed.append(True))
+
+    assert window.close()
+
+    # Qt can still deliver events before WA_DeleteOnClose takes effect.
+    assert not destroyed
+    assert window.centralWidget() is central_widget
+    assert window._config_snapshot()["window"]["geometry"]["width"] == window.width()
+    assert manager.global_path.exists()
+    QtCore.QCoreApplication.sendPostedEvents(window, QtCore.QEvent.DeferredDelete)
+    assert destroyed == [True]
+    assert data_ref() is None
 
 
 def test_psv_project_panel_is_flat_and_selects_current_recording(tmp_path):

@@ -252,6 +252,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle(title)
         self.setWindowIcon(QtGui.QIcon(package_dir + "/gui/icon.png"))
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self.destroyed.connect(self.__dict__.clear)
 
         # build menu
         self.bar = self.menuBar()
@@ -323,17 +324,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.config_manager.save_global(self._config_snapshot())
             except Exception:
                 logger.exception("Could not save global GUI configuration to %s", self.config_manager.global_path)
-        stuff_to_delete = list(self.__dict__.keys())
-        for stuff in stuff_to_delete:
-            try:
-                del self.__dict__[stuff]
-            except KeyError:
-                pass
-            except Exception as e:
-                print(e)
-        import gc
-
-        gc.collect()
+        # WA_DeleteOnClose owns teardown; Qt still needs the widgets during closeEvent.
         event.accept()
 
     def _config_snapshot(self):
