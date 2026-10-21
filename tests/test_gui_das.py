@@ -52,6 +52,69 @@ def test_das_gui_starts_with_single_file_actions(qtbot):
     assert "Make dataset for training" in [action.text() for action in window.das_menu.actions()]
 
 
+def test_das_empty_startup_opens_annotation_workspace(qtbot, monkeypatch, tmp_path):
+    from xarray_behave.gui import app as gui_app, gui_config
+
+    manager = gui_config.GuiConfigManager(home=tmp_path)
+    monkeypatch.setattr(gui_config, "GuiConfigManager", lambda *_: manager)
+    monkeypatch.setattr(gui_app.QtWidgets.QApplication, "exec_", lambda self: 0)
+    opened = []
+    monkeypatch.setattr(gui_app.MainWindow, "from_file", classmethod(lambda cls, qt_keycode=None, **kw: opened.append(("file", kw))))
+    monkeypatch.setattr(gui_app.MainWindow, "from_dir", classmethod(lambda cls, qt_keycode=None, **kw: opened.append(("folder", kw))))
+
+    gui_app.main_das()
+    window = gui_app.QtWidgets.QApplication.instance()._xarray_behave_mainwin
+    qtbot.addWidget(window)
+
+    assert isinstance(window, gui_app.PSV)
+    assert window.isVisible() and not opened
+    assert not window.ds.data_vars and window.tmax == 0
+    assert window.slice_view.isVisible() and window.spec_view.isVisible()
+    assert window.events_table.table.model().rowCount() == 0
+    assert not window.transport_panel.isEnabled()
+    assert not window._viewer_actions["save_annotations"].isEnabled()
+    assert not window._viewer_actions["threshold_mode"].isEnabled()
+    assert gui_app.QtWidgets.QApplication.activeModalWidget() is None
+    actions = {action.text(): action for action in window.file_menu.actions()}
+    for label in ("Open audio file", "Open etho folder"):
+        assert actions[label].isEnabled()
+        actions[label].trigger()
+    assert opened == [("file", {"is_das": True}), ("folder", {"is_das": True})]
+
+
+def test_empty_workspace_file_menu_loads_audio(qtbot, monkeypatch, tmp_path):
+    import wave
+    from xarray_behave.gui import app as gui_app, gui_config
+
+    audio = tmp_path / "clip.wav"
+    with wave.open(str(audio), "wb") as stream:
+        stream.setparams((1, 2, 8_000, 0, "NONE", "not compressed"))
+        stream.writeframes(np.zeros(8_000, dtype="<i2").tobytes())
+    manager = gui_config.GuiConfigManager(home=tmp_path / "home")
+    gui_app._set_config_manager(manager)
+    window = gui_app.PSV(xr.Dataset(), is_das=True, config_manager=manager)
+    qtbot.addWidget(window)
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getOpenFileName", lambda **_: (str(audio), ""))
+    monkeypatch.setattr(gui_app.YamlDialog, "exec_", lambda self: gui_app.QtWidgets.QDialog.Accepted)
+    viewer_class = gui_app.PSV
+    loaded = []
+
+    def create_viewer(*args, **kwargs):
+        result = viewer_class(*args, **kwargs)
+        qtbot.addWidget(result)
+        loaded.append(result)
+        return result
+
+    monkeypatch.setattr(gui_app, "PSV", create_viewer)
+    next(action for action in window.file_menu.actions() if action.text() == "Open audio file").trigger()
+
+    assert len(loaded) == 1
+    assert loaded[0].isVisible() and loaded[0].tmax == 8_000
+    assert loaded[0]._has_current_das_audio()
+    assert loaded[0].transport_panel.isEnabled()
+    assert loaded[0]._viewer_actions["save_annotations"].isEnabled()
+
+
 def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatch, tmp_path):
     from xarray_behave.gui import app as gui_app
 

@@ -16,6 +16,7 @@ import functools
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 import scipy.interpolate
 import scipy.signal
 import scipy.signal.windows
@@ -1593,7 +1594,7 @@ class PSV(MainWindow):
             self._add_keyed_menuitem(self.file_menu, "Add recordings", self._add_project_recordings)
         elif self.is_das:
             self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
-                self.file_menu, "Open audio/annotations", partial(self.from_file, is_das=True)
+                self.file_menu, "Open audio file", partial(self.from_file, is_das=True)
             )
             self._add_keyed_menuitem(self.file_menu, "Open etho folder", partial(self.from_dir, is_das=True))
         else:
@@ -2094,6 +2095,18 @@ class PSV(MainWindow):
         self._apply_panel_visibility()
         self._sync_threshold_mode_ui()
         self._restore_window_geometry()
+
+        if not self.ds.data_vars:
+            self.outer_splitter.setEnabled(False)
+            self.transport_panel.setEnabled(False)
+            for menu in (view_play, view_video, view_audio, view_annotations):
+                for action in menu.actions():
+                    action.setEnabled(False)
+            for name in ("import_annotations", "save_annotations", "threshold_mode"):
+                self._viewer_actions[name].setEnabled(False)
+            for action in self.file_menu.actions():
+                if action.text() in {"Save swap files", "Save dataset"}:
+                    action.setEnabled(False)
 
         self.slice_view.channel_changed.connect(self._on_audio_selection_changed)
         self.show()
@@ -5142,7 +5155,10 @@ def main(
 
     mainwin = None
     if not len(source):
-        mainwin = MainWindow(media_manifest=manifest, is_das=is_das)
+        if is_das:
+            mainwin = PSV(xr.Dataset(), title="Deep Audio Segmenter", is_das=True, config_manager=config_manager)
+        else:
+            mainwin = MainWindow(media_manifest=manifest)
         mainwin.show()
     elif not os.path.exists(source):
         logger.info(f"{source} does not exist - skipping.")
