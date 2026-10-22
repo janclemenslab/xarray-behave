@@ -6,6 +6,12 @@ main:
   range: 0, 1000
   default: 200
 
+- name: spec_type
+  label: Spectrogram type
+  type: list
+  default: Linear
+  options: Linear,Mel
+
 - name: spec_freq_min
   label: Min freq in spec display
   type: optional_double

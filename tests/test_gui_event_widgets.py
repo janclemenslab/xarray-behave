@@ -198,7 +198,7 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
         },
         "viewer": {
             "waveform": {"color": "#ff6a74", "y_limits": [-2.0, 3.0]},
-            "spectrogram": {"compression": 3, "resolution": 128, "colormap": "magma"},
+            "spectrogram": {"compression": 3, "resolution": 128, "colormap": "magma", "mel": True},
             "audio": {"waveform_all": False, "events_all": False, "playback_all": True, "scale_y_all": False},
             "annotations": {"table_audio_link": False, "table_audio_filter": True, "show_labels": False},
             "thresholding": {"enabled": True, "value": 0.4, "min_distance": 0.05},
@@ -231,6 +231,8 @@ def test_psv_restores_and_captures_persistent_gui_state(tmp_path):
     assert window.spec_compression_ratio == 3
     assert window.spec_win == 128
     assert window.spec_colormap == "magma"
+    assert window.spec_mel is True
+    assert window._config_snapshot()["viewer"]["spectrogram"]["mel"] is True
     assert window.events_table.sync_enabled is True
     assert window.events_table.window_filter_enabled is True
     assert window.threshold_mode is True
@@ -2159,6 +2161,10 @@ def test_spectrogram_invalid_frequency_bounds_keep_nonempty_display():
 
     assert widget.S.size > 0
     assert widget.S.shape[0] >= 1
+    model.spec_mel = True
+    widget.update_spec(x, y)
+    assert widget.S.shape[0] == 128
+    assert np.isfinite(widget.S).all()
     widget.close()
 
 
@@ -2175,6 +2181,7 @@ def test_spectrogram_settings_dialog_updates_model_live():
         spec_levels = [None, None]
         spec_compression_ratio = 0.0
         spec_colormap = "turbo"
+        spec_mel = True
         spec_view = SpecView()
         resolution_calls = []
 
@@ -2187,6 +2194,11 @@ def test_spectrogram_settings_dialog_updates_model_live():
     model = Model()
     dialog = view_dialog.SpectrogramSettingsDialog(model=model)
 
+    assert dialog.type_combo.currentText() == "Mel"
+    dialog.type_combo.setCurrentText("Linear")
+    assert model.spec_mel is False
+    dialog.type_combo.setCurrentText("Mel")
+    assert model.spec_mel is True
     dialog.colormap_combo.setCurrentText("magma")
     dialog.frequency_slider.sld.setValue((100.0, 200.0))
     dialog.level_slider.checkbox.setChecked(False)
@@ -2200,4 +2212,75 @@ def test_spectrogram_settings_dialog_updates_model_live():
     np.testing.assert_allclose(model.spec_levels, [0.5, 1.5])
     assert model.spec_compression_ratio == 4.0
     assert model.resolution_calls == [("inc", None), ("dec", None), ("dec", None)]
+    dialog.close()
+
+
+def test_mel_spectrogram_uses_filter_bank_and_labels_frequencies_in_hz():
+    import librosa
+    from types import SimpleNamespace
+
+    _app()
+    x = np.arange(4096) / 16_000
+    y = np.sin(2 * np.pi * 2000 * x)
+    model = SimpleNamespace(
+        x=x, fs_song=16_000, spec_mel=True, spec_win=512, spec_compression_ratio=0,
+        fmin=200, fmax=7000, spec_denoise=False, spec_levels=[None, None], t0=0,
+    )
+    widget = views.SpecView(model=model, callback=lambda *args: None)
+    widget.update_spec(x, y)
+    expected = librosa.feature.melspectrogram(
+        y=y, sr=16_000, n_fft=2048, win_length=512, hop_length=256,
+        n_mels=128, fmin=200, fmax=7000, power=1.0,
+    )
+    np.testing.assert_allclose(widget.S, np.log2(1 + expected))
+    ticks = widget.y_axis._tickLevels[0]
+    np.testing.assert_allclose(
+        [float(label) for _, label in ticks],
+        librosa.mel_to_hz([value for value, _ in ticks]), rtol=0.005,
+    )
+    model.spec_mel = False
+    widget.update_spec(x, y)
+    assert widget.S.shape[0] != 128
+    assert widget.y_axis._tickLevels is None
+    widget.close()
+
+
+def test_loading_dialogs_offer_and_remember_spectrogram_type(tmp_path):
+    _app()
+    manager = gui_config.GuiConfigManager(home=tmp_path)
+    for kind in ("from_file", "from_dir", "from_zarr"):
+        dialog = gui_app.YamlDialog(yaml_file=f"{gui_app.package_dir}/gui/forms/{kind}.yaml")
+        assert dialog.form["spec_type"] == "Linear"
+        dialog.form["spec_type"] = "Mel"
+        manager.remember_dialog(kind, dialog.form.get_form_data())
+        dialog.form["spec_type"] = "Linear"
+        gui_app._apply_dialog_config(dialog.form, manager, kind)
+        assert dialog.form["spec_type"] == "Mel"
+        manager.config["viewer"] = {"spectrogram": {"mel": False}}
+        gui_app._apply_dialog_config(dialog.form, manager, kind)
+        assert dialog.form["spec_type"] == "Linear"
+        manager.config.pop("viewer")
+        dialog.close()
+
+
+def test_open_audio_with_mel_then_switch_to_linear(tmp_path, qtbot, monkeypatch):
+    import soundfile as sf
+
+    audio = tmp_path / "tone.wav"
+    x = np.arange(4096) / 16_000
+    sf.write(audio, np.sin(2 * np.pi * 2000 * x), 16_000)
+    manager = gui_config.GuiConfigManager(home=tmp_path / "home")
+    manager.config = {"version": 1, "load_dialogs": {"from_file": {"spec_type": "Mel"}}}
+    monkeypatch.setattr(gui_app, "_get_config_manager", lambda: manager)
+    window = gui_app.MainWindow.from_file(str(audio), skip_dialog=True, config_manager=manager)
+    qtbot.addWidget(window)
+    assert window.spec_mel is True
+    assert window.spec_view.S.shape[0] == 128
+
+    dialog = view_dialog.SpectrogramSettingsDialog(parent=window, model=window)
+    assert dialog.type_combo.currentText() == "Mel"
+    dialog.type_combo.setCurrentText("Linear")
+    assert window.spec_mel is False
+    assert window.spec_view.S.shape[0] != 128
+    assert window._config_snapshot()["viewer"]["spectrogram"]["mel"] is False
     dialog.close()

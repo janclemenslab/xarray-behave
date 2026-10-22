@@ -40,6 +40,7 @@ LOAD_DIALOG_FIELDS = {
             "ignore_tracks",
             "spec_freq_max",
             "spec_freq_min",
+            "spec_type",
             "target_samplingrate",
         }
     ),
@@ -59,6 +60,7 @@ LOAD_DIALOG_FIELDS = {
             "init_annotations",
             "spec_freq_max",
             "spec_freq_min",
+            "spec_type",
             "target_samplingrate",
         }
     ),
@@ -72,6 +74,7 @@ LOAD_DIALOG_FIELDS = {
             "load_event_traces",
             "spec_freq_max",
             "spec_freq_min",
+            "spec_type",
         }
     ),
 }
@@ -212,7 +215,7 @@ def _validate_values(config: Mapping[str, Any]) -> None:
         "lazy",
         "load_event_traces",
     }
-    dialog_strings = {"events_string", "filter_song"}
+    dialog_strings = {"events_string", "filter_song", "spec_type"}
     for kind, values in config.get("load_dialogs", {}).items():
         for field, value in values.items():
             if field in dialog_bools:

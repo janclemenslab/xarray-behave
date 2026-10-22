@@ -481,6 +481,15 @@ class SpecView(pg.ImageView):
         if self.S.size == 0 or len(f) == 0 or len(t) == 0:
             self.clear()
             return
+        self.y_axis.enableAutoSIPrefix(not mel)
+        if mel:
+            import librosa
+
+            f = librosa.hz_to_mel(f)
+            ticks = np.linspace(f[0], f[-1], 6)
+            self.y_axis.setTicks([[(value, f"{hz:.3g}") for value, hz in zip(ticks, librosa.mel_to_hz(ticks))]])
+        else:
+            self.y_axis.setTicks(None)
         trange = self.m.x[-1] - self.m.x[0]
         self.max_pix = 6_000
         self.t_step = max(1, self.S.shape[1] // self.max_pix)
@@ -513,12 +522,20 @@ class SpecView(pg.ImageView):
         import librosa
         import librosa.feature
 
-        if True:  # not mel:
+        fmin, fmax = self._valid_frequency_bounds(fmin, fmax)
+        if mel:
+            S = librosa.feature.melspectrogram(
+                y=y, sr=self.m.fs_song, n_fft=nfft, win_length=spec_win,
+                hop_length=spec_win // 2, n_mels=128, fmin=fmin, fmax=fmax, power=1.0,
+            )
+            # Filter centers exclude the two outer edges of the mel filter bank.
+            f = librosa.mel_frequencies(n_mels=S.shape[0] + 2, fmin=fmin, fmax=fmax)[1:-1]
+            t = librosa.frames_to_time(np.arange(S.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
+        else:
             psd = librosa.stft(y=y, n_fft=nfft, win_length=spec_win, hop_length=spec_win // 2)
             t = librosa.frames_to_time(np.arange(psd.shape[1]), sr=self.m.fs_song, hop_length=spec_win // 2, n_fft=nfft)
             f = librosa.fft_frequencies(sr=self.m.fs_song, n_fft=nfft)
 
-            fmin, fmax = self._valid_frequency_bounds(fmin, fmax)
             f_idx = np.flatnonzero((f >= fmin) & (f <= fmax))
             if not len(f_idx):
                 center = np.clip((fmin + fmax) / 2, f[0], f[-1])

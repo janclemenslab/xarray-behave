@@ -22,6 +22,7 @@ class _FakeForm:
             "ignore_song": False,
             "spec_freq_min": None,
             "spec_freq_max": None,
+            "spec_type": "Linear",
             "annotation_path": "",
             "init_annotations": False,
             "events_string": "",
@@ -187,6 +188,7 @@ def test_from_dir_applies_local_config_before_cli_overrides(monkeypatch, tmp_pat
                     "target_samplingrate": 500,
                     "frame_fliplr": True,
                     "spec_freq_min": 25,
+                    "spec_type": "Mel",
                 }
             },
         },
@@ -217,6 +219,7 @@ def test_from_dir_applies_local_config_before_cli_overrides(monkeypatch, tmp_pat
     assert captured["form_data"]["spec_freq_max"] == 900
     assert captured["pixel_size_mm"] is None
     assert result.kwargs["config_manager"] is manager
+    assert result.kwargs["spec_mel"] is True
 
 
 def test_from_dir_passes_manifest_to_dataset_service(monkeypatch):

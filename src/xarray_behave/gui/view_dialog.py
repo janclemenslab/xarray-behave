@@ -379,6 +379,16 @@ class SpectrogramSettingsDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(QtWidgets.QLabel("<b>Spectrogram</b>"))
 
+        type_row = QtWidgets.QHBoxLayout()
+        type_row.addWidget(QtWidgets.QLabel("Spectrogram type"))
+        self.type_combo = QtWidgets.QComboBox(self)
+        self.type_combo.setObjectName("spectrogramTypeCombo")
+        self.type_combo.addItems(["Linear", "Mel"])
+        self.type_combo.setCurrentText("Mel" if self.model.spec_mel else "Linear")
+        self.type_combo.currentTextChanged.connect(lambda text: setattr(self.model, "spec_mel", text == "Mel"))
+        type_row.addWidget(self.type_combo)
+        layout.addLayout(type_row)
+
         colormap_row, self.colormap_combo = _make_colormap_row(self.model)
         layout.addWidget(colormap_row)
 

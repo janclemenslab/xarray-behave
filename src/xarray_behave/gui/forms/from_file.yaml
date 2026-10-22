@@ -44,6 +44,12 @@ main:
   range: 1,10000000
   default: 1000
 
+- name: spec_type
+  label: Spectrogram type
+  type: list
+  default: Linear
+  options: Linear,Mel
+
 - name: spec_freq_min
   label: Minimal spectrogram frequency
   type: optional_double

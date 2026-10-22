@@ -1,4 +1,5 @@
 import sys
+import wave
 from types import ModuleType, SimpleNamespace
 
 import numpy as np
@@ -79,11 +80,11 @@ def test_das_empty_startup_opens_annotation_workspace(qtbot, monkeypatch, tmp_pa
     for label in ("Open audio file", "Open etho folder"):
         assert actions[label].isEnabled()
         actions[label].trigger()
-    assert opened == [("file", {"is_das": True}), ("folder", {"is_das": True})]
+    assert opened == [("file", {"is_das": True, "window": window}), ("folder", {"is_das": True, "window": window})]
 
 
-def test_empty_workspace_file_menu_loads_audio(qtbot, monkeypatch, tmp_path):
-    import wave
+@pytest.mark.parametrize("source_kind", ["file", "folder", "zarr"])
+def test_empty_workspace_loads_into_same_window(qtbot, monkeypatch, tmp_path, source_kind):
     from xarray_behave.gui import app as gui_app, gui_config
 
     audio = tmp_path / "clip.wav"
@@ -94,25 +95,76 @@ def test_empty_workspace_file_menu_loads_audio(qtbot, monkeypatch, tmp_path):
     gui_app._set_config_manager(manager)
     window = gui_app.PSV(xr.Dataset(), is_das=True, config_manager=manager)
     qtbot.addWidget(window)
-    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getOpenFileName", lambda **_: (str(audio), ""))
+    window.resize(1100, 750)
+    window_id = window.winId()
+    geometry = window.geometry()
+    menu_labels = [action.text() for action in window.bar.actions()]
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getOpenFileName", lambda *_, **__: (str(audio), ""))
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda **_: str(tmp_path))
     monkeypatch.setattr(gui_app.YamlDialog, "exec_", lambda self: gui_app.QtWidgets.QDialog.Accepted)
-    viewer_class = gui_app.PSV
-    loaded = []
 
-    def create_viewer(*args, **kwargs):
-        result = viewer_class(*args, **kwargs)
-        qtbot.addWidget(result)
-        loaded.append(result)
-        return result
+    class VideoReader:
+        frame_rate = 25
+        frame_width = 5
+        frame_height = 4
 
-    monkeypatch.setattr(gui_app, "PSV", create_viewer)
-    next(action for action in window.file_menu.actions() if action.text() == "Open audio file").trigger()
+        def __getitem__(self, index):
+            return np.zeros((self.frame_height, self.frame_width, 3), dtype=np.uint8)
 
-    assert len(loaded) == 1
-    assert loaded[0].isVisible() and loaded[0].tmax == 8_000
-    assert loaded[0]._has_current_das_audio()
-    assert loaded[0].transport_panel.isEnabled()
-    assert loaded[0]._viewer_actions["save_annotations"].isEnabled()
+    if source_kind != "file":
+        ds = xr.Dataset(
+            {"song_raw": (("sampletime", "channels"), np.zeros((8_000, 1)))},
+            coords={"sampletime": np.arange(8_000) / 8_000},
+            attrs={"target_sampling_rate_Hz": 1_000},
+        )
+        ds.song_raw.attrs["sampling_rate_Hz"] = 8_000
+        monkeypatch.setattr(gui_app.dataset_service, "assemble_from_dir", lambda *_, **__: ds)
+        monkeypatch.setattr(gui_app.dataset_service, "load_from_zarr", lambda *_, **__: ds)
+        monkeypatch.setattr(gui_app.modern_video, "PyAVVideoReader", lambda _: VideoReader())
+    monkeypatch.setattr(gui_app, "PSV", lambda *_, **__: pytest.fail("Opening data must reuse the empty window"))
+    label = {"file": "Open audio file", "folder": "Open etho folder", "zarr": "Load dataset"}[source_kind]
+    next(action for action in window.file_menu.actions() if action.text() == label).trigger()
+
+    assert window.isVisible() and window.tmax == 8_000
+    assert window.geometry() == geometry
+    # Adding the OpenGL movie view can recreate Qt's native surface.
+    if source_kind != "folder":
+        assert window.winId() == window_id
+    assert window._has_current_das_audio()
+    assert window.outer_splitter.isEnabled() and window.transport_panel.isEnabled()
+    assert window._viewer_actions["save_annotations"].isEnabled()
+    assert window._viewer_actions["threshold_mode"].isEnabled()
+    assert [action.text() for action in window.bar.actions()] == menu_labels
+    toolbars = window.findChildren(gui_app.QtWidgets.QToolBar)
+    assert [toolbar for toolbar in toolbars if toolbar.isVisible()] == [window.annotation_toolbar]
+    if source_kind == "folder":
+        assert window.movie_view is not None and window.movie_panel.isVisible()
+
+
+@pytest.mark.parametrize("source_kind", ["file", "folder", "zarr"])
+@pytest.mark.parametrize("cancel_picker", [True, False])
+def test_cancel_loading_keeps_empty_workspace(qtbot, monkeypatch, tmp_path, source_kind, cancel_picker):
+    from xarray_behave.gui import app as gui_app, gui_config
+
+    manager = gui_config.GuiConfigManager(home=tmp_path / "home")
+    gui_app._set_config_manager(manager)
+    window = gui_app.PSV(xr.Dataset(), is_das=True, config_manager=manager)
+    qtbot.addWidget(window)
+    original_panel = window.centralWidget()
+    audio = tmp_path / "clip.wav"
+    with wave.open(str(audio), "wb") as stream:
+        stream.setparams((1, 2, 8_000, 0, "NONE", "not compressed"))
+        stream.writeframes(np.zeros(8_000, dtype="<i2").tobytes())
+    path = "" if cancel_picker else str(tmp_path if source_kind == "folder" else audio)
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getOpenFileName", lambda *_, **__: (path, ""))
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda **_: path)
+    monkeypatch.setattr(gui_app.YamlDialog, "exec_", lambda self: gui_app.QtWidgets.QDialog.Rejected)
+    label = {"file": "Open audio file", "folder": "Open etho folder", "zarr": "Load dataset"}[source_kind]
+
+    next(action for action in window.file_menu.actions() if action.text() == label).trigger()
+
+    assert window.isVisible() and not window.ds.data_vars
+    assert window.centralWidget() is original_panel
 
 
 def test_make_dataset_action_runs_builder_without_blocking_gui(qtbot, monkeypatch, tmp_path):

@@ -70,6 +70,9 @@ def _set_config_manager(manager: gui_config.GuiConfigManager) -> None:
 
 def _apply_dialog_config(form, manager: gui_config.GuiConfigManager, kind: str) -> None:
     form.set_form_data(manager.dialog_values(kind))
+    mel = manager.config.get("viewer", {}).get("spectrogram", {}).get("mel")
+    if mel is not None:
+        form["spec_type"] = "Mel" if mel else "Linear"
 
 
 class DataSource:
@@ -273,10 +276,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.file_menu.addAction("Save Configuration As...", self.save_gui_config_as)
         self.file_menu.addAction("Exit", self.close)
 
-        self.das_menu = self.bar.addMenu("DAS")
-        self._add_keyed_menuitem(self.das_menu, "Make dataset for training", self.das_make, None)
-        self._add_keyed_menuitem(self.das_menu, "Train", self.das_train, None)
-        self._add_keyed_menuitem(self.das_menu, "Predict", self.das_predict, None)
+        self._build_das_menu()
 
         # add initial buttons
         self.hb = QtWidgets.QVBoxLayout()
@@ -296,6 +296,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cb.setLayout(self.hb)
         self.setCentralWidget(self.cb)
         self._restore_window_geometry()
+
+    def _build_das_menu(self):
+        self.das_menu = self.bar.addMenu("DAS")
+        self._add_keyed_menuitem(self.das_menu, "Make dataset for training", self.das_make, None)
+        self._add_keyed_menuitem(self.das_menu, "Train", self.das_train, None)
+        self._add_keyed_menuitem(self.das_menu, "Predict", self.das_predict, None)
 
     def closeEvent(self, event):
         if self.project is not None and not self._switching_project:
@@ -1059,6 +1065,7 @@ class MainWindow(QtWidgets.QMainWindow):
         skip_dialog: bool = False,
         is_das: bool = False,
         config_manager: Optional[gui_config.GuiConfigManager] = None,
+        window=None,
     ):
         if not filename:
             # enable multiple filters: *.h5, *.npy, *.npz, *.wav, *.*
@@ -1163,11 +1170,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 #     form_data['target_samplingrate'] = None
 
                 ds = dataset_service.assemble_from_file(filename, form_data)
-                return PSV(
+                return (window._populate if window is not None else PSV)(
                     ds,
                     title=filename,
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
+                    spec_mel=dialog.form["spec_type"] == "Mel",
                     data_source=DataSource("file", filename),
                     config_manager=config_manager,
                     is_das=is_das,
@@ -1188,6 +1196,7 @@ class MainWindow(QtWidgets.QMainWindow):
         manifest: Optional[str] = None,
         skip_dialog: bool = False,
         is_das: bool = False,
+        window=None,
     ):
         if not dirname:
             dirname = QtWidgets.QFileDialog.getExistingDirectory(parent=None, caption="Select data directory")
@@ -1256,12 +1265,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 except:
                     logger.info("Something went wrong when loading the video. Continuing without.")
 
-                return PSV(
+                return (window._populate if window is not None else PSV)(
                     ds,
                     title=dirname,
                     vr=vr,
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
+                    spec_mel=dialog.form["spec_type"] == "Mel",
                     frame_fliplr=dialog.form["frame_fliplr"],
                     frame_flipud=dialog.form["frame_flipud"],
                     box_size=dialog.form["box_size_px"],
@@ -1281,6 +1291,7 @@ class MainWindow(QtWidgets.QMainWindow):
         box_size=None,
         skip_dialog: bool = False,
         is_das: bool = False,
+        window=None,
     ):
         if not filename:
             filename, _ = QtWidgets.QFileDialog.getOpenFileName(parent=None, caption="Select dataset")
@@ -1324,12 +1335,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 except:
                     logger.info("Something went wrong when loading the video. Continuing without.")
 
-                return PSV(
+                return (window._populate if window is not None else PSV)(
                     ds,
                     vr=vr,
                     title=filename,
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
+                    spec_mel=dialog.form["spec_type"] == "Mel",
                     box_size=dialog.form["box_size"],
                     data_source=DataSource("zarr", filename),
                     config_manager=config_manager,
@@ -1378,7 +1390,15 @@ class MainWindow(QtWidgets.QMainWindow):
 class PSV(MainWindow):
     MAX_AUDIO_AMP = 3.0
 
-    def __init__(
+    def __init__(self, ds, vr=None, **kwargs):
+        super().__init__(
+            title=kwargs.get("title", "xb.ui"),
+            is_das=kwargs.get("is_das", False) or kwargs.get("project_document") is not None,
+            project_document=kwargs.get("project_document"),
+        )
+        self._populate(ds, vr=vr, **kwargs)
+
+    def _populate(
         self,
         ds,
         vr=None,
@@ -1394,8 +1414,22 @@ class PSV(MainWindow):
         project_document: project_model.Project | None = None,
         recording_name: str | None = None,
         is_das: bool = False,
+        spec_mel: Optional[bool] = None,
     ):
-        super().__init__(title=title, is_das=is_das or project_document is not None, project_document=project_document)
+        geometry = self.geometry() if hasattr(self, "ds") else None
+        if geometry is not None:
+            for timer in (self._playback_timer, self._window_audio_timer):
+                timer.deleteLater()
+            self.removeToolBar(self.annotation_toolbar)
+            self.annotation_toolbar.deleteLater()
+            # Keep the active menu alive until its load action returns.
+            self.bar.deleteLater()
+            self.bar = QtWidgets.QMenuBar(self)
+            self.file_menu = self.bar.addMenu("File")
+            self._build_das_menu()
+            self.setMenuBar(self.bar)
+            self.event_items = []
+        self.setWindowTitle(title)
         if config_manager is not None:
             self.config_manager = config_manager
         config = self.config_manager.config
@@ -1584,10 +1618,11 @@ class PSV(MainWindow):
             self._add_keyed_menuitem(self.file_menu, "Open project", self.open_project)
             self._add_keyed_menuitem(self.file_menu, "Add recordings", self._add_project_recordings)
         elif self.is_das:
+            load_window = self if not self.ds.data_vars else None
             self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
-                self.file_menu, "Open audio file", partial(self.from_file, is_das=True)
+                self.file_menu, "Open audio file", partial(self.from_file, is_das=True, window=load_window)
             )
-            self._add_keyed_menuitem(self.file_menu, "Open etho folder", partial(self.from_dir, is_das=True))
+            self._add_keyed_menuitem(self.file_menu, "Open etho folder", partial(self.from_dir, is_das=True, window=load_window))
         else:
             self._add_keyed_menuitem(self.file_menu, "New from media files", self.from_media)
             self._viewer_actions["open_audio_annotations"] = self._add_keyed_menuitem(
@@ -1596,7 +1631,11 @@ class PSV(MainWindow):
             self._add_keyed_menuitem(self.file_menu, "Open etho folder", self.from_dir)
         self.file_menu.addSeparator()
         self._add_keyed_menuitem(
-            self.file_menu, "Load dataset", partial(self.from_zarr, is_das=True) if self.is_das else self.from_zarr
+            self.file_menu,
+            "Load dataset",
+            partial(self.from_zarr, is_das=True, window=self if not self.ds.data_vars else None)
+            if self.is_das
+            else self.from_zarr,
         )
         self.file_menu.addSeparator()
         self._viewer_actions["import_annotations"] = self._add_keyed_menuitem(
@@ -1965,7 +2004,7 @@ class PSV(MainWindow):
         self.event_timeline.event_created.connect(self._on_timeline_event_created)
         self.event_timeline.event_changed.connect(self._on_timeline_event_changed)
         self.spec_compression_ratio = float(spectrogram_config.get("compression", 0))
-        self.spec_mel = bool(spectrogram_config.get("mel", False))
+        self.spec_mel = bool(spectrogram_config.get("mel", False)) if spec_mel is None else spec_mel
         self.spec_colormap = str(cmap_name or spectrogram_config.get("colormap", "turbo"))
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=self.spec_colormap)
         self.spec_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -2086,6 +2125,8 @@ class PSV(MainWindow):
         self._apply_panel_visibility()
         self._sync_threshold_mode_ui()
         self._restore_window_geometry()
+        if geometry is not None:
+            self.setGeometry(geometry)
 
         if not self.ds.data_vars:
             self.outer_splitter.setEnabled(False)
@@ -2109,6 +2150,7 @@ class PSV(MainWindow):
 
         self.update_xy()
         self.app.processEvents()
+        return self
 
     def _load_project_recording(self, ds, recording) -> None:
         self._pause_playback()
