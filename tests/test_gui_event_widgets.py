@@ -2,10 +2,11 @@ import sys
 import weakref
 
 import numpy as np
+import pytest
 import xarray as xr
 
 import xarray_behave  # noqa: F401 - sets QT_API before qtpy imports
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 from xarray_behave.annot import Events
 from xarray_behave.gui import app as gui_app, gui_config, project, view_dialog, views
 from xarray_behave.gui.app import DataSource, PSV
@@ -476,7 +477,7 @@ def test_import_annotations_merge_refreshes_viewer(monkeypatch):
     )
     monkeypatch.setattr(gui_app.dataset_service, "load_annotation_file", lambda filename: imported)
 
-    window.import_annotations(filename="/tmp/import_annotations.csv", mode="merge")
+    window.import_annotations(filename="/tmp/import_annotations.mat", mode="merge")
 
     assert window.event_times.names == ["pulse", "chirp"]
     assert sorted(map(tuple, window.event_times["pulse"])) == [
@@ -500,7 +501,7 @@ def test_import_annotations_replace_drops_old_presets(monkeypatch):
     imported = Events({"new": np.array([[0.2, 0.3, -1]])})
     monkeypatch.setattr(gui_app.dataset_service, "load_annotation_file", lambda filename: imported)
 
-    window.import_annotations(filename="/tmp/import_annotations.csv", mode="replace")
+    window.import_annotations(filename="/tmp/import_annotations.mat", mode="replace")
 
     assert window.event_times.names == ["new"]
     assert list(window.event_presets) == ["new"]
@@ -563,7 +564,7 @@ def test_events_table_selects_overlapping_visible_range():
     assert [record.name for record in selected] == ["visible"]
 
 
-def test_table_follow_audio_view_filters_or_leaves_table_unchanged(monkeypatch):
+def test_table_follow_audio_view_toggle_restores_full_table(monkeypatch):
     _app()
     events = Events(
         {
@@ -598,6 +599,21 @@ def test_table_follow_audio_view_filters_or_leaves_table_unchanged(monkeypatch):
     assert _table_row_count(window.events_table) == 1
     assert [record.name for record in window.events_table.selected_records()] == ["visible"]
 
+    window.events_table.window_filter_checkbox.setChecked(False)
+    assert table_refreshes == [True, True]
+    assert _table_row_count(window.events_table) == 3
+    assert [record.name for record in window.events_table.selected_records()] == ["visible"]
+
+    window.x = np.array([2.9, 3.2])
+    window._refresh_event_widgets(sync_table_to_view=True)
+    assert table_refreshes == [True, True]
+    assert _table_row_count(window.events_table) == 3
+
+    window.events_table.window_filter_checkbox.setChecked(True)
+    assert table_refreshes == [True, True, True]
+    assert _table_row_count(window.events_table) == 1
+    assert [record.name for record in window.events_table.selected_records()] == ["late"]
+
     window.close()
 
 
@@ -616,6 +632,112 @@ def test_events_table_can_select_multiple_overlapping_rows():
     widget.select_overlapping_range(1.25, 1.75)
 
     assert sorted(record.name for record in widget.selected_records()) == ["a", "b"]
+
+
+@pytest.mark.parametrize("column", range(5))
+@pytest.mark.parametrize("start, stop", [(0.65, 0.65), (0.65, 0.7), (0.4, 0.8)])
+def test_table_double_click_centers_annotation_without_audio_link(tmp_path, qtbot, column, start, stop):
+    window = PSV(
+        _audio_dataset(Events({"song": np.array([[0.1, 0.15, -1], [start, stop, -1]])})),
+        config_manager=gui_config.GuiConfigManager(home=tmp_path),
+    )
+    qtbot.addWidget(window)
+    window.show()
+    window.events_table.window_filter_checkbox.setChecked(False)
+    window.span = 200
+    window.t0 = 200
+    table = window.events_table.table
+    table.sortByColumn(window.events_table._COL_START, QtCore.Qt.DescendingOrder)
+    index = table.model().index(0, column)
+    position = table.visualRect(index).center()
+
+    qtbot.mouseClick(table.viewport(), QtCore.Qt.LeftButton, pos=position)
+    assert window.t0 == 200
+    qtbot.mouseDClick(table.viewport(), QtCore.Qt.LeftButton, pos=position)
+
+    center = (start + stop) / 2
+    assert window._sample_seconds(window.t0) == pytest.approx(center)
+    assert np.mean(window.slice_view.getViewBox().viewRange()[0]) == pytest.approx(center, abs=0.001)
+    assert window.span >= (stop - start) * window.fs_song
+    assert _table_row_count(window.events_table) == 2
+    assert table.state() != QtWidgets.QAbstractItemView.EditingState
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_table_activation_centers_clicked_annotation_with_multiple_selected(tmp_path, qtbot, linked):
+    window = PSV(
+        _audio_dataset(Events({"song": np.array([[0.42, 0.43, -1], [0.55, 0.56, -1]])})),
+        config_manager=gui_config.GuiConfigManager(home=tmp_path),
+    )
+    qtbot.addWidget(window)
+    window.events_table.window_filter_checkbox.setChecked(False)
+    window.span = 200
+    window.t0 = 500
+    window.events_table.window_filter_checkbox.setChecked(linked)
+    window.events_table.select_ids(["song\x1f0", "song\x1f1"])
+    row = window.events_table._model.row_for_record_id("song\x1f1")
+
+    window.events_table.table.doubleClicked.emit(window.events_table._model.index(row, 0))
+
+    assert window._sample_seconds(window.t0) == pytest.approx(0.555)
+
+
+def test_events_table_scrolls_100000_rows_without_rebuilding(qtbot, monkeypatch):
+    widget = EventsTableWidget()
+    qtbot.addWidget(widget)
+    starts = np.arange(100_000, dtype=float) / 10
+    widget.set_events(Events({"song": np.column_stack((starts, starts + 0.05, np.full(len(starts), -1)))}))
+    widget.resize(900, 400)
+    widget.show()
+    QtWidgets.QApplication.processEvents()
+    table = widget.table
+    scrollbar = table.verticalScrollBar()
+    calls = []
+    original_data = table.model().data
+
+    def counted_data(*args, **kwargs):
+        calls.append(True)
+        return original_data(*args, **kwargs)
+
+    def unexpected_rebuild(*args, **kwargs):
+        pytest.fail("Scrolling must not rebuild the event table")
+
+    monkeypatch.setattr(table.model(), "data", counted_data)
+    monkeypatch.setattr(table.model(), "set_records", unexpected_rebuild)
+    for fraction in (0.25, 0.5, 0.75, 1):
+        calls.clear()
+        scrollbar.setValue(int(fraction * scrollbar.maximum()))
+        table.viewport().repaint()
+        QtWidgets.QApplication.processEvents()
+        assert 0 < len(calls) < 5_000
+
+    assert table.indexAt(table.viewport().rect().bottomLeft()).row() == 99_999
+    before = scrollbar.value()
+    position = QtCore.QPointF(table.viewport().rect().center())
+    wheel = QtGui.QWheelEvent(
+        position, QtCore.QPointF(table.viewport().mapToGlobal(position.toPoint())),
+        QtCore.QPoint(), QtCore.QPoint(0, 120), QtCore.Qt.NoButton,
+        QtCore.Qt.NoModifier, QtCore.Qt.NoScrollPhase, False,
+    )
+    QtWidgets.QApplication.sendEvent(table.viewport(), wheel)
+    QtWidgets.QApplication.processEvents()
+    assert scrollbar.value() < before
+
+
+def test_events_table_f2_still_edits_cells(qtbot):
+    widget = EventsTableWidget()
+    qtbot.addWidget(widget)
+    widget.set_events(Events({"song": np.array([[0.1, 0.2, -1]])}))
+    widget.show()
+    table = widget.table
+    table.setCurrentIndex(table.model().index(0, widget._COL_START))
+    widget.activateWindow()
+    table.setFocus()
+    qtbot.waitUntil(table.hasFocus)
+
+    qtbot.keyClick(table, QtCore.Qt.Key_F2)
+
+    assert table.state() == QtWidgets.QAbstractItemView.EditingState
 
 
 def test_events_table_defaults_to_start_time_sort():
@@ -756,6 +878,56 @@ def test_preset_panel_emits_selection_and_formats_fixed_duration():
     assert row.name_label.text() == "pulse"
     assert "fixed 0s" in row.detail_label.text()
     assert panel.title_label.text() == "Annotations"
+
+
+def test_preset_panel_context_menu_targets_clicked_annotation(monkeypatch):
+    app = _app()
+    panel = EventPresetPanel()
+    edits, deletes = [], []
+    panel.edit_requested.connect(edits.append)
+    panel.delete_requested.connect(deletes.append)
+    panel.set_presets([EventTypePreset("pulse"), EventTypePreset("song")], selected_name="pulse")
+    panel.show()
+    app.processEvents()
+    row = panel.list_widget.itemWidget(panel.list_widget.item(1))
+
+    for action_index in (0, 1):
+        panel.set_current_name("pulse")
+
+        def execute(menu, position):
+            assert [action.text() for action in menu.actions()] == ["Edit", "Delete"]
+            assert panel.current_name() == "song"
+            menu.actions()[action_index].trigger()
+
+        monkeypatch.setattr(QtWidgets.QMenu, "exec_", execute)
+        label = row.name_label
+        position = label.rect().center()
+        event = QtGui.QContextMenuEvent(
+            QtGui.QContextMenuEvent.Mouse, position, label.mapToGlobal(position)
+        )
+        app.sendEvent(label, event)
+
+    assert edits == ["song"]
+    assert deletes == ["song"]
+    panel.close()
+
+
+def test_preset_panel_context_menu_ignores_empty_space_and_placeholder(monkeypatch):
+    app = _app()
+    panel = EventPresetPanel()
+    menus = []
+    monkeypatch.setattr(QtWidgets.QMenu, "exec_", lambda *args: menus.append(True))
+    panel.resize(300, 400)
+    panel.show()
+    panel.set_presets([])
+    app.processEvents()
+    panel.list_widget.customContextMenuRequested.emit(panel.list_widget.visualItemRect(panel.list_widget.item(0)).center())
+    panel.set_presets([EventTypePreset("pulse")])
+    app.processEvents()
+    panel.list_widget.customContextMenuRequested.emit(panel.list_widget.viewport().rect().bottomRight())
+
+    assert menus == []
+    panel.close()
 
 
 def test_thresholding_panel_syncs_values_and_emits_changes():
@@ -1333,30 +1505,46 @@ def test_non_fixed_timeline_click_creation_uses_two_clicks():
     assert updates == ["xy", "after"]
 
 
-def test_pending_non_fixed_boundary_is_drawn():
-    window = PSV.__new__(PSV)
-    window.event_times = Events({"song": np.zeros((0, 3))})
-    window.event_presets = {"song": EventTypePreset("song", fixed_duration=False)}
+def test_non_fixed_event_preview_tracks_mouse_and_commits(tmp_path, qtbot):
+    _app()
+    window = PSV(
+        _audio_dataset({"song": np.zeros((0, 3)), "pulse": np.zeros((0, 3))}),
+        config_manager=gui_config.GuiConfigManager(home=tmp_path),
+    )
+    qtbot.addWidget(window)
+    window.event_presets = {"song": EventTypePreset("song", fixed_duration=False), "pulse": EventTypePreset("pulse")}
     window._current_event_name = "song"
-    window.sinet0 = 0.75
-    window.sinet0_event_name = "song"
-    window.eventtype_colors = np.array([[10, 20, 30]])
-    window.show_event_text = False
-    window.show_trace = True
-    window.show_tracks = False
-    window.show_spec = False
-    calls = []
-    window.slice_view = type(
-        "SliceView",
-        (),
-        {"add_event": lambda self, xx, event_index, pen, movable=False, text=None: calls.append((xx, event_index, movable, text))},
-    )()
+    window.show()
+    window.on_trace_clicked(0.5, QtCore.Qt.LeftButton)
 
-    window._plot_pending_event_boundary(np.array([0.0, 1.0]))
+    for plot in (window.slice_view.getPlotItem(), window.spec_view.view, window.event_timeline.events.getPlotItem()):
+        for seconds in (0.75, 0.25):
+            view_box = plot.getViewBox()
+            scene_pos = view_box.mapViewToScene(QtCore.QPointF(seconds, np.mean(view_box.viewRange()[1])))
+            plot.scene().sigMouseMoved.emit(scene_pos)
 
-    assert len(calls) == 1
-    np.testing.assert_allclose(calls[0][0], [0.75])
-    assert calls[0][1:] == (0, False, None)
+            assert len(window.event_times["song"]) == 0
+            assert window.sinet0 == 0.5
+            assert window._pending_event_preview_items
+            for _view, item in window._pending_event_preview_items:
+                if isinstance(item, gui_app.pg.BarGraphItem):
+                    np.testing.assert_allclose([item.opts["x0"][0], item.opts["x1"][0]], sorted([0.5, seconds]))
+                else:
+                    np.testing.assert_allclose(item.getRegion(), sorted([0.5, seconds]))
+
+    preview_items = list(window._pending_event_preview_items)
+    view_box = window.slice_view.getViewBox()
+    scene_pos = view_box.mapViewToScene(QtCore.QPointF(0.25, 0))
+    qtbot.mouseClick(window.slice_view.viewport(), QtCore.Qt.LeftButton, pos=window.slice_view.mapFromScene(scene_pos))
+
+    np.testing.assert_allclose(window.event_times["song"][:, :2], [[0.25, 0.5]], atol=0.002)
+    assert window._pending_event_creation() is None
+    assert not window._pending_event_preview_items
+    assert all(item.scene() is None for _view, item in preview_items)
+
+    window.on_trace_clicked(0.6, QtCore.Qt.LeftButton)
+    window._on_preset_selected("pulse")
+    assert not window._pending_event_preview_items
 
 
 def test_playhead_starts_at_boundary_and_scrolls_to_last_sample():

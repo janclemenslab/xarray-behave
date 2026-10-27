@@ -13,16 +13,17 @@ logger = logging.getLogger(__name__)
 class Manual_xb_csv(io.BaseProvider):
     KIND = "annotations_manual"
     NAME = "XB csv"
-    SUFFIXES = ["_annotations.csv", "_songmanual.csv", ".csv"]
+    SUFFIXES = ["_annotations.csv", "_songmanual.csv", ".csv", ".tsv"]
 
     def load(self, filename: Optional[str] = None):
         """Load output produced by xb."""
-        df = pd.read_csv(filename)
+        df = pd.read_csv(filename, sep=None, engine="python", encoding="utf-8-sig", dtype={"name": str})
+        if {"Begin Time (s)", "End Time (s)"}.issubset(df.columns):
+            return RavenPro(filename).load(filename)
         if not all([item in df.columns for item in ["name", "start_seconds", "stop_seconds"]]):
-            logger.error(
-                f"Malformed CSV file {filename} - needs to have these columns: ['name','start_seconds', 'stop_seconds']. Returning empty results"
+            raise ValueError(
+                f"Malformed annotation table {filename} - needs columns: name, start_seconds, stop_seconds."
             )
-            event_seconds = annot.Events()  # make empty
         else:
             event_seconds = annot.Events.from_df(df)
         return event_seconds, event_seconds.categories
@@ -42,11 +43,11 @@ class RavenPro(io.BaseProvider):
         return filename.endswith(".selections.txt") or filename.endswith("_raven.txt")
 
     def load(self, filename: Optional[str] = None, annotation_column: str = "Annotation"):
-        """Load a tab-delimited Raven Pro selection table."""
+        """Load a comma- or tab-delimited Raven Pro selection table."""
         if filename is None:
             filename = self.path
 
-        df = pd.read_csv(filename, sep="\t")
+        df = pd.read_csv(filename, sep=None, engine="python", encoding="utf-8-sig", dtype={annotation_column: str})
         required_columns = ["Begin Time (s)", "End Time (s)", annotation_column]
         missing_columns = [column for column in required_columns if column not in df.columns]
         if missing_columns:

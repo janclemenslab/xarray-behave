@@ -70,7 +70,7 @@ class Events(UserDict):
             channels = None
 
         return cls.from_lists(
-            df.name.values,
+            df.name.values.astype(str),
             df.start_seconds.values.astype(float),
             df.stop_seconds.values.astype(float),
             possible_event_names,

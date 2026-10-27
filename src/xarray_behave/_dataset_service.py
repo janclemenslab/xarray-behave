@@ -5,6 +5,7 @@ import os
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 import scipy.signal as ss
 
 from . import annot, api, event_utils, io, v1 as xb
@@ -198,6 +199,44 @@ def load_annotation_file(filename: str):
         raise ValueError(f"No annotation loader found for {filename}.")
     event_times, categories = loader.load(filename)
     return annot.Events(event_times, categories=categories)
+
+
+def annotation_table_to_events(frame, columns, units, sampling_rate):
+    if columns["name"] in (columns["start_seconds"], columns["stop_seconds"]):
+        raise ValueError("Choose a separate name column from the start and stop columns.")
+    mapped = pd.DataFrame({key: frame[column] for key, column in columns.items()})
+    if mapped["name"].isna().any() or mapped["name"].astype(str).str.strip().eq("").any():
+        raise ValueError("Annotation names must not be blank.")
+    mapped["name"] = mapped["name"].astype(str)
+    for key in ("start_seconds", "stop_seconds"):
+        try:
+            mapped[key] = mapped[key].replace("", np.nan).astype(float)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"{columns[key]!r} must contain numeric times.") from exc
+    times = mapped[["start_seconds", "stop_seconds"]].to_numpy()
+    empty_types = np.isnan(times).all(axis=1)
+    valid = np.isfinite(times).all(axis=1) & (times[:, 0] >= 0) & (times[:, 1] >= times[:, 0])
+    if not (valid | empty_types).all():
+        raise ValueError("Times must be finite numbers with 0 <= start <= stop (or both blank for an empty annotation type).")
+    if units == "samples":
+        if not np.isfinite(sampling_rate) or sampling_rate <= 0:
+            raise ValueError("Importing samples requires a positive audio sample rate.")
+        mapped[["start_seconds", "stop_seconds"]] /= sampling_rate
+    elif units != "seconds":
+        raise ValueError(f"Unknown time units {units!r}.")
+    channel_column = "channel" if "channel" in frame else "Channel" if "Channel" in frame else None
+    if channel_column is not None:
+        try:
+            channels = pd.to_numeric(frame[channel_column].replace("", np.nan)).fillna(-1).to_numpy(dtype=float)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("Channels must contain integer channel numbers.") from exc
+        minimum = 1 if channel_column == "Channel" else -1
+        if not (np.isfinite(channels) & (channels >= minimum) & (channels == np.floor(channels))).all():
+            raise ValueError("Channels must contain integer channel numbers.")
+        if channel_column == "Channel":
+            channels -= 1  # Raven selection tables use one-based channels.
+        mapped["channel"] = channels
+    return annot.Events.from_df(mapped)
 
 
 def _event_row_key(name: str, row) -> tuple[str, float, float, int]:

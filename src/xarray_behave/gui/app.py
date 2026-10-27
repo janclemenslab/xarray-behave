@@ -29,6 +29,7 @@ import xarray_behave
 from .. import _dataset_service as dataset_service, api as v2_api, xarray_behave as xb, loaders as ld, annot
 from .formbuilder import YamlDialog
 from .media_dialog import MediaFilesDialog
+from .annotation_import import add_annotation_import_button, finish_annotation_import, open_annotation_import
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
 from . import utils, views, event_widgets, gui_config, modern_video, project as project_model
 from .style_profile import TEXT_PRIMARY, WINDOW_STYLESHEET
@@ -302,6 +303,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self._add_keyed_menuitem(self.das_menu, "Make dataset for training", self.das_make, None)
         self._add_keyed_menuitem(self.das_menu, "Train", self.das_train, None)
         self._add_keyed_menuitem(self.das_menu, "Predict", self.das_predict, None)
+
+    def _reset_menu(self, title):
+        # Keep native macOS menus alive, including the one running the load action.
+        for menu in self.bar.findChildren(QtWidgets.QMenu, options=QtCore.Qt.FindDirectChildrenOnly):
+            if menu.title() == title:
+                for item in menu.actions():
+                    menu.removeAction(item)
+                    item.deleteLater()
+                return menu
+        return self.bar.addMenu(title)
 
     def closeEvent(self, event):
         if self.project is not None and not self._switching_project:
@@ -881,6 +892,9 @@ class MainWindow(QtWidgets.QMainWindow):
         step = float(np.median(np.diff(sampletime)))
         return float(sampletime[-1] + step)
 
+    def _das_current_annotations(self) -> pd.DataFrame:
+        return annot.Events(self.event_times).to_df(preserve_empty=False, with_channels=False)
+
     def _das_annotated_regions(self) -> list[tuple[float, float]]:
         if not hasattr(self, "event_times"):
             raise ValueError("No annotations are loaded.")
@@ -941,6 +955,10 @@ class MainWindow(QtWidgets.QMainWindow):
             accepts_extra_kwargs or "annotated_region_provider" in das_signature.parameters
         ):
             window_kwargs["annotated_region_provider"] = self._das_annotated_regions
+        if current_audio_provider is not None and (
+            accepts_extra_kwargs or "current_annotations_provider" in das_signature.parameters
+        ):
+            window_kwargs["current_annotations_provider"] = self._das_current_annotations
         window = DASConformerWindow(**window_kwargs)
         window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         if not hasattr(self, "_das_windows"):
@@ -1155,6 +1173,7 @@ class MainWindow(QtWidgets.QMainWindow):
             _apply_cli_bandpass_filter(dialog.form, spec_freq_min, spec_freq_max, skip_dialog)
 
             if not skip_dialog:
+                add_annotation_import_button(dialog)
                 dialog.show()
                 result = dialog.exec_()
             else:
@@ -1170,6 +1189,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 #     form_data['target_samplingrate'] = None
 
                 ds = dataset_service.assemble_from_file(filename, form_data)
+                ds = finish_annotation_import(ds, dialog)
+                if ds is None:
+                    return None
                 return (window._populate if window is not None else PSV)(
                     ds,
                     title=filename,
@@ -1227,6 +1249,7 @@ class MainWindow(QtWidgets.QMainWindow):
             _apply_cli_bandpass_filter(dialog.form, spec_freq_min, spec_freq_max, skip_dialog)
 
             if not skip_dialog:
+                add_annotation_import_button(dialog)
                 dialog.show()
                 result = dialog.exec_()
             else:
@@ -1242,6 +1265,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 if manifest is not None:
                     assemble_kwargs["manifest"] = manifest
                 ds = dataset_service.assemble_from_dir(dirname, form_data, **assemble_kwargs)
+                ds = finish_annotation_import(ds, dialog)
+                if ds is None:
+                    return None
 
                 # add video file
                 vr = None
@@ -1422,12 +1448,6 @@ class PSV(MainWindow):
                 timer.deleteLater()
             self.removeToolBar(self.annotation_toolbar)
             self.annotation_toolbar.deleteLater()
-            # Keep the active menu alive until its load action returns.
-            self.bar.deleteLater()
-            self.bar = QtWidgets.QMenuBar(self)
-            self.file_menu = self.bar.addMenu("File")
-            self._build_das_menu()
-            self.setMenuBar(self.bar)
             self.event_items = []
         self.setWindowTitle(title)
         if config_manager is not None:
@@ -1552,8 +1572,7 @@ class PSV(MainWindow):
         self.show_all_channels = self.audio_channel_settings.waveform_all
         self.select_loudest_channel = bool(audio_config.get("select_loudest_channel", False))
         self.threshold_mode = bool(threshold_config.get("enabled", False))
-        self.sinet0 = None
-        self.sinet0_event_name = None
+        self._clear_pending_event_creation()
 
         self.frame_fliplr = bool(video_config.get("frame_fliplr", False) if frame_fliplr is None else frame_fliplr)
         self.frame_flipud = bool(video_config.get("frame_flipud", False) if frame_flipud is None else frame_flipud)
@@ -1610,7 +1629,7 @@ class PSV(MainWindow):
 
         # build UI/controller
         # MENU
-        self.file_menu.clear()
+        self.file_menu = self._reset_menu("File")
         self._viewer_actions = {}
         if self.project is not None:
             self._add_keyed_menuitem(self.file_menu, "Open audio file", self.new_project_from_file)
@@ -1653,7 +1672,7 @@ class PSV(MainWindow):
         self.file_menu.addAction("Save Configuration As...", self.save_gui_config_as)
         self.file_menu.addAction("Exit", self.close)
 
-        view_play = self.bar.addMenu("Playback")
+        view_play = self._reset_menu("Playback")
         self._add_keyed_menuitem(
             view_play,
             "Play video",
@@ -1674,7 +1693,7 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_play, "Zoom in song", self.zoom_in_song, "W")
         self._add_keyed_menuitem(view_play, "Zoom out song", self.zoom_out_song, "S")
 
-        view_video = self.bar.addMenu("Video")
+        view_video = self._reset_menu("Video")
         self._add_keyed_menuitem(
             view_video,
             "Crop frame",
@@ -1737,7 +1756,7 @@ class PSV(MainWindow):
             checked=self.show_poses,
         )
 
-        view_audio = self.bar.addMenu("Audio")
+        view_audio = self._reset_menu("Audio")
         self._add_keyed_menuitem(view_audio, "Play waveform through speakers", self.play_audio, "E")
         view_audio.addSeparator()
         self._add_keyed_menuitem(
@@ -1771,7 +1790,8 @@ class PSV(MainWindow):
         self._add_keyed_menuitem(view_audio, "Increase temporal resolution", self.dec_freq_res, "T")
         view_audio.addSeparator()
 
-        view_annotations = self.bar.addMenu("Annotations")
+        view_annotations = self._reset_menu("Annotations")
+        view_annotations.addAction(self._viewer_actions["import_annotations"])
         self._add_keyed_menuitem(
             view_annotations,
             "Show annotations",
@@ -1847,7 +1867,7 @@ class PSV(MainWindow):
             "H",
         )
 
-        view_view = self.bar.addMenu("View")
+        view_view = self._reset_menu("View")
         self._viewer_actions["show_sidebar"] = self._add_keyed_menuitem(
             view_view,
             "Show sidebar",
@@ -1977,7 +1997,7 @@ class PSV(MainWindow):
         self._syncing_event_selection = False
         self.slice_view.audio_settings_changed.connect(self._set_audio_settings)
         self.events_table.window_filter_checkbox.toggled.connect(
-            lambda checked: self._refresh_event_widgets(True, force_table=bool(checked))
+            lambda checked: self._refresh_event_widgets(True, force_table=True)
         )
         self.threshold_panel.threshold_changed.connect(self._on_threshold_value_changed)
         self.threshold_panel.envelope_std_changed.connect(self._on_threshold_envelope_std_changed)
@@ -1997,6 +2017,7 @@ class PSV(MainWindow):
         self.preset_panel.visibility_all_changed.connect(self._set_all_preset_visibility)
         self.preset_panel.editability_all_changed.connect(self._set_all_preset_editability)
         self.events_table.selection_changed.connect(self._on_events_table_selection)
+        self.events_table.record_activated.connect(lambda record: self._center_event_records([record]))
         self.events_table.type_changed.connect(self._on_events_table_type_changed)
         self.events_table.time_changed.connect(self._on_events_table_time_changed)
         self.events_table.delete_requested.connect(self._on_events_table_delete)
@@ -2008,6 +2029,13 @@ class PSV(MainWindow):
         self.spec_colormap = str(cmap_name or spectrogram_config.get("colormap", "turbo"))
         self.spec_view = views.SpecView(model=self, callback=self.on_trace_clicked, colormap=self.spec_colormap)
         self.spec_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        for plot in (
+            self.slice_view.getPlotItem(),
+            self.tracks_view.getPlotItem(),
+            self.spec_view.view,
+            self.event_timeline.events.getPlotItem(),
+        ):
+            plot.scene().sigMouseMoved.connect(lambda pos, plot=plot: self._on_event_preview_mouse_moved(plot, pos))
 
         self.ly = QtWidgets.QVBoxLayout()
 
@@ -2444,7 +2472,7 @@ class PSV(MainWindow):
 
     def _set_imported_event_times(self, event_times) -> None:
         self.event_times = annot.Events(event_times)
-        self.event_presets = {
+        self.event_presets = self._initial_event_presets() | {
             name: preset for name, preset in getattr(self, "event_presets", {}).items() if name in self.event_times.names
         }
         if getattr(self, "_current_event_name", None) not in self.event_times.names:
@@ -2476,16 +2504,13 @@ class PSV(MainWindow):
                 self,
                 "Import annotations",
                 "",
-                "Annotation files (*.csv *.txt *.zarr *.mat);;All files (*)",
+                "Annotation files (*.csv *.tsv *.txt *.zarr *.mat);;All files (*)",
             )
         if not filename:
             return
 
-        try:
-            imported = dataset_service.load_annotation_file(filename)
-        except Exception as exc:
-            logger.exception("Could not import annotations from %s", filename)
-            QtWidgets.QMessageBox.warning(self, "Import annotations", str(exc))
+        imported = open_annotation_import(filename, self.fs_song, self)
+        if imported is None:
             return
 
         if mode is None:
@@ -3571,22 +3596,23 @@ class PSV(MainWindow):
 
     def _initial_event_presets(self):
         colors = utils.make_colors(max(1, len(self.event_times.names)))
-        presets = {}
-        for index, name in enumerate(self.event_times.names):
-            color_hex = event_widgets.color_hex_from_rgb(colors[index % len(colors)])
-            values = np.asarray(self.event_times[name])
-            finite = values[np.all(np.isfinite(values[:, :2]), axis=1)] if values.size else np.zeros((0, 3))
-            durations = np.abs(finite[:, 1] - finite[:, 0]) if len(finite) else np.zeros((0,))
-            fixed_duration = not np.any(durations > 1e-9)
-            duration_seconds = 0.0 if fixed_duration else float(np.nanmedian(durations))
-            presets[name] = event_widgets.EventTypePreset(
-                name=name,
-                fixed_duration=fixed_duration,
-                duration_seconds=duration_seconds,
-                duration_editable=not fixed_duration,
-                color_hex=color_hex,
-            )
-        return presets
+        return {
+            name: self._default_event_preset(name, event_widgets.color_hex_from_rgb(colors[index % len(colors)]))
+            for index, name in enumerate(self.event_times.names)
+        }
+
+    def _default_event_preset(self, name: str, color_hex: str):
+        values = np.asarray(self.event_times[name]) if name in self.event_times else np.zeros((0, 3))
+        finite = values[np.all(np.isfinite(values[:, :2]), axis=1)] if values.size else np.zeros((0, 3))
+        durations = np.abs(finite[:, 1] - finite[:, 0]) if len(finite) else np.zeros((0,))
+        fixed_duration = not np.any(durations > 1e-9)
+        return event_widgets.EventTypePreset(
+            name=name,
+            fixed_duration=fixed_duration,
+            duration_seconds=0.0 if fixed_duration else float(np.nanmedian(durations)),
+            duration_editable=not fixed_duration,
+            color_hex=color_hex,
+        )
 
     def _merge_configured_event_types(self, configured_presets):
         configured_names = []
@@ -3629,9 +3655,8 @@ class PSV(MainWindow):
         if name not in self.event_presets:
             index = self.event_times.names.index(name) if name in self.event_times.names else len(self.event_presets)
             colors = utils.make_colors(max(1, index + 1))
-            self.event_presets[name] = event_widgets.EventTypePreset(
-                name=name,
-                color_hex=event_widgets.color_hex_from_rgb(colors[index % len(colors)]),
+            self.event_presets[name] = self._default_event_preset(
+                name, event_widgets.color_hex_from_rgb(colors[index % len(colors)])
             )
         return self.event_presets[name]
 
@@ -3745,6 +3770,13 @@ class PSV(MainWindow):
     def _clear_pending_event_creation(self):
         self.sinet0 = None
         self.sinet0_event_name = None
+        self._pending_event_preview_stop = None
+        self._clear_pending_event_preview()
+
+    def _clear_pending_event_preview(self):
+        for view, item in getattr(self, "_pending_event_preview_items", []):
+            view.removeItem(item)
+        self._pending_event_preview_items = []
 
     def _pending_event_creation(self):
         start_seconds = getattr(self, "sinet0", None)
@@ -4039,7 +4071,11 @@ class PSV(MainWindow):
             return
         selected_ids = [record.id for record in records]
         self.event_timeline.set_selected_ids(selected_ids)
-        if self._syncing_event_selection or not records or not self.events_table.sync_enabled:
+        if self.events_table.sync_enabled:
+            self._center_event_records(records)
+
+    def _center_event_records(self, records):
+        if self._syncing_event_selection or not records:
             return
         start = min(record.start_seconds for record in records)
         stop = max(record.stop_seconds for record in records)
@@ -4589,6 +4625,7 @@ class PSV(MainWindow):
             self.update_xy()
 
     def update_xy(self):
+        self._clear_pending_event_preview()
         da = self._audio_dataarray_for_source()
         if da is None:
             return
@@ -4783,25 +4820,54 @@ class PSV(MainWindow):
                         movable=movable,
                         text=event_text,
                     )
-        self._plot_pending_event_boundary(x)
+        self._plot_pending_event_preview(x)
 
-    def _plot_pending_event_boundary(self, x):
+    def _plot_pending_event_preview(self, x):
+        self._clear_pending_event_preview()
         pending = self._pending_event_creation()
         if pending is None or len(x) == 0:
             return
         event_name, seconds = pending
-        if seconds < x[0] or seconds > x[-1]:
-            return
+        stop = getattr(self, "_pending_event_preview_stop", None)
+        bounds = self._bounds_for_event_creation(event_name, seconds, stop)
         event_index = self.event_times.names.index(event_name)
-        event_pen = pg.mkPen(color=self.eventtype_colors[event_index], width=3)
-        event_text = event_name if self.show_event_text else None
-        xx = np.array([seconds], dtype=float)
+        color = self.eventtype_colors[event_index]
+        event_pen = pg.mkPen(color=color, width=3)
+        brush = pg.mkBrush(*color, 60)
+        plots = []
         if self.show_trace:
-            self.slice_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
+            plots.append(self.slice_view)
         if self.show_tracks:
-            self.tracks_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
+            plots.append(self.tracks_view)
         if self.show_spec:
-            self.spec_view.add_event(xx, event_index, event_pen, movable=False, text=event_text)
+            plots.append(self.spec_view)
+        for view in plots:
+            region = pg.LinearRegionItem(bounds, movable=False, pen=event_pen, brush=brush)
+            if self.show_event_text:
+                pg.InfLineLabel(region.lines[1], event_name, position=0.95, rotateAxis=(1, 0), anchor=(1, 1))
+            view.addItem(region)
+            self._pending_event_preview_items.append((view, region))
+        if hasattr(self, "event_timeline"):
+            timeline = self.event_timeline.events
+            row = self._visible_event_names().index(event_name)
+            bar = pg.BarGraphItem(x0=[bounds[0]], x1=[bounds[1]], y=[row - 0.34], height=[0.68], pen=event_pen, brush=brush)
+            timeline.addItem(bar)
+            self._pending_event_preview_items.append((timeline, bar))
+
+    def _on_event_preview_mouse_moved(self, plot, pos):
+        pending = self._pending_event_creation()
+        view_box = plot.getViewBox()
+        if pending is None or not view_box.sceneBoundingRect().contains(pos):
+            return
+        name, start = pending
+        stop = view_box.mapSceneToView(pos).x()
+        self._pending_event_preview_stop = stop
+        bounds = self._bounds_for_event_creation(name, start, stop)
+        for _view, item in self._pending_event_preview_items:
+            if isinstance(item, pg.BarGraphItem):
+                item.setOpts(x0=[bounds[0]], x1=[bounds[1]])
+            else:
+                item.setRegion(bounds)
 
     def on_region_change_finished(self, region):
         """Called when dragging an interval event - will change its bounds."""

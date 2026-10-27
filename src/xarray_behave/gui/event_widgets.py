@@ -351,6 +351,7 @@ class _EventTypeDelegate(QtWidgets.QStyledItemDelegate):
 
 class EventsTableWidget(QtWidgets.QWidget):
     selection_changed = QtCore.Signal(object)
+    record_activated = QtCore.Signal(object)
     type_changed = QtCore.Signal(object, str)
     time_changed = QtCore.Signal(object, float, float, str)
     delete_requested = QtCore.Signal(object)
@@ -383,6 +384,13 @@ class EventsTableWidget(QtWidgets.QWidget):
         self.table.setModel(self._model)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditKeyPressed)
+        self.table.setToolTip("Double-click to center the annotation in the audio view. Press F2 to edit a cell.")
+        QtGui.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Key_F2), self.table,
+            context=QtCore.Qt.WidgetShortcut,
+            activated=lambda: self.table.edit(self.table.currentIndex()),
+        )
         self.table.setAlternatingRowColors(True)
         self.table.setWordWrap(False)
         self.table.setShowGrid(False)
@@ -395,6 +403,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         self._type_delegate = _EventTypeDelegate(self)
         self.table.setItemDelegateForColumn(self._COL_TYPE, self._type_delegate)
         self.table.selectionModel().selectionChanged.connect(lambda _selected, _deselected: self._emit_selection())
+        self.table.doubleClicked.connect(lambda index: self.record_activated.emit(self._model.record(index.row())))
         layout.addWidget(self.table)
 
         row = QtWidgets.QHBoxLayout()
@@ -1050,6 +1059,8 @@ class EventPresetPanel(QtWidgets.QWidget):
         self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.list_widget.currentItemChanged.connect(self._on_current_item_changed)
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.list_widget.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.list_widget.customContextMenuRequested.connect(self._show_context_menu)
         layout.addWidget(self.list_widget, 1)
 
         controls = QtWidgets.QHBoxLayout()
@@ -1135,6 +1146,16 @@ class EventPresetPanel(QtWidgets.QWidget):
         name = self.current_name()
         if name:
             self.edit_requested.emit(name)
+
+    def _show_context_menu(self, position) -> None:
+        item = self.list_widget.itemAt(position)
+        if item is None or not item.data(QtCore.Qt.UserRole):
+            return
+        self.list_widget.setCurrentItem(item)
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Edit", self._emit_edit)
+        menu.addAction("Delete", self._emit_delete)
+        menu.exec_(self.list_widget.viewport().mapToGlobal(position))
 
     def _emit_delete(self) -> None:
         name = self.current_name()

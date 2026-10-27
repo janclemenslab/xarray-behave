@@ -313,6 +313,7 @@ def assemble(
     manual_event_seconds: Dict[str, Any] = {name: np.zeros((0,)) for name in event_names}
     manual_event_categories: Dict[str, Any] = {nam: cat for nam, cat in zip(event_names, event_categories)}
 
+    annotation_load_errors = []
     if include_song:
         logger.info("Loading automatic annotations:")
         custom_filepath_annotations = filepath_annotations is not None
@@ -336,6 +337,7 @@ def assemble(
                     auto_event_categories.update(this_event_categories)
                     logger.info(f"   {al.path} loaded.")
                 except Exception as e:
+                    annotation_load_errors.append({"filename": str(al.path), "error": str(e)})
                     logger.info(f"   Loading {al.path} failed.")
                     logger.exception(e)
         else:
@@ -363,10 +365,13 @@ def assemble(
                 manual_event_categories.update(manual_event_categories_loaded)
                 logger.info(f"   {manual_annot_loader.path} loaded.")
             except Exception as e:
+                annotation_load_errors.append({"filename": str(manual_annot_loader.path), "error": str(e)})
                 logger.info(f"   Loading {manual_annot_loader.path} failed.")
                 logger.exception(e)
 
         else:
+            if custom_filepath_annotations and os.path.isfile(filepath_annotations) and not annot_loader:
+                annotation_load_errors.append({"filename": str(filepath_annotations), "error": "No annotation loader found."})
             logger.info("   Found no manual automatic annotations.")
         logger.info("Done.")
 
@@ -681,6 +686,8 @@ def assemble(
         "target_sampling_rate_Hz": target_sampling_rate,
         "ref_time": ref_time,
     }
+    if annotation_load_errors:
+        dataset.attrs["annotation_load_errors"] = annotation_load_errors
 
     filepath_swap = Path(root, res_path, datename, f"{datename}_idswaps.txt")
     if fix_fly_indices and os.path.exists(filepath_swap):

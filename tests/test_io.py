@@ -14,6 +14,21 @@ def test_fix_keys_renames_legacy_keys_without_mutating_iteration():
     assert fixed == {"aggression_manual": [1], "vibration_manual": [2]}
 
 
+def test_csv_loader_converts_integer_names_to_strings(tmp_path):
+    filename = tmp_path / "annotations.csv"
+    pd.DataFrame(
+        {"name": [1, 1, 2], "start_seconds": [0.1, 0.3, 0.5], "stop_seconds": [0.2, 0.4, 0.6]}
+    ).to_csv(filename, index=False)
+
+    loader = io.get_loader("annotations_manual", str(filename), basename_is_full_name=True)
+    events, categories = loader.load(str(filename))
+
+    assert events.names == ["1", "2"]
+    assert categories == {"1": "event", "2": "event"}
+    np.testing.assert_allclose(events["1"], [[0.1, 0.2, -1], [0.3, 0.4, -1]])
+    np.testing.assert_allclose(events["2"], [[0.5, 0.6, -1]])
+
+
 def test_audiofile_lazy_loads_multichannel_wav_slices(tmp_path):
     import dask.array as daskarray
     import soundfile as sf

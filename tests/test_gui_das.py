@@ -98,6 +98,8 @@ def test_empty_workspace_loads_into_same_window(qtbot, monkeypatch, tmp_path, so
     window.resize(1100, 750)
     window_id = window.winId()
     geometry = window.geometry()
+    menu_bar = window.menuBar()
+    menus = menu_bar.findChildren(gui_app.QtWidgets.QMenu, options=gui_app.QtCore.Qt.FindDirectChildrenOnly)
     menu_labels = [action.text() for action in window.bar.actions()]
     monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getOpenFileName", lambda *_, **__: (str(audio), ""))
     monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getExistingDirectory", lambda **_: str(tmp_path))
@@ -134,6 +136,9 @@ def test_empty_workspace_loads_into_same_window(qtbot, monkeypatch, tmp_path, so
     assert window.outer_splitter.isEnabled() and window.transport_panel.isEnabled()
     assert window._viewer_actions["save_annotations"].isEnabled()
     assert window._viewer_actions["threshold_mode"].isEnabled()
+    gui_app.QtCore.QCoreApplication.sendPostedEvents(None, gui_app.QtCore.QEvent.DeferredDelete)
+    assert window.menuBar() is menu_bar
+    assert menu_bar.findChildren(gui_app.QtWidgets.QMenu, options=gui_app.QtCore.Qt.FindDirectChildrenOnly) == menus
     assert [action.text() for action in window.bar.actions()] == menu_labels
     toolbars = window.findChildren(gui_app.QtWidgets.QToolBar)
     assert [toolbar for toolbar in toolbars if toolbar.isVisible()] == [window.annotation_toolbar]
@@ -287,6 +292,25 @@ def test_handle_das_predictions_adds_proposals_and_refreshes_state():
     assert refreshed == {"selector": True, "xy": True}
 
 
+@pytest.mark.parametrize("bounds,fixed", [([(0.1, 0.2), (0.4, 0.7)], False), ([(0.1, 0.1)], True)])
+def test_new_proposal_presets_follow_predicted_durations(qtbot, bounds, fixed):
+    from xarray_behave.gui.app import PSV
+    from test_gui_event_widgets import _audio_dataset
+
+    window = PSV(_audio_dataset())
+    qtbot.addWidget(window)
+    annotations = pd.DataFrame([{"name": "vocal", "start_seconds": start, "stop_seconds": stop} for start, stop in bounds])
+
+    window._handle_das_predictions(annotations, time_offset_seconds=0.0)
+
+    preset = window.event_presets["vocal_proposals"]
+    assert preset.fixed_duration == fixed
+    assert preset.duration_editable == (not fixed)
+    np.testing.assert_allclose(window.event_times["vocal_proposals"][:, :2], bounds)
+    if not fixed:
+        np.testing.assert_allclose(window._bounds_for_event_edit("vocal_proposals", 0.1, 0.2, 0.1, 0.35, "stop"), [0.1, 0.35])
+
+
 def test_open_das_train_window_uses_current_audio_and_duration(monkeypatch):
     calls = {}
 
@@ -316,6 +340,7 @@ def test_open_das_train_window_uses_current_audio_and_duration(monkeypatch):
     window._das_current_audio_duration = lambda: 0.01
     window._das_annotated_regions = lambda: [(0.2, 0.4)]
     window._handle_das_predictions = lambda annotations, time_offset_seconds: None
+    window.event_times = annot.Events({"pulse": np.array([[0.2, 0.4, -1]])})
 
     das_window = window._open_das_window("train", use_current_audio=True)
 
@@ -324,4 +349,8 @@ def test_open_das_train_window_uses_current_audio_and_duration(monkeypatch):
     assert calls["kwargs"]["current_audio_provider"] is window._das_current_audio
     assert calls["kwargs"]["current_duration_provider"] is window._das_current_audio_duration
     assert calls["kwargs"]["annotated_region_provider"] is window._das_annotated_regions
+    annotations_provider = calls["kwargs"]["current_annotations_provider"]
+    assert annotations_provider()["name"].tolist() == ["pulse"]
+    window.event_times.add_name("sine", times=np.array([[0.5, 0.6, -1]]))
+    assert annotations_provider()["name"].tolist() == ["pulse", "sine"]
     assert calls["kwargs"]["on_predictions"] is window._handle_das_predictions
