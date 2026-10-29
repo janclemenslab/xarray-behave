@@ -636,7 +636,7 @@ def test_events_table_can_select_multiple_overlapping_rows():
 
 @pytest.mark.parametrize("column", range(5))
 @pytest.mark.parametrize("start, stop", [(0.65, 0.65), (0.65, 0.7), (0.4, 0.8)])
-def test_table_double_click_centers_annotation_without_audio_link(tmp_path, qtbot, column, start, stop):
+def test_table_single_click_centers_and_double_click_edits_annotation(tmp_path, qtbot, column, start, stop):
     window = PSV(
         _audio_dataset(Events({"song": np.array([[0.1, 0.15, -1], [start, stop, -1]])})),
         config_manager=gui_config.GuiConfigManager(home=tmp_path),
@@ -652,15 +652,20 @@ def test_table_double_click_centers_annotation_without_audio_link(tmp_path, qtbo
     position = table.visualRect(index).center()
 
     qtbot.mouseClick(table.viewport(), QtCore.Qt.LeftButton, pos=position)
-    assert window.t0 == 200
-    qtbot.mouseDClick(table.viewport(), QtCore.Qt.LeftButton, pos=position)
-
     center = (start + stop) / 2
     assert window._sample_seconds(window.t0) == pytest.approx(center)
     assert np.mean(window.slice_view.getViewBox().viewRange()[0]) == pytest.approx(center, abs=0.001)
     assert window.span >= (stop - start) * window.fs_song
     assert _table_row_count(window.events_table) == 2
     assert table.state() != QtWidgets.QAbstractItemView.EditingState
+
+    qtbot.mouseDClick(table.viewport(), QtCore.Qt.LeftButton, pos=position)
+
+    assert table.currentIndex() == index
+    assert (table.state() == QtWidgets.QAbstractItemView.EditingState) == (column < 3)
+    if column < 3:
+        editor_type = QtWidgets.QComboBox if column == 0 else QtWidgets.QLineEdit
+        assert isinstance(table.indexWidget(index), editor_type)
 
 
 @pytest.mark.parametrize("linked", [False, True])
@@ -677,7 +682,7 @@ def test_table_activation_centers_clicked_annotation_with_multiple_selected(tmp_
     window.events_table.select_ids(["song\x1f0", "song\x1f1"])
     row = window.events_table._model.row_for_record_id("song\x1f1")
 
-    window.events_table.table.doubleClicked.emit(window.events_table._model.index(row, 0))
+    window.events_table.table.clicked.emit(window.events_table._model.index(row, 0))
 
     assert window._sample_seconds(window.t0) == pytest.approx(0.555)
 

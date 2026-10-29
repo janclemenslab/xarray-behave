@@ -384,8 +384,8 @@ class EventsTableWidget(QtWidgets.QWidget):
         self.table.setModel(self._model)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditKeyPressed)
-        self.table.setToolTip("Double-click to center the annotation in the audio view. Press F2 to edit a cell.")
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.EditKeyPressed)
+        self.table.setToolTip("Click to center the annotation in the audio view. Double-click or press F2 to edit a cell.")
         QtGui.QShortcut(
             QtGui.QKeySequence(QtCore.Qt.Key_F2), self.table,
             context=QtCore.Qt.WidgetShortcut,
@@ -403,7 +403,7 @@ class EventsTableWidget(QtWidgets.QWidget):
         self._type_delegate = _EventTypeDelegate(self)
         self.table.setItemDelegateForColumn(self._COL_TYPE, self._type_delegate)
         self.table.selectionModel().selectionChanged.connect(lambda _selected, _deselected: self._emit_selection())
-        self.table.doubleClicked.connect(lambda index: self.record_activated.emit(self._model.record(index.row())))
+        self.table.clicked.connect(lambda index: self.record_activated.emit(self._model.record(index.row())))
         layout.addWidget(self.table)
 
         row = QtWidgets.QHBoxLayout()
