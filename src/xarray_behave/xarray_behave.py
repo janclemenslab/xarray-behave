@@ -16,6 +16,16 @@ from . import loaders as ld, metrics as mt, event_utils, annot, io
 logger = logging.getLogger(__name__)
 
 
+def _etho_media_paths(dat_basename, filepath_daq=None, filepath_video=None):
+    if filepath_daq is None:
+        filepath_daq = f"{dat_basename}_daq.h5"
+    if filepath_video is None:
+        filepath_video = f"{dat_basename}.mp4"
+        if not os.path.exists(filepath_video):
+            filepath_video = f"{dat_basename}.avi"
+    return filepath_daq, filepath_video
+
+
 def assemble(
     datename: str = "",
     root: str = "",
@@ -46,12 +56,14 @@ def assemble(
     lazy_load_song: bool = False,
     make_song_events: bool = False,
     annotation_column: str = "Annotation",
+    *,
+    recording_prefix: Optional[str] = None,
 ) -> xr.Dataset:
     """[summary]
 
     Args:
         datename (str, optional): Used to infer file paths.
-                           Constructed paths follow this schema f"{root}/{dat_path|res_path}/{datename}/{datename}_suffix.extension".
+                           Constructed paths follow {root}/{dat_path|res_path}/{datename}/{recording_prefix}_suffix.extension.
                            Can be overridden for some paths with arguments below. Defaults to None.
         root (str, optional): Used to infer file paths. Defaults to ''.
         dat_path (str, optional): Used to infer paths of video, daq, and timestamps files. Defaults to 'dat'.
@@ -82,33 +94,34 @@ def assemble(
         lazy_load_song (float): Memmap data via dask. If false, full array will be loaded into memory. Defaults to False
         make_song_events (bool, optional): Make binary matrix of song events. Defaults to False.
         annotation_column (str, optional): Raven Pro column containing event names. Defaults to 'Annotation'.
+        recording_prefix (str, optional): Filename prefix within the experiment folders. Defaults to datename.
     Returns:
         xarray.Dataset
     """
     song_raw = None
     non_song_raw = None
 
-    # load RECORDING and TIMING INFORMATION
-    if filepath_daq is None:
-        filepath_daq = Path(root, dat_path, datename, f"{datename}_daq.h5")
-        filepath_daq_is_custom = False
-    else:
-        filepath_daq_is_custom = True
+    recording_prefix = datename if recording_prefix is None else recording_prefix
+    dat_basename = os.path.join(root, dat_path, datename, recording_prefix)
+    res_basename = os.path.join(root, res_path, datename, recording_prefix)
 
-    if filepath_video is None:
-        filepath_video = str(Path(root, dat_path, datename, f"{datename}.mp4"))
-        if not os.path.exists(filepath_video):  # try avi
-            filepath_video = str(Path(root, dat_path, datename, f"{datename}.avi"))
+    # load RECORDING and TIMING INFORMATION
+    filepath_daq_is_custom = filepath_daq is not None
+    filepath_daq, filepath_video = _etho_media_paths(dat_basename, filepath_daq, filepath_video)
+    if os.path.exists(filepath_video):
+        logger.info("   Video: %s", filepath_video)
 
     if filepath_timestamps is None:  # for video
         basename = os.path.splitext(filepath_video)[0]
         filepath_timestamps = f"{basename}_timestamps.h5"
         if not os.path.exists(filepath_timestamps):  # try avi
-            filepath_timestamps = Path(root, dat_path, datename, f"{datename}_timestamps.h5")
+            filepath_timestamps = f"{dat_basename}_timestamps.h5"
 
     # Create samplestamps object
     ss = None
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps):
+        logger.info("   DAQ timestamps: %s", filepath_daq)
+        logger.info("   Camera timestamps: %s", filepath_timestamps)
         ss, last_sample_number, sampling_rate = ld.load_times(filepath_timestamps, filepath_daq)
         if sampling_rate is None:
             sampling_rate = audio_sampling_rate
@@ -120,6 +133,7 @@ def assemble(
         vr = PyAVVideoReader(filepath_video)
 
         if os.path.exists(filepath_timestamps):
+            logger.info("   Camera timestamps: %s", filepath_timestamps)
             _, frame_times = io.timestamps.CamStamps().load(filepath_timestamps)
             frame_times -= frame_times[0]
         else:
@@ -129,10 +143,8 @@ def assemble(
             resample_video_data = False
             target_sampling_rate = vr.frame_rate
 
-        frame_times[-1] = frame_times[-2]  # for auto-monotonize to not mess everything up
-
         sampling_rate = 10 * target_sampling_rate
-        sample_times = np.arange(frame_times[0], frame_times[-1], 1)  # first to last frame, in 1s steps
+        sample_times = frame_times[[0, -1]].copy()
         sample_numbers = np.round(sample_times * sampling_rate)
         last_sample_number = sample_numbers[-1]
 
@@ -143,7 +155,7 @@ def assemble(
         # THIS SHOULD BE THE FIRST THING WE DO:
         logger.info("Loading audio data:")
         if not filepath_daq_is_custom:
-            basename = os.path.join(root, dat_path, datename, datename)
+            basename = dat_basename
         else:
             basename = filepath_daq
 
@@ -156,6 +168,7 @@ def assemble(
             audio_loader = io.audio.AudioFile(basename)
 
         try:
+            logger.info("   Reading audio: %s", audio_loader.path)
             song_raw, non_song_raw, sampling_rate = audio_loader.load(
                 audio_loader.path,
                 song_channels=audio_channels,
@@ -178,13 +191,15 @@ def assemble(
         raise ValueError(f"No data found at {path_tried}.")
 
     if filepath_timestamps_ball is None:
-        filepath_timestamps_ball = Path(root, dat_path, datename, f"{datename}_ball_timestamps.h5")
+        filepath_timestamps_ball = f"{dat_basename}_ball_timestamps.h5"
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_ball):
+        logger.info("   Ball camera timestamps: %s", filepath_timestamps_ball)
         ss_ball, last_sample_number_ball, sampling_rate_ball = ld.load_times(filepath_timestamps_ball, filepath_daq)
 
-    filepath_timestamps_movie = Path(root, res_path, datename, f"{datename}_movieframes.csv")
+    filepath_timestamps_movie = f"{res_basename}_movieframes.csv"
     ss_movie = None
     if os.path.exists(filepath_daq) and os.path.exists(filepath_timestamps_movie):
+        logger.info("   Movie frame timestamps: %s", filepath_timestamps_movie)
         ss_movie, last_sample_number_movie, sampling_rate_movie = ld.load_movietimes(filepath_timestamps_movie, filepath_daq)
 
     if target_sampling_rate == 0 or target_sampling_rate is None:
@@ -202,9 +217,10 @@ def assemble(
         if filepath_tracks is not None:
             tracks_loader = io.get_loader(kind="tracks", basename=filepath_tracks, basename_is_full_name=True)
         else:
-            tracks_loader = io.get_loader(kind="tracks", basename=os.path.join(root, res_path, datename, datename))
+            tracks_loader = io.get_loader(kind="tracks", basename=res_basename)
         if tracks_loader:
             try:
+                logger.info("   Reading tracks: %s", tracks_loader.path)
                 xr_tracks = tracks_loader.make(tracks_loader.path)
                 xr_tracks = add_time(xr_tracks, ss, dim="frame_number")
 
@@ -226,9 +242,10 @@ def assemble(
         if filepath_poses is not None:
             poses_loader = io.get_loader(kind="poses", basename=filepath_poses, basename_is_full_name=True)
         else:
-            poses_loader = io.get_loader(kind="poses", basename=os.path.join(root, res_path, datename, datename))
+            poses_loader = io.get_loader(kind="poses", basename=res_basename)
         if poses_loader:
             try:
+                logger.info("   Reading poses: %s", poses_loader.path)
                 xr_poses, xr_poses_allo = poses_loader.make(poses_loader.path)
                 xr_poses = add_time(xr_poses, ss, dim="frame_number")
                 xr_poses_allo = add_time(xr_poses_allo, ss, dim="frame_number")
@@ -247,7 +264,7 @@ def assemble(
     with_balltracker = False
     if include_balltracker:
         logger.info("Loading ball tracker:")
-        balltracker_loader = io.get_loader(kind="balltracks", basename=os.path.join(root, res_path, datename, datename))
+        balltracker_loader = io.get_loader(kind="balltracks", basename=res_basename)
         if balltracker_loader:
             try:
                 xr_balltracks = balltracker_loader.make(balltracker_loader.path)
@@ -271,7 +288,7 @@ def assemble(
         else:
             movieparams_loader = io.get_loader(
                 kind="movieparams",
-                basename=os.path.join(root, dat_path, datename, datename),
+                basename=dat_basename,
             )
             if movieparams_loader:
                 try:
@@ -318,7 +335,7 @@ def assemble(
         logger.info("Loading automatic annotations:")
         custom_filepath_annotations = filepath_annotations is not None
         if not custom_filepath_annotations:
-            filepath_annotations = os.path.join(root, res_path, datename, datename)
+            filepath_annotations = res_basename
 
         annot_loader = io.get_loader(
             kind="annotations",
@@ -350,6 +367,7 @@ def assemble(
             kind="annotations_manual",
             basename=filepath_annotations,
             basename_is_full_name=custom_filepath_annotations,
+            exact_recording=bool(recording_prefix),
         )
         if manual_annot_loader:
             try:
@@ -379,9 +397,7 @@ def assemble(
         logger.info("Loading song definitions:")
         custom_filepath_definitions = filepath_definitions is not None
         if not custom_filepath_definitions:
-            filepath_definitions = os.path.join(
-                root, res_path, datename, datename
-            )  # or construct form audio file name - .ext + _definitions.csv
+            filepath_definitions = res_basename
 
         definitions_loader = io.get_loader(
             kind="definitions_manual",
@@ -409,7 +425,7 @@ def assemble(
         if song_raw is None:
             logger.info("Loading audio data:")
             if not filepath_daq_is_custom:
-                basename = os.path.join(root, dat_path, datename, datename)
+                basename = dat_basename
             else:
                 basename = filepath_daq
 
@@ -423,6 +439,7 @@ def assemble(
 
             if audio_loader:
                 try:
+                    logger.info("   Reading audio: %s", audio_loader.path)
                     song_raw, non_song_raw, samplerate = audio_loader.load(
                         audio_loader.path,
                         return_nonsong_channels=True,
@@ -677,8 +694,9 @@ def assemble(
 
     # save command line args
     dataset.attrs = {
-        "video_filename": str(Path(root, dat_path, datename, f"{datename}.mp4")),
+        "video_filename": str(filepath_video) if os.path.exists(filepath_video) else "",
         "datename": datename,
+        "recording_prefix": recording_prefix,
         "root": root,
         "dat_path": dat_path,
         "res_path": res_path,
@@ -689,7 +707,7 @@ def assemble(
     if annotation_load_errors:
         dataset.attrs["annotation_load_errors"] = annotation_load_errors
 
-    filepath_swap = Path(root, res_path, datename, f"{datename}_idswaps.txt")
+    filepath_swap = f"{res_basename}_idswaps.txt"
     if fix_fly_indices and os.path.exists(filepath_swap):
         logger.info(f"   Applying fly identity fixes from {filepath_swap}.")
         try:

@@ -1,4 +1,6 @@
 from glob import glob
+from pathlib import Path
+import re
 from typing import List, Optional
 from collections import OrderedDict
 
@@ -49,7 +51,21 @@ def register_provider(func):
     return func
 
 
-def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename_is_full_name: bool = False):
+def is_recording_sidecar(path: str, basename: str) -> bool:
+    """Constrain wildcard sidecars to the selected etho recording prefix."""
+    prefix = Path(basename).name
+    suffix = Path(path).name.removeprefix(prefix)
+    return not re.match(r"(?:[0-9]|_[0-9]+(?=[_. (]|$))", suffix)
+
+
+def get_loader(
+    kind: str,
+    basename: str,
+    stop_after_match: bool = True,
+    basename_is_full_name: bool = False,
+    *,
+    exact_recording: bool = False,
+):
     """[summary]
 
     Args:
@@ -59,6 +75,7 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename
         basename_is_full_name (bool, optional): If False will append registered suffixes,
                                                 otherwise will try to find match for basename as is.
                                                 Defaults to False.
+        exact_recording (bool, optional): Keep wildcard sidecars within the recording prefix.
 
     Raises:
         ValueError: [description]
@@ -76,6 +93,8 @@ def get_loader(kind: str, basename: str, stop_after_match: bool = True, basename
         else:  # add registered suffix
             paths = glob(basename + suffix)
             paths.extend(glob(basename + suffix.upper()))
+            if exact_recording and "*" in suffix:
+                paths = [path for path in paths if is_recording_sidecar(path, basename)]
 
         for path in paths:
             for provider in providers:

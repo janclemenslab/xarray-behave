@@ -103,6 +103,12 @@ def add_annotation_import_button(dialog):
     row, _ = layout.getWidgetPosition(dialog.form.fields["annotation_path"])
     layout.insertRow(row + 2, "", button)
 
+    def clear_staged_import():
+        dialog.annotation_import = None
+        button.setText("Import annotations...")
+
+    dialog.form.fields["annotation_path"].textChanged.connect(clear_staged_import)
+
     def import_annotations():
         filename = dialog.form["annotation_path"].strip()
         if not filename or not Path(filename).is_file():

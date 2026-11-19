@@ -20,6 +20,7 @@ main:
   label: Video file
   type: file_open
   default: ""
+  filter: "Video files (*.mp4 *.avi *.mov *.mkv);;All files (*)"
   help: 'select custom filename'
 
 - name: frame_fliplr
@@ -51,6 +52,7 @@ main:
   label: DAQ file
   type: file_open
   default: ""
+  filter: "DAQ files (*_daq.h5);;All files (*)"
   help: 'select custom filename'
 
 - name: ignore_song
@@ -82,7 +84,7 @@ main:
   label: File with annotations
   type: file_open
   default: ""
-  help: 'will try default STEM + _annotations.csv'
+  help: 'select a different annotation file to override the recording default'
 
 - name: init_annotations
   label: Initialize annotations

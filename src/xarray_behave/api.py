@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from glob import glob
 from importlib import resources
+from pathlib import Path
 from typing import Any, Mapping, Optional, Union
 
 import logging
@@ -26,7 +27,7 @@ def discover(
     res_path: str = "res",
     **context,
 ) -> dict:
-    """Discover files using a simple YAML manifest."""
+    """Discover files using a YAML manifest. The filename prefix defaults to datename."""
 
     manifest_data = _load_manifest(manifest)
     format_context = {
@@ -34,6 +35,7 @@ def discover(
         "root": root,
         "dat_path": dat_path,
         "res_path": res_path,
+        "recording_prefix": datename,
         **context,
     }
     found: dict[str, Any] = {
@@ -189,7 +191,10 @@ def _matches(spec, context):
     patterns = spec.get("path", spec.get("paths", spec.get("patterns", [])))
     matches = []
     for pattern in patterns:
-        matches.extend(sorted(glob(pattern.format(**context))))
+        paths = sorted(glob(pattern.format(**context)))
+        if Path(pattern).name.startswith("{recording_prefix}*") and context["recording_prefix"]:
+            paths = [path for path in paths if io.is_recording_sidecar(path, context["recording_prefix"])]
+        matches.extend(paths)
         if matches and spec.get("mode") != "all":
             break
     return matches

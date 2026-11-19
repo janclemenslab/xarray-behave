@@ -2,6 +2,8 @@
 
 import logging
 import os
+from pathlib import Path
+import re
 from typing import Optional
 
 import numpy as np
@@ -9,6 +11,7 @@ import pandas as pd
 import scipy.signal as ss
 
 from . import annot, api, event_utils, io, v1 as xb
+from .xarray_behave import _etho_media_paths
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,58 @@ def assemble_from_file(filename: str, form_data: dict):
     return ds
 
 
+def etho_recording_prefix(path: Path) -> str | None:
+    if path.name.endswith("_daq.h5"):
+        return path.name.removesuffix("_daq.h5")
+    if path.suffix in (".mp4", ".avi"):
+        return path.stem
+    return None
+
+
+def etho_recording_prefixes(dirname: str) -> list[str]:
+    folder = Path(dirname)
+    if not folder.is_dir():
+        return []
+
+    # The folder's own prefix identifies the first recording, including its date/time underscore.
+    pattern = re.compile(re.escape(folder.name) + r"(?:_([2-9]|[1-9][0-9]+))?")
+    recordings = {}
+    for path in folder.iterdir():
+        prefix = etho_recording_prefix(path)
+        match = pattern.fullmatch(prefix) if prefix is not None else None
+        if match and path.is_file():
+            recordings[prefix] = int(match[1] or "1")
+    return sorted(recordings, key=recordings.get)
+
+
+def etho_recording_file_defaults(dirname: str, prefix: str, manifest: Optional[str] = None) -> dict[str, str]:
+    folder = Path(dirname)
+    paths = {}
+    if manifest is not None:
+        discovered = api.discover(
+            folder.name,
+            root=str(folder.parent.parent),
+            dat_path=folder.parent.name,
+            manifest=manifest,
+            recording_prefix=prefix,
+        )
+        paths = _etho_manifest_file_paths(discovered)
+
+    daq, video = _etho_media_paths(str(folder / prefix))
+    basename = str(folder.parent.parent / "res" / folder.name / prefix)
+    annotation = paths.get("annotation_path")
+    if not annotation:
+        loader = io.get_loader("annotations_manual", basename, exact_recording=True)
+        loader = loader or io.get_loader("annotations", basename)
+        annotation = loader.path if loader else ""
+
+    return {
+        "daq_filename": paths.get("daq_filename") or (daq if Path(daq).is_file() else ""),
+        "video_filename": paths.get("video_filename") or (video if Path(video).is_file() else ""),
+        "annotation_path": annotation,
+    }
+
+
 def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[float] = None, manifest: Optional[str] = None):
     if form_data["target_samplingrate"] == 0 or form_data["target_samplingrate"] is None:
         resample_video_data = False
@@ -94,16 +149,17 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
     annotation_path = None if not len(form_data["annotation_path"]) else form_data["annotation_path"]
     filepath_video = None if not len(form_data["video_filename"]) else form_data["video_filename"]
     filepath_daq = None if not len(form_data["daq_filename"]) else form_data["daq_filename"]
+    recording_prefix = form_data.get("recording_prefix")
+    recording_kwargs = {"recording_prefix": recording_prefix} if recording_prefix else {}
     discovered = None
     if manifest is not None:
-        discovered = api.discover(datename, root=root, dat_path=dat_path, res_path="res", manifest=manifest)
-        filepath_video = filepath_video or _discovered_path(discovered, "video", "camera")
-        filepath_daq = filepath_daq or _discovered_path(discovered, "audio", "main")
-        annotation_path = (
-            annotation_path
-            or _discovered_path(discovered, "annotations", "manual")
-            or _discovered_path(discovered, "annotations", "auto")
+        discovered = api.discover(
+            datename, root=root, dat_path=dat_path, res_path="res", manifest=manifest, **recording_kwargs
         )
+        defaults = _etho_manifest_file_paths(discovered)
+        filepath_video = filepath_video or defaults["video_filename"]
+        filepath_daq = filepath_daq or defaults["daq_filename"]
+        annotation_path = annotation_path or defaults["annotation_path"]
 
     assemble_kwargs = {
         "res_path": "res",
@@ -132,7 +188,7 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
         )
         assemble_kwargs = {key: value for key, value in assemble_kwargs.items() if value is not None}
 
-    ds = xb.assemble(datename, root, dat_path, **assemble_kwargs)
+    ds = xb.assemble(datename, root, dat_path, **assemble_kwargs, **recording_kwargs)
 
     if filter_song_requested:
         ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
@@ -151,6 +207,15 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
         ds.attrs["event_times"] = annot.Events(categories=cats)
 
     return ds
+
+
+def _etho_manifest_file_paths(files: dict):
+    return {
+        "daq_filename": _discovered_path(files, "audio", "main"),
+        "video_filename": _discovered_path(files, "video", "camera"),
+        "annotation_path": _discovered_path(files, "annotations", "manual")
+        or _discovered_path(files, "annotations", "auto"),
+    }
 
 
 def _discovered_path(files: dict, group: str, name: str):

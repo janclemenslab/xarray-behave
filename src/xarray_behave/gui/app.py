@@ -76,6 +76,48 @@ def _apply_dialog_config(form, manager: gui_config.GuiConfigManager, kind: str) 
         form["spec_type"] = "Mel" if mel else "Linear"
 
 
+def _etho_recording_picker(dialog, dirname, prefixes, manifest):
+    folder = Path(dirname).resolve()
+    picker = QtWidgets.QComboBox(dialog)
+    picker.setObjectName("recording_prefix")
+    picker.addItems(prefixes)
+    dialog.form.form_layout.insertRow(0, "Recording:", picker)
+    fields = dialog.form.fields
+    media_fields = (fields["daq_filename"], fields["video_filename"])
+    default_paths = {}
+
+    def prefix_for_file(filename):
+        if filename:
+            path = Path(filename)
+            if path.parent.resolve() == folder:
+                return dataset_service.etho_recording_prefix(path)
+        return None
+
+    def populate_files(prefix):
+        default_paths.update(dataset_service.etho_recording_file_defaults(dirname, prefix, manifest))
+        for key, filename in default_paths.items():
+            field = fields[key]
+            if field in media_fields:
+                with QtCore.QSignalBlocker(field):
+                    field.setText(filename)
+            else:
+                field.clear()  # Also clear any staged annotation import for the previous recording.
+                field.setText(filename)
+
+    def select_from_file(field, filename):
+        prefix = prefix_for_file(filename)
+        if prefix in prefixes and prefix != picker.currentText():
+            picker.setCurrentText(prefix)
+            field.setText(filename)
+
+    populate_files(picker.currentText())
+    picker.currentTextChanged.connect(populate_files)
+    for field in media_fields:
+        field.setProperty("browse_directory", dirname)
+        field.textChanged.connect(partial(select_from_file, field))
+    return picker, default_paths
+
+
 class DataSource:
     def __init__(self, type: str, name: str):
         self.type = type
@@ -701,7 +743,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.ds.attrs["root"],
                     self.ds.attrs["res_path"],
                     self.ds.attrs["datename"],
-                    f"{self.ds.attrs['datename']}{suffix}",
+                    f"{self.ds.attrs.get('recording_prefix', self.ds.attrs['datename'])}{suffix}",
                 )
         except KeyError:
             savefilename = Path("")
@@ -1231,6 +1273,8 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
             _apply_dialog_config(dialog.form, config_manager, "from_dir")
+            prefixes = dataset_service.etho_recording_prefixes(dirname)
+            picker, default_paths = _etho_recording_picker(dialog, dirname, prefixes, manifest) if prefixes else (None, {})
 
             # initialize form data with cli args
             if pixel_size_mm is not None:
@@ -1257,10 +1301,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if result == QtWidgets.QDialog.Accepted:
                 form_data = dialog.form.get_form_data()
+                if picker is not None:
+                    form_data["recording_prefix"] = picker.currentText()
+                    # Keep inferred paths as defaults so automatic and manual annotations can both load.
+                    for key, filename in default_paths.items():
+                        if form_data[key] == filename:
+                            form_data[key] = ""
                 config_manager.remember_dialog("from_dir", form_data)
-                logger.info(f"Making new dataset from directory {dirname}.")
+                logger.info("Assembling xarray-behave dataset for %s in %s.", form_data.get("recording_prefix", Path(dirname).name), dirname)
 
-                _, datename = os.path.split(os.path.normpath(dirname))  # normpath removes trailing pathsep
                 assemble_kwargs = {"pixel_size_mm": pixel_size_mm}
                 if manifest is not None:
                     assemble_kwargs["manifest"] = manifest
@@ -1271,29 +1320,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # add video file
                 vr = None
-                try:
-                    if dialog.form["video_filename"] != "":
-                        try:
-                            video_filename = dialog.form["video_filename"]
-                            vr = modern_video.PyAVVideoReader(video_filename)
-                        except:
-                            pass
-                    else:
-                        try:
-                            video_filename = os.path.join(dirname, datename + ".mp4")
-                            vr = modern_video.PyAVVideoReader(video_filename)
-                        except:
-                            video_filename = os.path.join(dirname, datename + ".avi")
-                            vr = modern_video.PyAVVideoReader(video_filename)
-                    logger.info(vr)
-                except FileNotFoundError:
-                    logger.info(f'Video "{video_filename}" not found. Continuing without.')
-                except:
-                    logger.info("Something went wrong when loading the video. Continuing without.")
+                video_filename = ds.attrs.get("video_filename")
+                if video_filename:
+                    try:
+                        vr = modern_video.PyAVVideoReader(video_filename)
+                    except Exception:
+                        logger.info('Could not open video "%s". Continuing without.', video_filename, exc_info=True)
 
                 return (window._populate if window is not None else PSV)(
                     ds,
-                    title=dirname,
+                    title=f"{dirname} ({picker.currentText()})" if len(prefixes) > 1 else dirname,
                     vr=vr,
                     fmin=dialog.form["spec_freq_min"],
                     fmax=dialog.form["spec_freq_max"],
@@ -1380,7 +1416,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ds.attrs["root"],
                 self.ds.attrs["dat_path"],
                 self.ds.attrs["datename"],
-                f"{self.ds.attrs['datename']}.zarr",
+                f"{self.ds.attrs.get('recording_prefix', self.ds.attrs['datename'])}.zarr",
             )
         except KeyError:
             savefilename = ""
@@ -5349,6 +5385,7 @@ def main_das(
                                        With skip_dialog, also sets the upper bandpass cutoff. Defaults to samplerate/2.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
     """
+    logging.basicConfig(level=logging.INFO)
     main(
         source,
         config=config,

@@ -175,6 +175,64 @@ def test_from_dir_cli_spec_bounds_enable_bandpass_when_skipping_dialog(monkeypat
     assert captured["psv"].kwargs["fmax"] == 1000
 
 
+def test_from_dir_selects_recording_by_daq_or_video(qtbot, tmp_path, monkeypatch):
+    folder = tmp_path / "dat" / "session"
+    results = tmp_path / "res" / "session"
+    folder.mkdir(parents=True)
+    results.mkdir(parents=True)
+    daq = folder / "session_daq.h5"
+    first_video = folder / "session.mp4"
+    video = folder / "session_2.mp4"
+    alternate_video = folder / "session_2.avi"
+    first_annotations = results / "session_annotations.csv"
+    annotations = results / "session_2_annotations.csv"
+    for path in (daq, first_video, video, alternate_video, first_annotations, annotations):
+        path.touch()
+    selected_files = iter([daq, alternate_video])
+
+    def choose_file(*args, dir, **kwargs):
+        assert dir == str(folder)
+        return str(next(selected_files)), ""
+
+    def use_picker(dialog):
+        picker = dialog.findChild(gui_app.QtWidgets.QComboBox, "recording_prefix")
+        assert [picker.itemText(i) for i in range(picker.count())] == ["session", "session_2"]
+        assert picker.currentText() == "session"
+        assert dialog.form["daq_filename"] == str(daq)
+        assert dialog.form["video_filename"] == str(first_video)
+        assert dialog.form["annotation_path"] == str(first_annotations)
+        picker.setCurrentText("session_2")
+        assert dialog.form["daq_filename"] == ""
+        assert dialog.form["video_filename"] == str(video)
+        assert dialog.form["annotation_path"] == str(annotations)
+        buttons = {button.text(): button for button in dialog.findChildren(gui_app.QtWidgets.QPushButton)}
+        buttons["Select DAQ file"].click()
+        assert picker.currentText() == "session"
+        assert dialog.form["video_filename"] == str(first_video)
+        assert dialog.form["annotation_path"] == str(first_annotations)
+        buttons["Select Video file"].click()
+        assert picker.currentText() == "session_2"
+        assert dialog.form["daq_filename"] == ""
+        assert dialog.form["video_filename"] == str(alternate_video)
+        assert dialog.form["annotation_path"] == str(annotations)
+        return gui_app.QtWidgets.QDialog.Accepted
+
+    def assemble(dirname, form_data, **kwargs):
+        assert form_data["recording_prefix"] == "session_2"
+        assert form_data["video_filename"] == str(alternate_video)
+        assert form_data["annotation_path"] == ""
+        return xr.Dataset(attrs={"video_filename": str(alternate_video)})
+
+    monkeypatch.setattr(gui_app, "_get_config_manager", lambda: gui_config.GuiConfigManager(home=tmp_path / "home"))
+    monkeypatch.setattr(gui_app.QtWidgets.QFileDialog, "getOpenFileName", choose_file)
+    monkeypatch.setattr(gui_app.YamlDialog, "exec_", use_picker)
+    monkeypatch.setattr(gui_app.dataset_service, "assemble_from_dir", assemble)
+    monkeypatch.setattr(gui_app.modern_video, "PyAVVideoReader", lambda filename: filename)
+    monkeypatch.setattr(gui_app, "PSV", lambda ds, **kwargs: kwargs)
+
+    assert gui_app.MainWindow.from_dir(str(folder))["vr"] == str(alternate_video)
+
+
 def test_from_dir_applies_local_config_before_cli_overrides(monkeypatch, tmp_path):
     captured = {}
     source = tmp_path / "recording"
