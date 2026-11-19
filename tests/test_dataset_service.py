@@ -1,3 +1,4 @@
+import av
 import numpy as np
 import xarray as xr
 
@@ -204,6 +205,59 @@ def test_assemble_from_dir_uses_manifest_discovery(monkeypatch):
     assert calls["kwargs"]["filepath_tracks"] == "/data/custom/tracks.csv"
     assert calls["kwargs"]["filepath_poses"] == "/data/custom/poses.h5"
     assert calls["kwargs"]["filepath_annotations"] == "/data/custom/annotations.csv"
+
+
+def test_etho_recording_prefixes_discovers_audio_or_camera_video(tmp_path):
+    folder = tmp_path / "localhost-20261112_132833"
+    folder.mkdir()
+    stem = folder.name
+    for suffix in ("_daq.h5", ".mp4", "_2.mp4", "_10.avi", "_3_ball.mp4", "_4_timestamps.h5"):
+        (folder / f"{stem}{suffix}").touch()
+
+    assert dataset_service.etho_recording_prefixes(str(folder)) == [stem, f"{stem}_2", f"{stem}_10"]
+
+
+def test_assemble_from_dir_loads_video_only_recording_and_its_annotations(tmp_path, caplog):
+    folder = tmp_path / "dat" / "session"
+    results = tmp_path / "res" / "session"
+    folder.mkdir(parents=True)
+    results.mkdir(parents=True)
+    video = folder / "session_2.mp4"
+    with av.open(str(video), "w") as container:
+        stream = container.add_stream("mpeg4", rate=25)
+        stream.width = stream.height = 16
+        stream.pix_fmt = "yuv420p"
+        frame = av.VideoFrame.from_ndarray(np.zeros((16, 16, 3), dtype=np.uint8), format="rgb24")
+        for _ in range(12):
+            container.mux(stream.encode(frame))
+        container.mux(stream.encode())
+    (results / "session_annotations.csv").write_text("name,start_seconds,stop_seconds\nwrong,0.1,0.2\n")
+    (results / "session_2_annotations.csv").write_text("name,start_seconds,stop_seconds\nright,0.1,0.2\n")
+
+    form_data = {
+        "recording_prefix": "session_2",
+        "target_samplingrate": 1000,
+        "filter_song": "no",
+        "ignore_tracks": True,
+        "ignore_song": False,
+        "annotation_path": "",
+        "video_filename": "",
+        "daq_filename": "",
+        "fix_fly_indices": False,
+        "init_annotations": False,
+    }
+    with caplog.at_level("INFO"):
+        ds = dataset_service.assemble_from_dir(str(folder), form_data)
+
+    assert dataset_service.etho_recording_prefixes(str(folder)) == ["session_2"]
+    assert ds.attrs["datename"] == "session"
+    assert ds.attrs["recording_prefix"] == "session_2"
+    assert ds.attrs["video_filename"] == str(video)
+    assert ds.sizes["time"] > 0
+    assert ds.event_names.values.tolist() == ["right"]
+    assert f"Video: {video}" in caplog.text
+    assert str(results / "session_2_annotations.csv") in caplog.text
+    assert str(results / "session_annotations.csv") not in caplog.text
 
 
 def test_load_from_zarr_skips_song_events_load_when_event_table_exists(monkeypatch):

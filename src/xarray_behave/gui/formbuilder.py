@@ -464,7 +464,9 @@ class FormBuilderLayout(QtWidgets.QFormLayout):
                 filename = QtWidgets.QFileDialog.getExistingDirectory(None, caption="Select " + item["label"])
             else:
                 filter = item.get("filter", "Any File (*.*)")
-                filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, caption="Open File", filter=filter)
+                filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+                    None, caption="Open File", dir=x.property("browse_directory") or "", filter=filter
+                )
             if len(filename):
                 x.setText(filename)
             self.valueChanged.emit()

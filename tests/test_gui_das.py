@@ -119,6 +119,8 @@ def test_empty_workspace_loads_into_same_window(qtbot, monkeypatch, tmp_path, so
             coords={"sampletime": np.arange(8_000) / 8_000},
             attrs={"target_sampling_rate_Hz": 1_000},
         )
+        if source_kind == "folder":
+            ds.attrs["video_filename"] = str(tmp_path / "clip.mp4")
         ds.song_raw.attrs["sampling_rate_Hz"] = 8_000
         monkeypatch.setattr(gui_app.dataset_service, "assemble_from_dir", lambda *_, **__: ds)
         monkeypatch.setattr(gui_app.dataset_service, "load_from_zarr", lambda *_, **__: ds)

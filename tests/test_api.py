@@ -19,6 +19,17 @@ def test_discover_default_manifest_finds_current_scheme():
     assert files["tracks"]["main"]["path"].endswith("_tracks.csv")
 
 
+def test_discover_default_manifest_keeps_numbered_raven_sidecars_separate(tmp_path):
+    results = tmp_path / "res" / "session"
+    results.mkdir(parents=True)
+    for prefix in ("session", "session_2", "session_20"):
+        (results / f"{prefix}.Raven.selections.txt").touch()
+
+    for prefix in ("session", "session_2", "session_20"):
+        files = xb.discover("session", root=str(tmp_path), recording_prefix=prefix)
+        assert files["annotations"]["manual"]["paths"] == [str(results / f"{prefix}.Raven.selections.txt")]
+
+
 def test_assemble_splits_audio_from_manifest(tmp_path):
     audio_path = tmp_path / "recording.wav"
     data = np.arange(40, dtype=np.float32).reshape(10, 4)
