@@ -99,7 +99,7 @@ def test_assemble_from_file_maps_form_data(monkeypatch):
     assert result.attrs["datename"] == ""
 
 
-def test_assemble_from_dir_maps_form_data(monkeypatch):
+def test_assemble_from_dir_maps_form_data(monkeypatch, tmp_path):
     calls = {}
     ds = xr.Dataset()
 
@@ -125,9 +125,9 @@ def test_assemble_from_dir_maps_form_data(monkeypatch):
         "f_high": None,
     }
 
-    dataset_service.assemble_from_dir("/data/root/dat/session", form_data, pixel_size_mm=0.05)
+    dataset_service.assemble_from_dir(str(tmp_path / "dat" / "session"), form_data, pixel_size_mm=0.05)
 
-    assert calls["args"] == ("session", "/data/root", "dat")
+    assert calls["args"] == ("session", str(tmp_path), "dat")
     assert calls["kwargs"] == {
         "res_path": "res",
         "filepath_annotations": None,
@@ -145,7 +145,7 @@ def test_assemble_from_dir_maps_form_data(monkeypatch):
     }
 
 
-def test_assemble_from_dir_uses_manifest_discovery(monkeypatch):
+def test_assemble_from_dir_uses_manifest_discovery(monkeypatch, tmp_path):
     calls = {}
     ds = xr.Dataset()
 
@@ -189,16 +189,16 @@ def test_assemble_from_dir_uses_manifest_discovery(monkeypatch):
         "f_high": None,
     }
 
-    dataset_service.assemble_from_dir("/data/root/dat/session", form_data, manifest="/tmp/files.yaml")
+    dataset_service.assemble_from_dir(str(tmp_path / "dat" / "session"), form_data, manifest="/tmp/files.yaml")
 
     assert calls["discover"] == {
         "datename": "session",
-        "root": "/data/root",
+        "root": str(tmp_path),
         "dat_path": "dat",
         "res_path": "res",
         "manifest": "/tmp/files.yaml",
     }
-    assert calls["args"] == ("session", "/data/root", "dat")
+    assert calls["args"] == ("session", str(tmp_path), "dat")
     assert calls["kwargs"]["filepath_daq"] == "/data/custom/audio.wav"
     assert calls["kwargs"]["filepath_video"] == "/data/custom/video.avi"
     assert calls["kwargs"]["filepath_timestamps"] == "/data/custom/timestamps.csv"
