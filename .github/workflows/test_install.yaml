@@ -42,4 +42,4 @@ jobs:
         python -m pip install ".[dev]"
         python -c "import xarray_behave; print(xarray_behave.__version__)"
         python -c "import xarray_behave.gui.app"
-        python -m pytest -q tests/test_imports.py tests/test_io.py tests/test_sampstamps.py tests/test_dataset_service.py
+        python -m pytest -q tests/test_imports.py tests/test_io.py tests/test_sampstamps.py tests/test_dataset_service.py tests/test_fix_camera_timestamps.py
