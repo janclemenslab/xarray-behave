@@ -1,9 +1,80 @@
 import av
+import dask.array as da
+import h5py
 import numpy as np
+import pytest
+import scipy.signal as signal
 import xarray as xr
 
 from xarray_behave import _dataset_service as dataset_service, annot
+from xarray_behave._audio_filter import filtered_blocks
 from xarray_behave.gui import project
+
+
+@pytest.mark.parametrize("open_folder", [True, False])
+def test_daq_bandpass_reads_only_requested_blocks_and_reuses_channels(tmp_path, monkeypatch, open_folder):
+    folder = tmp_path / "dat" / "recording"
+    folder.mkdir(parents=True)
+    path = folder / "recording_daq.h5"
+    rate = 1000
+    raw = np.random.default_rng(17).normal(size=(100_007, 4))
+    with h5py.File(path, "w") as file:
+        file["samples"] = raw
+        file["song_channels"] = [1, 3]
+        file.attrs["rate"] = rate
+
+    sos = signal.butter(5, [10, 200], "bandpass", fs=rate, output="sos")
+    expected = signal.sosfiltfilt(sos, raw[:, [1, 3]], axis=0)
+    reads = []
+    original_get = h5py.Dataset.__getitem__
+
+    def record_read(dataset, key, *args, **kwargs):
+        result = original_get(dataset, key, *args, **kwargs)
+        if dataset.name == "/samples" and np.size(result):
+            reads.append(key[0])
+        return result
+
+    monkeypatch.setattr(h5py.Dataset, "__getitem__", record_read)
+    form = dict(filter_song="yes", f_low=10, f_high=200, annotation_path="", target_samplingrate=200)
+    if open_folder:
+        form.update(ignore_tracks=True, ignore_song=False, video_filename="", daq_filename="",
+                    fix_fly_indices=False, init_annotations=False)
+        ds = dataset_service.assemble_from_dir(str(folder), form)
+    else:
+        form.update(definition_path="", samplerate=rate, data_set="samples")
+        ds = dataset_service.assemble_from_file(str(path), form)
+
+    assert isinstance(ds.song_raw.data, da.Array)
+    assert not reads
+    # A jump near the end must skip the intervening audio.
+    np.testing.assert_allclose(ds.song_raw[80_100:80_200, 0], expected[80_100:80_200, 0], atol=1e-9)
+    assert reads and all(key.start >= 70_000 for key in reads)
+    reads.clear()
+    np.testing.assert_allclose(ds.song_raw[80_150:80_250, 1], expected[80_150:80_250, 1], atol=1e-9)
+    assert not reads
+    np.testing.assert_allclose(ds.song_raw[:5030], expected[:5030], atol=1e-9)
+    np.testing.assert_allclose(ds.song_raw[-10:], expected[-10:], atol=1e-9)
+    np.testing.assert_array_equal(ds.non_song_raw[:50], raw[:50, [0, 2]])
+
+
+def test_filtered_blocks_evicts_old_blocks_and_matches_full_low_frequency_filter(monkeypatch):
+    rate = 1000
+    raw = np.random.default_rng(3).normal(size=(50_001, 2))
+    sos = signal.butter(5, [1, 499], "bandpass", fs=rate, output="sos")
+    original_filter = signal.sosfiltfilt
+    expected = original_filter(sos, raw, axis=0)
+    calls = []
+
+    def count_filter(sos, data, **kwargs):
+        calls.append(len(data))
+        return original_filter(sos, data, **kwargs)
+
+    monkeypatch.setattr(signal, "sosfiltfilt", count_filter)
+    audio = filtered_blocks(raw, sos, rate, cache_bytes=2 * 5000 * 2 * 8)
+    for start in [0, 5000, 0, 10000, 0, 5000]:
+        np.testing.assert_allclose(audio[start].compute(), expected[start], atol=1e-9)
+    assert len(calls) == 4
+    np.testing.assert_allclose(audio.compute(), expected, atol=1e-9)
 
 
 def test_assemble_from_media_builds_unique_audio_splits(monkeypatch):

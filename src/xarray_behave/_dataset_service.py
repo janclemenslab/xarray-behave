@@ -60,6 +60,7 @@ def replace_event_times(ds, event_times):
 
 def assemble_from_file(filename: str, form_data: dict):
     filter_song_requested = form_data["filter_song"] == "yes"
+    progressive = filter_song_requested and io.audio.Ethodrome.match(str(filename))
     ds = xb.assemble(
         filepath_daq=filename,
         filepath_annotations=form_data["annotation_path"],
@@ -67,12 +68,12 @@ def assemble_from_file(filename: str, form_data: dict):
         audio_sampling_rate=form_data["samplerate"],
         target_sampling_rate=form_data["target_samplingrate"],
         audio_dataset=form_data["data_set"],
-        lazy_load_song=not filter_song_requested,
+        lazy_load_song=progressive or not filter_song_requested,
         make_song_events=form_data.get("generate_event_traces", False),
     )
 
     if filter_song_requested:
-        ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
+        ds = filter_song(ds, form_data["f_low"], form_data["f_high"], progressive=progressive)
 
     ds.attrs["filename"] = filename
     ds.attrs["filebase"] = os.path.splitext(filename)[0]
@@ -143,7 +144,6 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
     filter_song_requested = form_data["filter_song"] == "yes"
     include_tracks = not form_data["ignore_tracks"]
     include_poses = not form_data["ignore_tracks"]
-    lazy_load_song = not filter_song_requested
     base, datename = os.path.split(os.path.normpath(dirname))
     root, dat_path = os.path.split(base)
     annotation_path = None if not len(form_data["annotation_path"]) else form_data["annotation_path"]
@@ -161,6 +161,8 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
         filepath_daq = filepath_daq or defaults["daq_filename"]
         annotation_path = annotation_path or defaults["annotation_path"]
 
+    default_daq = Path(dirname) / f"{recording_prefix or datename}_daq.h5"
+    progressive = filter_song_requested and (io.audio.Ethodrome.match(filepath_daq) if filepath_daq else default_daq.is_file())
     assemble_kwargs = {
         "res_path": "res",
         "filepath_annotations": annotation_path,
@@ -171,7 +173,7 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
         "target_sampling_rate": form_data["target_samplingrate"],
         "resample_video_data": resample_video_data,
         "pixel_size_mm": pixel_size_mm,
-        "lazy_load_song": lazy_load_song,
+        "lazy_load_song": progressive or not filter_song_requested,
         "include_tracks": include_tracks,
         "include_poses": include_poses,
         "make_song_events": form_data.get("generate_event_traces", False),
@@ -191,7 +193,7 @@ def assemble_from_dir(dirname: str, form_data: dict, pixel_size_mm: Optional[flo
     ds = xb.assemble(datename, root, dat_path, **assemble_kwargs, **recording_kwargs)
 
     if filter_song_requested:
-        ds = filter_song(ds, form_data["f_low"], form_data["f_high"])
+        ds = filter_song(ds, form_data["f_low"], form_data["f_high"], progressive=progressive)
 
     event_names = []
     if form_data["init_annotations"] and len(form_data["events_string"]):
@@ -336,7 +338,7 @@ def merge_event_times(existing, imported):
     return annot.Events(merged)
 
 
-def filter_song(ds, f_low, f_high):
+def filter_song(ds, f_low, f_high, *, progressive=False):
     if f_low is None:
         f_low = 1.0
     if "song_raw" in ds:
@@ -352,7 +354,12 @@ def filter_song(ds, f_low, f_high):
             fs=ds.song_raw.attrs["sampling_rate_Hz"],
         )
         logger.info(f"Filtering `song_raw` between {f_low} and {f_high} Hz.")
-        ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
+        if progressive:
+            from ._audio_filter import filtered_blocks
+
+            ds.song_raw.data = filtered_blocks(ds.song_raw.data, sos_bp, ds.song_raw.attrs["sampling_rate_Hz"])
+        else:
+            ds.song_raw.data = ss.sosfiltfilt(sos_bp, ds.song_raw.data, axis=0)
     return ds
 
 

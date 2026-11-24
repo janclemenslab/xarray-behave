@@ -153,7 +153,8 @@ class Ethodrome(io.BaseProvider):
             # convert to dask array since this allows lazily evaluated indexing...
             import dask.array as daskarray
 
-            da = daskarray.from_array(f["samples"], chunks=(10000, 1))
+            # The viewer reads all microphones for a time window. Read their interleaved samples together.
+            da = daskarray.from_array(f["samples"], chunks=(10000, -1))
 
             # FIXME: code in "if" and in "else" is identical - refactor to function
             nb_channels = f["samples"].shape[1]

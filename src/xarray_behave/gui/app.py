@@ -5182,7 +5182,7 @@ def main(
     manifest: Optional[str] = None,
     skip_dialog: bool = False,
     is_das: bool = False,
-    das_startup_config=None,
+    _das_startup_config=None,
 ):
     """
     Args:
@@ -5271,11 +5271,11 @@ def main(
             is_das=is_das,
         )
     app._xarray_behave_mainwin = mainwin
-    if is_das and das_startup_config is not None and mainwin is not None:
+    if is_das and _das_startup_config is not None and mainwin is not None:
         mainwin._open_das_window(
-            "predict" if das_startup_config.mode == "predict" else "train",
+            "predict" if _das_startup_config.mode == "predict" else "train",
             use_current_audio=True,
-            startup_config=das_startup_config,
+            startup_config=_das_startup_config,
         )
 
     # # Start Qt event loop unless running in interactive mode or using pyside.
@@ -5340,7 +5340,7 @@ def main_das(
         spec_freq_max=spec_freq_max,
         skip_dialog=skip_dialog,
         is_das=True,
-        das_startup_config=das_startup_config,
+        _das_startup_config=das_startup_config,
     )
 
 
