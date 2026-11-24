@@ -118,6 +118,7 @@ fig*
 /*/
 !/src/
 !/tests/
+!/scripts/
 !/env/
 !/docs/
 !/AGENTS.md
