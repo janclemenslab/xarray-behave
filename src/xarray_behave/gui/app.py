@@ -5351,6 +5351,20 @@ def main(
         QtWidgets.QApplication.instance().exec_()
 
 
+class _ConsoleFormatter(logging.Formatter):
+    def format(self, record):
+        message = super().format(record)
+        if record.levelno == logging.INFO:
+            return message
+        return f"{record.levelname}: {message}"
+
+
+def _configure_console_logging():
+    handler = logging.StreamHandler()
+    handler.setFormatter(_ConsoleFormatter())
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+
+
 def main_das(
     source: str = "",
     *,
@@ -5385,7 +5399,7 @@ def main_das(
                                        With skip_dialog, also sets the upper bandpass cutoff. Defaults to samplerate/2.
         skip_dialog (bool): If True, skips the loading dialog and goes straight to the data view.
     """
-    logging.basicConfig(level=logging.INFO)
+    _configure_console_logging()
     main(
         source,
         config=config,
@@ -5402,11 +5416,7 @@ def cli():
     import warnings
 
     warnings.filterwarnings("ignore")
-    # enforce log level
-    try:  # py38+
-        logging.basicConfig(level=logging.INFO)
-    except ValueError:  # <py38
-        logger.getLogger().setLevel(logging.INFO)
+    _configure_console_logging()
 
     defopt.run(main, show_defaults=False)
 
