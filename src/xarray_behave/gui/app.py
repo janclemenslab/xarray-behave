@@ -30,6 +30,7 @@ from .. import _dataset_service as dataset_service, api as v2_api, xarray_behave
 from .formbuilder import YamlDialog
 from .media_dialog import MediaFilesDialog
 from .annotation_import import add_annotation_import_button, finish_annotation_import, open_annotation_import
+from .audio_playback import ArrayAudioStream, audio_pcm, prepare_audio_page, visible_audio_range
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
 from . import utils, views, event_widgets, gui_config, modern_video, project as project_model
 from .style_profile import WINDOW_STYLESHEET
@@ -1657,6 +1658,7 @@ class PSV(MainWindow):
         self._audio_output = None
         self._audio_player = None
         self._array_audio_sink = None
+        self._array_audio_stream = None
         self._array_audio_buffer = None
         self._array_audio_bytes = None
         self._array_audio_start_sample = None
@@ -2333,6 +2335,11 @@ class PSV(MainWindow):
                 return
         save_global = not self.project.is_saved and len(self.project.recordings) <= 1
         self._finish_close(event, save_global=save_global)
+
+    def _finish_close(self, event, *, save_global: bool) -> None:
+        if getattr(self, "_array_audio_stream", None) is not None:
+            self._pause_playback()
+        super()._finish_close(event, save_global=save_global)
 
     def _annotation_snapshot(self) -> pd.DataFrame:
         return self.event_times.to_df(preserve_empty=True, with_channels=True).copy(deep=True)
@@ -3121,6 +3128,9 @@ class PSV(MainWindow):
         self.update_frame()
 
     def _seek_playhead(self, sample: float) -> None:
+        if getattr(self, "_array_audio_stream", None) is not None:
+            self._start_playback_page(sample)
+            return
         self._set_playhead_sample(sample, refresh=True)
         self._playback_anchor_sample = float(self.t0)
         self._playback_clock.restart()
@@ -3206,33 +3216,29 @@ class PSV(MainWindow):
         return getattr(self, "_array_audio_sink", None) is not None
 
     def _stop_qt_array_audio(self) -> None:
+        stream = getattr(self, "_array_audio_stream", None)
+        if stream is not None:
+            stream.close()
+            self._array_audio_stream = None
         sink = getattr(self, "_array_audio_sink", None)
         if sink is not None:
-            sink.stop()
+            if stream is None:
+                sink.stop()
+            else:
+                sink.reset()
+            sink.deleteLater()
         buffer = getattr(self, "_array_audio_buffer", None)
         if buffer is not None:
             buffer.close()
+            buffer.deleteLater()
         self._array_audio_sink = None
         self._array_audio_buffer = None
         self._array_audio_bytes = None
         self._array_audio_start_sample = None
 
-    def _qt_array_audio_format(self, y) -> tuple[object, np.ndarray] | tuple[None, None]:
+    def _qt_array_audio_format(self, channel_count: int):
         if QAudioFormat is None or QAudioSink is None or QMediaDevices is None:
-            return None, None
-        y = np.asarray(y)
-        if y.ndim == 1:
-            channel_count = 1
-        elif y.ndim == 2:
-            channel_count = int(y.shape[1])
-        else:
-            return None, None
-        pcm = y.astype(np.float32, copy=False)
-        peak = np.nanmax(np.abs(pcm)) if pcm.size else 0.0
-        if np.isfinite(peak) and peak > 1.0:
-            pcm = pcm / peak * 0.95
-        pcm = np.nan_to_num(pcm, copy=False)
-        pcm = np.ascontiguousarray(pcm)
+            return None
 
         audio_format = QAudioFormat()
         audio_format.setSampleRate(int(round(self.fs_song)))
@@ -3240,21 +3246,21 @@ class PSV(MainWindow):
         audio_format.setSampleFormat(QAudioFormat.SampleFormat.Float)
         device = QMediaDevices.defaultAudioOutput()
         if not device.isFormatSupported(audio_format):
-            return None, None
-        return audio_format, pcm
+            return None
+        return audio_format
 
     def _start_qt_array_audio_window(self, window_start: int, window_stop: int, *, all_channels: bool) -> bool:
         if getattr(self, "_disable_qt_array_audio", False):
             return False
         y = self._audio_window_data(window_start, window_stop, all_channels=all_channels)
-        if y is None or len(y) == 0:
+        if y is None or len(y) == 0 or y.ndim not in (1, 2):
             return False
-        audio_format, pcm = self._qt_array_audio_format(y)
+        audio_format = self._qt_array_audio_format(y.shape[1] if y.ndim == 2 else 1)
         if audio_format is None:
             return False
         self._stop_qt_array_audio()
         try:
-            self._array_audio_bytes = QtCore.QByteArray(pcm.tobytes())
+            self._array_audio_bytes = QtCore.QByteArray(audio_pcm(y).tobytes())
             self._array_audio_buffer = QtCore.QBuffer(self)
             self._array_audio_buffer.setData(self._array_audio_bytes)
             self._array_audio_buffer.open(QtCore.QIODevice.OpenModeFlag.ReadOnly)
@@ -3267,8 +3273,50 @@ class PSV(MainWindow):
             self._stop_qt_array_audio()
             return False
 
+    def _start_qt_array_audio_stream(self, start: int, stop: int, *, all_channels: bool) -> bool:
+        if getattr(self, "_disable_qt_array_audio", False):
+            return False
+        da = self._audio_dataarray_for_source()
+        if da is None or da.ndim not in (1, 2):
+            return False
+        channel = self._current_channel_data_index()
+        if da.ndim == 2 and not all_channels and channel is None:
+            return False
+        audio_format = self._qt_array_audio_format(da.shape[1] if all_channels and da.ndim == 2 else 1)
+        if audio_format is None:
+            return False
+        length = min(self.tmax, da.shape[0])
+        prepare = partial(
+            prepare_audio_page,
+            source=da.data,
+            span=self.span,
+            length=length,
+            ratio=self.fs_ratio,
+            all_channels=all_channels,
+            auto_channel=self.select_loudest_channel,
+            channel=channel,
+        )
+        self._stop_qt_array_audio()
+        try:
+            first_page = prepare(start, stop)
+            sink = QAudioSink(audio_format, self)
+            self._array_audio_sink = sink
+            output = sink.start()
+            if output is None:
+                self._stop_qt_array_audio()
+                return False
+            self._array_audio_start_sample = float(start)
+            self._array_audio_stream = ArrayAudioStream(sink, output, first_page, prepare, page_size=int(self.span), length=length)
+            self._array_audio_stream.fill(start)
+            return True
+        except Exception as exc:
+            logger.debug("Could not start Qt audio stream: %s", exc)
+            self._stop_qt_array_audio()
+            return False
+
     def _transport_array_stop_sample(self) -> int:
-        if self._audio_playback_all_channels():
+        da = self._audio_dataarray_for_source()
+        if self._audio_playback_all_channels() or self.select_loudest_channel or getattr(da, "chunks", None) is not None:
             return int(self._playback_window_stop)
         return int(self.tmax)
 
@@ -3276,12 +3324,13 @@ class PSV(MainWindow):
         window_start = int(self._playback_window_start)
         window_stop = self._transport_array_stop_sample()
         self._playback_audio_stop_sample = None
-        if self._start_qt_array_audio_window(
-            window_start,
-            window_stop,
-            all_channels=self._audio_playback_all_channels(),
-        ):
-            self._playback_audio_stop_sample = window_stop
+        all_channels = self._audio_playback_all_channels()
+        if window_stop < self.tmax:
+            started = self._start_qt_array_audio_stream(window_start, window_stop, all_channels=all_channels)
+        else:
+            started = self._start_qt_array_audio_window(window_start, window_stop, all_channels=all_channels)
+        if started:
+            self._playback_audio_stop_sample = self.tmax
             return True
         logger.info("Could not start Qt array audio playback.")
         return False
@@ -3303,8 +3352,8 @@ class PSV(MainWindow):
         self._start_playback_page(page_start)
 
     def _set_playback_window(self, page_start: float) -> None:
-        max_start = max(0, self.tmax - self.span)
-        page_start = int(np.clip(page_start, self.tmin, max_start))
+        # Keep playback contiguous when the final display overlaps the previous window.
+        page_start = int(np.clip(page_start, self.tmin, self.tmax_playhead))
         page_stop = int(min(self.tmax, page_start + self.span))
         self._playback_window_start = page_start
         self._playback_window_stop = page_stop
@@ -3318,6 +3367,7 @@ class PSV(MainWindow):
         self._set_playhead_sample(
             self._playback_window_start,
             refresh=True,
+            process_events=False,
             preserve_playback_window=True,
             force_refresh=True,
         )
@@ -3415,7 +3465,16 @@ class PSV(MainWindow):
         if self._transport_uses_qmedia_audio():
             target_sample = self._audio_player.position() / 1000 * self.fs_song
         elif self._transport_uses_qt_array_audio():
-            target_sample = self._array_audio_start_sample + self._array_audio_sink.processedUSecs() / 1e6 * self.fs_song
+            processed_samples = round(self._array_audio_sink.processedUSecs() * self.fs_song / 1e6)
+            target_sample = self._array_audio_start_sample + processed_samples
+            stream = getattr(self, "_array_audio_stream", None)
+            if stream is not None:
+                try:
+                    stream.fill(target_sample)
+                except Exception:
+                    logger.exception("Could not queue the next audio window.")
+                    self._pause_playback()
+                    return
         else:
             target_sample = self._playback_anchor_sample + self._playback_clock.nsecsElapsed() / 1e9 * self.fs_song
         if self._playback_window_start is not None:
@@ -3440,6 +3499,8 @@ class PSV(MainWindow):
                         if self._start_transport_array_audio():
                             self._playback_anchor_sample = float(self.t0)
                             self._playback_clock.restart()
+                        else:
+                            self._pause_playback()
             return
         if target_sample >= self.tmax_playhead:
             self._set_playhead_sample(self.tmax_playhead, refresh=True, preserve_playback_window=True)
@@ -3488,20 +3549,19 @@ class PSV(MainWindow):
     def fs_ratio(self):
         return self.fs_song / self.fs_other
 
-    @property
-    def time0(self):
-        max_start = max(0, self.tmax - self.span)
+    def _visible_audio_range(self):
         playback_start = getattr(self, "_playback_window_start", None)
         if playback_start is None:
-            start = np.clip(self.t0 - self.span / 2, 0, max_start)
-        else:
-            start = np.clip(playback_start, 0, max_start)
-        return int(int(start / self.fs_ratio) * self.fs_ratio)
+            playback_start = self.t0 - self.span / 2
+        return visible_audio_range(playback_start, self.span, self.tmax, self.fs_ratio)
+
+    @property
+    def time0(self):
+        return self._visible_audio_range()[0]
 
     @property
     def time1(self):
-        stop = min(self.tmax, self.time0 + self.span)
-        return int(int(stop / self.fs_ratio) * self.fs_ratio)
+        return self._visible_audio_range()[1]
 
     @property
     def tmax_playhead(self):
@@ -3517,6 +3577,9 @@ class PSV(MainWindow):
 
     @t0.setter
     def t0(self, val: float):
+        if getattr(self, "_array_audio_stream", None) is not None:
+            self._seek_playhead(val)
+            return
         self._set_playhead_sample(val, refresh=True)
         if getattr(self, "_is_playing", False):
             self._playback_anchor_sample = float(self.t0)
@@ -3546,7 +3609,10 @@ class PSV(MainWindow):
     def span(self, val):
         # HACK fixes weird offset/jump error - probably arises from self.fs_song / self.fs_other
         self._span = min(max(200, val), self.tmax)
-        self.update_xy()
+        if getattr(self, "_array_audio_stream", None) is not None:
+            self._start_playback_page(self.t0)
+        else:
+            self.update_xy()
 
     @property
     def current_event_index(self):
@@ -4241,6 +4307,8 @@ class PSV(MainWindow):
                 if self.threshold_mode:
                     self.show_sidebar = True
                 self._sync_threshold_mode_ui()
+            if var_name == "select_loudest_channel" and getattr(self, "_array_audio_stream", None) is not None:
+                self._start_playback_page(self.t0)
             if self.STOP:
                 self.update_frame()
                 self.update_xy()
@@ -4597,32 +4665,40 @@ class PSV(MainWindow):
         da = self._audio_dataarray_for_source()
         if da is None:
             return
-        self.x = self._audio_time_values()[self.time0 : self.time1]
+        start, stop = self._visible_audio_range()
+        self.x = self._audio_time_values()[start:stop]
         self.step = int(max(1, np.ceil(len(self.x) / self.fs_song / 2)))  # make sure step is >= 1
         self.y_other = None
 
+        stream = getattr(self, "_array_audio_stream", None)
+        prepared_audio = stream.visible_audio(start, stop) if stream is not None else None
         if getattr(da, "ndim", 0) == 1:
-            self.y = da.data[self.time0 : self.time1]
+            self.y = da.data[start:stop] if prepared_audio is None else prepared_audio
         else:
-            # load song for current channel
-            try:
-                y_all = da.data[self.time0 : self.time1, :].compute()
-            except AttributeError:
-                y_all = da.data[self.time0 : self.time1, :]
+            y_all = prepared_audio
+            if y_all is None:
+                y_all = self._materialize_audio_data(da.data[start:stop, :])
 
             channel_index = self._current_channel_data_index()
             if channel_index is None:
                 return
+
+            if self.select_loudest_channel and y_all.size:
+                self.loudest_channel = int(np.argmax(np.max(y_all, axis=0)))
+                if self.loudest_channel != channel_index:
+                    combo_index = self._combo_index_for_audio_item(self.current_audio_source_name, self.loudest_channel)
+                    if combo_index >= 0:
+                        # The manual channel-change handler resets playback and redraws the window.
+                        with QtCore.QSignalBlocker(self.cb2):
+                            self.cb2.setCurrentIndex(combo_index)
+                        channel_index = self.loudest_channel
+                        if not self._audio_settings().events_all:
+                            self._force_next_event_table_refresh = True
+
             self.y = y_all[:, channel_index]
             if self._audio_settings().waveform_all:
                 channel_list = np.delete(np.arange(self.nb_channels), channel_index)
                 self.y_other = y_all[:, channel_list]
-
-            if self.select_loudest_channel and not self._channel_switching_locked():
-                self.loudest_channel = np.argmax(np.max(y_all, axis=0))
-                combo_index = self._combo_index_for_audio_item(self.current_audio_source_name, int(self.loudest_channel))
-                if combo_index >= 0:
-                    self.cb2.setCurrentIndex(combo_index)
 
         if self.threshold_mode:
             self.envelope = self.get_envelope()

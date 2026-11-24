@@ -1680,12 +1680,16 @@ def test_window_audio_playhead_sweeps_without_advancing_window():
         def __init__(self):
             self.elapsed = 0
             self.stopped = False
+            self.deleted = False
 
         def processedUSecs(self):
             return self.elapsed
 
         def stop(self):
             self.stopped = True
+
+        def deleteLater(self):
+            self.deleted = True
 
     class ChannelCombo:
         def __init__(self):
@@ -1708,7 +1712,8 @@ def test_window_audio_playhead_sweeps_without_advancing_window():
     window._playback_window_start = None
     window._playback_window_stop = None
     window._window_audio_timer = Timer()
-    window._array_audio_sink = Sink()
+    sink = Sink()
+    window._array_audio_sink = sink
     window._array_audio_buffer = None
     window._array_audio_bytes = None
     window.x = np.arange(400, 600) / 1_000
@@ -1741,6 +1746,7 @@ def test_window_audio_playhead_sweeps_without_advancing_window():
     assert window.time1 == 600
     assert window._window_audio_timer.stopped is True
     assert window.cb2.enabled[-1] is True
+    assert sink.stopped and sink.deleted
 
 
 def test_channel_shortcuts_ignore_playback_locked_selector():
@@ -1969,6 +1975,7 @@ def test_start_playback_qt_array_audio_queues_before_transport_clock():
     window._t0 = 500.0000000001
     window.fs_song = 1_000
     window.fs_other = 1_000
+    window.select_loudest_channel = False
     window._span = 200.0000000001
     window.STOP = True
     window._is_playing = False
@@ -1995,7 +2002,7 @@ def test_start_playback_qt_array_audio_queues_before_transport_clock():
     assert events == [("audio_play", 400, 1_000, False), "clock_restart", "timer_start"]
 
 
-def test_playback_tick_updates_video_within_waveform_window(tmp_path, monkeypatch):
+def test_playback_tick_updates_video_within_waveform_window(tmp_path):
     _app()
 
     class VideoReader:
@@ -2020,7 +2027,7 @@ def test_playback_tick_updates_video_within_waveform_window(tmp_path, monkeypatc
     positions = iter([100, 140, 141])
     window._audio_player = type("Player", (), {"position": lambda self: next(positions)})()
     redraws = []
-    monkeypatch.setattr(window, "update_xy", lambda: redraws.append(True))
+    window.update_xy = lambda: redraws.append(True)
     frames.clear()
     try:
         for _ in range(3):
@@ -2087,6 +2094,87 @@ def test_playback_tick_flips_to_next_window_at_visible_end():
     assert window._audio_player.play_count == 0
 
 
+@pytest.mark.parametrize("use_qmedia", [True, False])
+def test_playback_displays_loudest_channel_when_window_advances(tmp_path, use_qmedia, monkeypatch):
+    _app()
+    ds = _audio_dataset().isel(sampletime=slice(390)).assign_coords(channels=[4, 7])
+    ds.song_raw.data[:200, 0] = 0.25
+    ds.song_raw.data[200:400, 1] = 0.5
+    window = PSV(ds, config_manager=gui_config.GuiConfigManager(home=tmp_path))
+    try:
+        window.select_loudest_channel = True
+        window.span = 200
+        assert window.current_channel_index == 4
+
+        positions = iter([100, 200, 250])
+        if use_qmedia:
+            window._audio_player = type("AudioPlayer", (), {"position": lambda self: next(positions)})()
+        else:
+            class Sink:
+                def __init__(self, audio_format, parent):
+                    self.sample = 0
+                    self.queued = bytearray()
+
+                def start(self):
+                    return self
+
+                def processedUSecs(self):
+                    self.sample = next(positions)
+                    return self.sample * 1000
+
+                def bytesFree(self):
+                    return (200 + self.sample) * 4 - len(self.queued)
+
+                def write(self, pcm):
+                    self.queued.extend(pcm)
+                    return len(pcm)
+
+                def reset(self):
+                    pass
+
+                def deleteLater(self):
+                    pass
+
+            monkeypatch.setattr(gui_app, "QAudioSink", Sink)
+            window._qt_array_audio_format = lambda channels: object()
+        plotted = []
+        window.spec_view.update_spec = lambda x, y: plotted.append(y)
+        window._set_playback_window(0)
+        if not use_qmedia:
+            assert window._start_transport_array_audio()
+            sink = window._array_audio_sink
+            window._array_audio_stream._pending.result(timeout=5)
+            np.testing.assert_array_equal(np.frombuffer(sink.queued, dtype=np.float32), np.full(200, 0.25))
+        window._is_playing = True
+        window._sync_channel_selector_enabled()
+
+        window._on_playback_tick()
+        assert window.current_channel_index == 4
+        assert plotted == []
+        if not use_qmedia:
+            # Audio for the next channel is queued before the visible page changes.
+            np.testing.assert_array_equal(np.frombuffer(sink.queued, dtype=np.float32)[200:], np.full(100, 0.5))
+
+        window._on_playback_tick()
+        assert window.current_channel_index == 7
+        assert window._is_playing
+        assert not window.cb2.isEnabled()
+        assert (window.time0, window.time1) == (190, 390)
+        np.testing.assert_array_equal(window.slice_view._last_waveform_y, ds.song_raw.data[190:390, 1])
+        np.testing.assert_array_equal(window.slice_view._last_waveform_y_other, ds.song_raw.data[190:390, :1])
+        if not use_qmedia:
+            assert window._array_audio_sink is sink
+            np.testing.assert_array_equal(np.frombuffer(sink.queued, dtype=np.float32)[200:], np.full(190, 0.5))
+
+        window._on_playback_tick()
+        assert window.t0 == 250
+        assert len(plotted) == 1
+        np.testing.assert_array_equal(plotted[0], ds.song_raw.data[190:390, 1])
+    finally:
+        window._is_playing = False
+        window.close()
+
+
 def test_playback_tick_does_not_replay_continuous_array_audio_at_visible_end():
     class App:
         def processEvents(self):
@@ -2127,33 +2215,35 @@ def test_playback_tick_does_not_replay_continuous_array_audio_at_visible_end():
     assert calls == []
 
 
-def test_start_transport_array_audio_prefers_qt_array_audio():
-    class SongRaw:
-        data = np.arange(1_000)[:, None]
-
-    class Dataset:
-        song_raw = SongRaw()
-
-        def __contains__(self, key):
-            return key == "song_raw"
-
+@pytest.mark.parametrize(
+    ("lazy_audio", "auto_select", "expected_stop"),
+    [(False, False, 1_000), (True, False, 600), (False, True, 600), (True, True, 600)],
+)
+def test_start_transport_array_audio_buffers_only_whats_needed(lazy_audio, auto_select, expected_stop):
     window = PSV.__new__(PSV)
-    window.ds = Dataset()
+    window.ds = _audio_dataset()
+    if lazy_audio:
+        window.ds = window.ds.chunk({"sampletime": 200})
     window.tmax = 1_000
     window.fs_song = 1_000
+    window.select_loudest_channel = auto_select
     window._playback_window_start = 400
     window._playback_window_stop = 600
     window._playback_audio_stop_sample = None
     window.cb2 = type("ChannelCombo", (), {"currentText": lambda self: "Channel 0"})()
     window._audio_player = None
     window._start_qt_array_audio_window = lambda start, stop, *, all_channels: calls.append(
-        (start, stop, all_channels)
+        ("window", start, stop, all_channels)
+    ) or True
+    window._start_qt_array_audio_stream = lambda start, stop, *, all_channels: calls.append(
+        ("stream", start, stop, all_channels)
     ) or True
 
     calls = []
 
     assert window._start_transport_array_audio() is True
-    assert calls == [(400, 1_000, False)]
+    expected_method = "stream" if expected_stop < 1_000 else "window"
+    assert calls == [(expected_method, 400, expected_stop, False)]
     assert window._playback_audio_stop_sample == 1_000
 
 
