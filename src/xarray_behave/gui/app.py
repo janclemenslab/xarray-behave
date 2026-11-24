@@ -32,7 +32,7 @@ from .media_dialog import MediaFilesDialog
 from .annotation_import import add_annotation_import_button, finish_annotation_import, open_annotation_import
 from .widgets import ChkBxFileDialog, ZarrOverwriteWarning, NoEventsRegisteredWarning
 from . import utils, views, event_widgets, gui_config, modern_video, project as project_model
-from .style_profile import TEXT_PRIMARY, WINDOW_STYLESHEET
+from .style_profile import WINDOW_STYLESHEET
 
 logger = logging.getLogger(__name__)
 
@@ -2385,75 +2385,6 @@ class PSV(MainWindow):
         target._position_settings_button()
         self._sync_channel_selector_enabled()
 
-    def _toolbar_icon(self, name: str) -> QtGui.QIcon:
-        pixmap = QtGui.QPixmap(18, 18)
-        pixmap.fill(QtCore.Qt.transparent)
-        painter = QtGui.QPainter(pixmap)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.setPen(
-            QtGui.QPen(
-                QtGui.QColor(TEXT_PRIMARY),
-                1.6,
-                QtCore.Qt.SolidLine,
-                QtCore.Qt.RoundCap,
-                QtCore.Qt.RoundJoin,
-            )
-        )
-        painter.setBrush(QtCore.Qt.NoBrush)
-
-        def line(x0, y0, x1, y1):
-            painter.drawLine(QtCore.QPointF(x0, y0), QtCore.QPointF(x1, y1))
-
-        def path(points, close=False):
-            item = QtGui.QPainterPath(QtCore.QPointF(*points[0]))
-            for point in points[1:]:
-                item.lineTo(QtCore.QPointF(*point))
-            if close:
-                item.closeSubpath()
-            painter.drawPath(item)
-
-        if name == "open_audio_annotations":
-            path([(2.5, 6), (2.5, 14.5), (15.5, 14.5), (15.5, 7.5), (8.5, 7.5), (7, 5), (2.5, 5)])
-            path([(5, 11.5), (6.5, 9), (8, 12), (10, 8.5), (12, 12), (13.5, 10)])
-        elif name == "import_annotations":
-            line(9, 3, 9, 10.5)
-            path([(6.5, 8), (9, 10.5), (11.5, 8)])
-            path([(4, 12), (4, 14.5), (14, 14.5), (14, 12)])
-        elif name == "save_annotations":
-            painter.drawRoundedRect(QtCore.QRectF(4, 3, 10, 12), 1.2, 1.2)
-            line(6, 5.5, 11.5, 5.5)
-            line(6, 12.5, 12, 12.5)
-            line(6, 10.5, 12, 10.5)
-        elif name == "show_trace":
-            path([(2.5, 9.5), (4.5, 9.5), (6, 5), (8, 13), (10.5, 6), (12, 10.5), (15.5, 10.5)])
-        elif name == "show_spec":
-            painter.drawRoundedRect(QtCore.QRectF(3, 4, 12, 10), 1.0, 1.0)
-            for x, height in ((5.5, 3), (8, 6), (10.5, 8), (13, 4)):
-                line(x, 12.5, x, 12.5 - height)
-        elif name == "show_timeline":
-            line(3, 9, 15, 9)
-            painter.drawRoundedRect(QtCore.QRectF(4, 6, 3.5, 6), 0.8, 0.8)
-            painter.drawRoundedRect(QtCore.QRectF(10.5, 6, 3.5, 6), 0.8, 0.8)
-        elif name == "show_event_table":
-            painter.drawRoundedRect(QtCore.QRectF(3.5, 4, 11, 10), 1.0, 1.0)
-            line(3.5, 7.5, 14.5, 7.5)
-            line(3.5, 10.5, 14.5, 10.5)
-            line(8, 4, 8, 14)
-        elif name == "show_sidebar":
-            painter.drawRoundedRect(QtCore.QRectF(3, 3.5, 12, 11), 1.0, 1.0)
-            line(7, 3.5, 7, 14.5)
-            line(9, 7, 13, 7)
-            line(9, 10, 13, 10)
-        elif name == "threshold_mode":
-            line(3, 9, 15, 9)
-            path([(4, 12.5), (6.5, 7), (8.5, 11.5), (11, 5.5), (14, 12.5)])
-        elif name == "show_movie":
-            painter.drawRoundedRect(QtCore.QRectF(3, 4, 12, 10), 1.0, 1.0)
-            path([(7.5, 7), (7.5, 11), (11, 9)], close=True)
-
-        painter.end()
-        return QtGui.QIcon(pixmap)
-
     def _build_annotation_toolbar(self) -> None:
         actions = getattr(self, "_viewer_actions", {})
         toolbar = QtWidgets.QToolBar("Annotations", self)
@@ -2475,13 +2406,14 @@ class PSV(MainWindow):
             ("threshold_mode", "Thresholding mode"),
             ("show_movie", "Show movie"),
         ]
+        icon_dir = Path(__file__).with_name("toolbar_icons")
         for key, tooltip in specs:
             action = actions.get(key)
             if action is None:
                 continue
             action.setToolTip(tooltip)
             action.setStatusTip(tooltip)
-            action.setIcon(self._toolbar_icon(key))
+            action.setIcon(QtGui.QIcon(str(icon_dir / f"{key}.svg")))
             toolbar.addAction(action)
             if key in {"save_annotations", "show_sidebar"}:
                 toolbar.addSeparator()
